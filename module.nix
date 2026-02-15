@@ -2,10 +2,10 @@
 { config, lib, pkgs, ... }:
 
 let
-  cfg = config.services.inventurly;
+  cfg = config.services.haushalt;
 in
 {
-  options.services.inventurly = lib.mkOption {
+  options.services.haushalt = lib.mkOption {
     type = lib.types.attrsOf (lib.types.submodule {
       options = {
         enable = lib.mkOption {
@@ -16,8 +16,8 @@ in
         
         package = lib.mkOption {
           type = lib.types.nullOr lib.types.package;
-          description = "Haushalt package to use. If null, will be auto-selected based on oidc.enable";
-          default = (builtins.getFlake "path:${toString ./.}").packages.${pkgs.system}.backend-oidc;
+          description = "Haushalt package to use.";
+          default = (builtins.getFlake "path:${toString ./.}").packages.${pkgs.system};
         };
         
         frontendPackage = lib.mkOption {
@@ -40,7 +40,7 @@ in
         
         logLevel = lib.mkOption {
           type = lib.types.str;
-          default = "inventurly=debug,tower_http=debug";
+          default = "haushalt=debug,tower_http=debug";
           description = "Rust log level configuration";
         };
         
@@ -61,40 +61,13 @@ in
           default = {};
           description = "Additional environment variables";
         };
-        
-        oidc = {
-          enable = lib.mkOption {
-            type = lib.types.bool;
-            default = false;
-            description = "Enable OIDC authentication (disables mock authentication)";
-          };
-          
-          issuer = lib.mkOption {
-            type = lib.types.str;
-            default = "";
-            example = "https://accounts.google.com";
-            description = "OIDC provider issuer URL";
-          };
-          
-          clientId = lib.mkOption {
-            type = lib.types.str;
-            default = "";
-            description = "OAuth client ID from your OIDC provider";
-          };
-          
-          clientSecretFile = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
-            description = "Path to file containing OAuth client secret";
-          };
-          
-          appUrl = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            example = "https://inventurly.example.com";
-            description = "Application URL for OIDC callbacks. Defaults to https://[domain] if domain is set";
-          };
+
+        jwtSecret = lib.mkOption {
+          type = lib.types.attrsOf lib.types.str;
+          default = "se!cret";
+          description = "JWT secret - keep this secret.";
         };
+        
       };
     });
     default = {};
@@ -102,24 +75,6 @@ in
   };
   
   config = lib.mkMerge [
-    # Assertions for OIDC configuration
-    {
-      assertions = lib.flatten (lib.mapAttrsToList (name: instanceCfg: [
-        {
-          assertion = !instanceCfg.enable || !instanceCfg.oidc.enable || instanceCfg.oidc.issuer != "";
-          message = "services.inventurly.${name}: oidc.issuer must be set when OIDC is enabled";
-        }
-        {
-          assertion = !instanceCfg.enable || !instanceCfg.oidc.enable || instanceCfg.oidc.clientId != "";
-          message = "services.inventurly.${name}: oidc.clientId must be set when OIDC is enabled";
-        }
-        {
-          assertion = !instanceCfg.enable || !instanceCfg.oidc.enable || instanceCfg.domain != null || instanceCfg.oidc.appUrl != null;
-          message = "services.inventurly.${name}: either domain or oidc.appUrl must be set when OIDC is enabled";
-        }
-      ]) cfg);
-    }
-
     # Systemd services
     {
       systemd.services = lib.mapAttrs' (name: instanceCfg:
@@ -141,50 +96,44 @@ in
               
           # Base environment variables
           baseEnv = {
-            DATABASE_URL = "sqlite:/var/lib/inventurly-${name}/inventurly.db";
             SERVER_ADDRESS = "${instanceCfg.host}:${toString instanceCfg.port}";
             RUST_LOG = instanceCfg.logLevel;
             BASE_PATH = "${appUrl}/api";
           };
           
-          # OIDC environment variables
-          oidcEnv = lib.optionalAttrs instanceCfg.oidc.enable {
-            APP_URL = appUrl;
-            ISSUER = instanceCfg.oidc.issuer;
-            CLIENT_ID = instanceCfg.oidc.clientId;
-          };
         in
-        lib.nameValuePair "inventurly-${name}" (lib.mkIf instanceCfg.enable {
+        lib.nameValuePair "haushalt-${name}" (lib.mkIf instanceCfg.enable {
           description = "Inventurly Service (${name})";
           wantedBy = [ "multi-user.target" ];
           after = [ "network.target" ];
           
-          environment = baseEnv // oidcEnv // instanceCfg.extraEnvironment // 
-            lib.optionalAttrs (instanceCfg.oidc.enable && instanceCfg.oidc.clientSecretFile != null) {
-              CLIENT_SECRET = lib.fileContents instanceCfg.oidc.clientSecretFile;
-            };
+          environment =  {
+            DATABASE_URL = "sqlite:/var/lib/haushalt-${name}/haushalt.db";
+            JWT_SECRET = "secr!t123";
+            PORT = toString instanceCfg.port;
+          };
           
           serviceConfig = {
             Type = "simple";
-            ExecStart = "${actualPackage}/bin/inventurly";
-            StateDirectory = "inventurly-${name}";
-            WorkingDirectory = "/var/lib/inventurly-${name}";
+            ExecStart = "${actualPackage}/bin/backend";
+            StateDirectory = "haushalt-${name}";
+            WorkingDirectory = "/var/lib/haushalt-${name}";
             Restart = "on-failure";
           };
           
           preStart = ''
             # Initialize database
-            if [ ! -f /var/lib/inventurly-${name}/inventurly.db ]; then
-              ${pkgs.sqlite}/bin/sqlite3 /var/lib/inventurly-${name}/inventurly.db "VACUUM;"
+            if [ ! -f /var/lib/haushalt-${name}/haushalt.db ]; then
+              ${pkgs.sqlite}/bin/sqlite3 /var/lib/haushalt-${name}/haushalt.db "VACUUM;"
             fi
             
             # Copy and run migrations
-            if [ ! -d /var/lib/inventurly-${name}/migrations ]; then
-              cp -r ${actualPackage}/migrations /var/lib/inventurly-${name}/
+            if [ ! -d /var/lib/haushalt-${name}/migrations ]; then
+              cp -r ${actualPackage}/migrations /var/lib/haushalt-${name}/
             fi
             
             # Run migrations
-            cd /var/lib/inventurly-${name}
+            cd /var/lib/haushalt-${name}
             ${pkgs.sqlx-cli}/bin/sqlx database setup --source ./migrations/sqlite || true
           '';
         })
@@ -195,7 +144,7 @@ in
     {
       # Create etc directories
       environment.etc = lib.mapAttrs' (name: instanceCfg: 
-        lib.nameValuePair "inventurly-${name}/config.json" {
+        lib.nameValuePair "haushalt-${name}/config.json" {
           text = lib.mkIf instanceCfg.enable ''
             {
               "backend": "https://${instanceCfg.domain}/api"
@@ -242,19 +191,19 @@ in
               proxyPass = "http://127.0.0.1:${toString instanceCfg.port}";
               priority = 100;
               extraConfig = ''
-                rewrite ^/api/(.*)$ /$1 break;
+                rewrite ^/(.*)$ /$1 break;
                 proxy_connect_timeout 60s;
                 proxy_send_timeout 1200s;
                 proxy_read_timeout 1200s;
               '';
             };
             locations."= /config.json" = {
-              alias = "/etc/inventurly-${name}/config.json";
+              alias = "/etc/haushalt-${name}/config.json";
               extraConfig = "add_header ContentType application/json;";
               priority = 200;
             };
             locations."= /assets/config.json" = {
-              alias = "/etc/inventurly-${name}/config.json";
+              alias = "/etc/haushalt-${name}/config.json";
               extraConfig = "add_header ContentType application/json;";
               priority = 200;
             };
