@@ -28,6 +28,9 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 
+# Markdown rendering
+pulldown-cmark = "0.9"
+
 # Error handling
 console_error_panic_hook = { workspace = true }
 

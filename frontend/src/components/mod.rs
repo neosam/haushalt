@@ -11,3 +11,6 @@ pub mod pending_confirmations;
 pub mod reward_modal;
 pub mod punishment_modal;
 pub mod chat_message;
+pub mod markdown;
+pub mod note_card;
+pub mod note_modal;

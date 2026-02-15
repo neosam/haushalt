@@ -4,6 +4,7 @@ use leptos::*;
 pub enum HouseholdTab {
     Overview,
     Tasks,
+    Notes,
     Rewards,
     Punishments,
     Chat,
@@ -16,6 +17,7 @@ impl HouseholdTab {
         match self {
             HouseholdTab::Overview => "Overview",
             HouseholdTab::Tasks => "Tasks",
+            HouseholdTab::Notes => "Notes",
             HouseholdTab::Rewards => "Rewards",
             HouseholdTab::Punishments => "Punishments",
             HouseholdTab::Chat => "Chat",
@@ -28,6 +30,7 @@ impl HouseholdTab {
         match self {
             HouseholdTab::Overview => format!("/households/{}", household_id),
             HouseholdTab::Tasks => format!("/households/{}/tasks", household_id),
+            HouseholdTab::Notes => format!("/households/{}/notes", household_id),
             HouseholdTab::Rewards => format!("/households/{}/rewards", household_id),
             HouseholdTab::Punishments => format!("/households/{}/punishments", household_id),
             HouseholdTab::Chat => format!("/households/{}/chat", household_id),
@@ -45,6 +48,7 @@ pub fn HouseholdTabs(
     let tabs = [
         HouseholdTab::Overview,
         HouseholdTab::Tasks,
+        HouseholdTab::Notes,
         HouseholdTab::Rewards,
         HouseholdTab::Punishments,
         HouseholdTab::Chat,

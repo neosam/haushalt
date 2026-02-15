@@ -1064,6 +1064,42 @@ pub enum WsServerMessage {
 }
 
 // ============================================================================
+// Note Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Note {
+    pub id: Uuid,
+    pub household_id: Uuid,
+    pub user_id: Uuid,
+    pub title: String,
+    pub content: String,
+    pub is_shared: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteWithUser {
+    pub note: Note,
+    pub user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateNoteRequest {
+    pub title: String,
+    pub content: Option<String>,
+    pub is_shared: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateNoteRequest {
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub is_shared: Option<bool>,
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

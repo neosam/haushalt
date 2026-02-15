@@ -7,12 +7,12 @@ use serde::{de::DeserializeOwned, Serialize};
 use shared::{
     ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, AuthResponse,
     ChatMessageWithUser, CreateChatMessageRequest, CreateHouseholdRequest, CreateInvitationRequest,
-    CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
-    CreateUserRequest, Household, HouseholdMembership, HouseholdSettings, Invitation,
-    InvitationWithHousehold, InviteUserRequest, LeaderboardEntry, LoginRequest, MemberWithUser,
-    PendingPunishmentCompletion, PendingReview, PendingRewardRedemption, PointCondition, Punishment,
-    Reward, Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus,
-    UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdatePunishmentRequest,
+    CreateNoteRequest, CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest,
+    CreateTaskRequest, CreateUserRequest, Household, HouseholdMembership, HouseholdSettings, Invitation,
+    InvitationWithHousehold, InviteUserRequest, LeaderboardEntry, LoginRequest, MemberWithUser, Note,
+    NoteWithUser, PendingPunishmentCompletion, PendingReview, PendingRewardRedemption, PointCondition,
+    Punishment, Reward, Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus,
+    UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest,
     UpdateRewardRequest, UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward,
     UserRewardWithUser,
 };
@@ -920,6 +920,64 @@ impl ApiClient {
         Self::request::<()>(
             "DELETE",
             &format!("/households/{}/chat/{}", household_id, message_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // Notes endpoints
+    pub async fn list_notes(household_id: &str) -> Result<Vec<NoteWithUser>, String> {
+        Self::request::<Vec<NoteWithUser>>(
+            "GET",
+            &format!("/households/{}/notes", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn create_note(
+        household_id: &str,
+        request: CreateNoteRequest,
+    ) -> Result<Note, String> {
+        Self::request(
+            "POST",
+            &format!("/households/{}/notes", household_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_note(household_id: &str, note_id: &str) -> Result<Note, String> {
+        Self::request::<Note>(
+            "GET",
+            &format!("/households/{}/notes/{}", household_id, note_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_note(
+        household_id: &str,
+        note_id: &str,
+        request: UpdateNoteRequest,
+    ) -> Result<Note, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/notes/{}", household_id, note_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_note(household_id: &str, note_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/households/{}/notes/{}", household_id, note_id),
             None::<()>,
             true,
         )
