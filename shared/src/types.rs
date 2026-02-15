@@ -744,6 +744,126 @@ pub struct PointsHistoryEntry {
 }
 
 // ============================================================================
+// Activity Log Types
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityType {
+    // Task events
+    TaskCreated,
+    TaskUpdated,
+    TaskDeleted,
+    TaskAssigned,
+    TaskCompleted,
+    TaskMissed,
+
+    // Reward events
+    RewardCreated,
+    RewardDeleted,
+    RewardAssigned,
+    RewardPurchased,
+    RewardRedeemed,
+
+    // Punishment events
+    PunishmentCreated,
+    PunishmentDeleted,
+    PunishmentAssigned,
+    PunishmentCompleted,
+
+    // Points events
+    PointsAdjusted,
+
+    // Membership events
+    MemberJoined,
+    MemberLeft,
+    MemberRoleChanged,
+    InvitationSent,
+
+    // Settings events
+    SettingsChanged,
+}
+
+impl ActivityType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ActivityType::TaskCreated => "task_created",
+            ActivityType::TaskUpdated => "task_updated",
+            ActivityType::TaskDeleted => "task_deleted",
+            ActivityType::TaskAssigned => "task_assigned",
+            ActivityType::TaskCompleted => "task_completed",
+            ActivityType::TaskMissed => "task_missed",
+            ActivityType::RewardCreated => "reward_created",
+            ActivityType::RewardDeleted => "reward_deleted",
+            ActivityType::RewardAssigned => "reward_assigned",
+            ActivityType::RewardPurchased => "reward_purchased",
+            ActivityType::RewardRedeemed => "reward_redeemed",
+            ActivityType::PunishmentCreated => "punishment_created",
+            ActivityType::PunishmentDeleted => "punishment_deleted",
+            ActivityType::PunishmentAssigned => "punishment_assigned",
+            ActivityType::PunishmentCompleted => "punishment_completed",
+            ActivityType::PointsAdjusted => "points_adjusted",
+            ActivityType::MemberJoined => "member_joined",
+            ActivityType::MemberLeft => "member_left",
+            ActivityType::MemberRoleChanged => "member_role_changed",
+            ActivityType::InvitationSent => "invitation_sent",
+            ActivityType::SettingsChanged => "settings_changed",
+        }
+    }
+}
+
+impl FromStr for ActivityType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "task_created" => Ok(ActivityType::TaskCreated),
+            "task_updated" => Ok(ActivityType::TaskUpdated),
+            "task_deleted" => Ok(ActivityType::TaskDeleted),
+            "task_assigned" => Ok(ActivityType::TaskAssigned),
+            "task_completed" => Ok(ActivityType::TaskCompleted),
+            "task_missed" => Ok(ActivityType::TaskMissed),
+            "reward_created" => Ok(ActivityType::RewardCreated),
+            "reward_deleted" => Ok(ActivityType::RewardDeleted),
+            "reward_assigned" => Ok(ActivityType::RewardAssigned),
+            "reward_purchased" => Ok(ActivityType::RewardPurchased),
+            "reward_redeemed" => Ok(ActivityType::RewardRedeemed),
+            "punishment_created" => Ok(ActivityType::PunishmentCreated),
+            "punishment_deleted" => Ok(ActivityType::PunishmentDeleted),
+            "punishment_assigned" => Ok(ActivityType::PunishmentAssigned),
+            "punishment_completed" => Ok(ActivityType::PunishmentCompleted),
+            "points_adjusted" => Ok(ActivityType::PointsAdjusted),
+            "member_joined" => Ok(ActivityType::MemberJoined),
+            "member_left" => Ok(ActivityType::MemberLeft),
+            "member_role_changed" => Ok(ActivityType::MemberRoleChanged),
+            "invitation_sent" => Ok(ActivityType::InvitationSent),
+            "settings_changed" => Ok(ActivityType::SettingsChanged),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivityLog {
+    pub id: Uuid,
+    pub household_id: Uuid,
+    pub actor_id: Uuid,
+    pub affected_user_id: Option<Uuid>,
+    pub activity_type: ActivityType,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<Uuid>,
+    pub details: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivityLogWithUsers {
+    pub log: ActivityLog,
+    pub actor: User,
+    pub affected_user: Option<User>,
+}
+
+// ============================================================================
 // API Response Types
 // ============================================================================
 
@@ -969,5 +1089,24 @@ mod tests {
         // Cannot complete when already exceeded with allow_exceed_target false
         let task = create_task_with_status(5, 3, false);
         assert!(!task.can_complete());
+    }
+
+    #[test]
+    fn test_activity_type_from_str() {
+        assert_eq!("task_created".parse(), Ok(ActivityType::TaskCreated));
+        assert_eq!("TASK_COMPLETED".parse(), Ok(ActivityType::TaskCompleted));
+        assert_eq!("reward_assigned".parse(), Ok(ActivityType::RewardAssigned));
+        assert_eq!("points_adjusted".parse(), Ok(ActivityType::PointsAdjusted));
+        assert_eq!("member_joined".parse(), Ok(ActivityType::MemberJoined));
+        assert_eq!("settings_changed".parse(), Ok(ActivityType::SettingsChanged));
+        assert!("invalid".parse::<ActivityType>().is_err());
+    }
+
+    #[test]
+    fn test_activity_type_as_str() {
+        assert_eq!(ActivityType::TaskCreated.as_str(), "task_created");
+        assert_eq!(ActivityType::RewardPurchased.as_str(), "reward_purchased");
+        assert_eq!(ActivityType::PunishmentAssigned.as_str(), "punishment_assigned");
+        assert_eq!(ActivityType::MemberRoleChanged.as_str(), "member_role_changed");
     }
 }

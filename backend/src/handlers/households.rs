@@ -1,10 +1,10 @@
 use actix_web::{web, HttpResponse, Result};
-use shared::{AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, CreateHouseholdRequest, CreateInvitationRequest, UpdateHouseholdRequest, UpdateHouseholdSettingsRequest, UpdateRoleRequest};
+use shared::{ActivityType, AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, CreateHouseholdRequest, CreateInvitationRequest, UpdateHouseholdRequest, UpdateHouseholdSettingsRequest, UpdateRoleRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{households as household_service, household_settings as settings_service, invitations as invitation_service};
-use crate::handlers::{tasks, rewards, punishments, point_conditions};
+use crate::services::{activity_logs as activity_log_service, households as household_service, household_settings as settings_service, invitations as invitation_service};
+use crate::handlers::{tasks, rewards, punishments, point_conditions, activity_logs};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -30,6 +30,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     .configure(rewards::configure)
                     .configure(punishments::configure)
                     .configure(point_conditions::configure)
+                    .configure(activity_logs::configure)
             )
     );
 }
@@ -337,7 +338,22 @@ async fn invite_member(
     }
 
     match invitation_service::create_invitation(&state.db, &household_id, &request.email, member_role, &user_id).await {
-        Ok(invitation) => Ok(HttpResponse::Created().json(ApiSuccess::new(invitation))),
+        Ok(invitation) => {
+            // Log activity
+            let details = serde_json::json!({ "email": request.email }).to_string();
+            let _ = activity_log_service::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::InvitationSent,
+                Some("invitation"),
+                Some(&invitation.id),
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Created().json(ApiSuccess::new(invitation)))
+        }
         Err(invitation_service::InvitationError::AlreadyExists) => {
             Ok(HttpResponse::BadRequest().json(ApiError {
                 error: "already_invited".to_string(),
@@ -558,7 +574,21 @@ async fn remove_member(
     }
 
     match household_service::remove_member(&state.db, &household_id, &target_user_id).await {
-        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Ok(_) => {
+            // Log activity
+            let _ = activity_log_service::log_activity(
+                &state.db,
+                &household_id,
+                &current_user_id,
+                if is_self_removal { None } else { Some(&target_user_id) },
+                ActivityType::MemberLeft,
+                Some("member"),
+                None,
+                None,
+            ).await;
+
+            Ok(HttpResponse::NoContent().finish())
+        }
         Err(e) => {
             log::error!("Error removing member: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -634,8 +664,23 @@ async fn update_member_role(
         }));
     }
 
-    match household_service::update_member_role(&state.db, &household_id, &target_user_id, new_role).await {
-        Ok(membership) => Ok(HttpResponse::Ok().json(ApiSuccess::new(membership))),
+    match household_service::update_member_role(&state.db, &household_id, &target_user_id, new_role.clone()).await {
+        Ok(membership) => {
+            // Log activity
+            let details = serde_json::json!({ "new_role": format!("{:?}", new_role) }).to_string();
+            let _ = activity_log_service::log_activity(
+                &state.db,
+                &household_id,
+                &current_user_id,
+                Some(&target_user_id),
+                ActivityType::MemberRoleChanged,
+                Some("member"),
+                None,
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(membership)))
+        }
         Err(e) => {
             log::error!("Error updating role: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -750,7 +795,22 @@ async fn adjust_member_points(
     let request = body.into_inner();
 
     match household_service::update_member_points(&state.db, &household_id, &target_user_id, request.points).await {
-        Ok(new_points) => Ok(HttpResponse::Ok().json(ApiSuccess::new(AdjustPointsResponse { new_points }))),
+        Ok(new_points) => {
+            // Log activity
+            let details = serde_json::json!({ "points": request.points }).to_string();
+            let _ = activity_log_service::log_activity(
+                &state.db,
+                &household_id,
+                &current_user_id,
+                Some(&target_user_id),
+                ActivityType::PointsAdjusted,
+                Some("member"),
+                None,
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(AdjustPointsResponse { new_points })))
+        }
         Err(e) => {
             log::error!("Error adjusting points: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -844,7 +904,21 @@ async fn update_household_settings(
     }
 
     match settings_service::update_settings(&state.db, &household_id, &body.into_inner()).await {
-        Ok(settings) => Ok(HttpResponse::Ok().json(ApiSuccess::new(settings))),
+        Ok(settings) => {
+            // Log activity
+            let _ = activity_log_service::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::SettingsChanged,
+                Some("settings"),
+                None,
+                None,
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(settings)))
+        }
         Err(e) => {
             log::error!("Error updating settings: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {

@@ -6,4 +6,5 @@ pub mod household_settings;
 pub mod tasks;
 pub mod rewards;
 pub mod punishments;
+pub mod activity;
 pub mod settings;

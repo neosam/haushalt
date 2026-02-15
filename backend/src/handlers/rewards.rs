@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse, Result};
-use shared::{ApiError, ApiSuccess, CreateRewardRequest, UpdateRewardRequest};
+use shared::{ActivityType, ApiError, ApiSuccess, CreateRewardRequest, UpdateRewardRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{household_settings, households as household_service, rewards as reward_service};
+use crate::services::{activity_logs, household_settings, households as household_service, rewards as reward_service};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -122,7 +122,22 @@ async fn create_reward(
     }
 
     match reward_service::create_reward(&state.db, &household_id, &request).await {
-        Ok(reward) => Ok(HttpResponse::Created().json(ApiSuccess::new(reward))),
+        Ok(reward) => {
+            // Log activity
+            let details = serde_json::json!({ "name": reward.name }).to_string();
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::RewardCreated,
+                Some("reward"),
+                Some(&reward.id),
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Created().json(ApiSuccess::new(reward)))
+        }
         Err(e) => {
             log::error!("Error creating reward: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -320,8 +335,27 @@ async fn delete_reward(
         }));
     }
 
+    // Get reward details before deletion for logging
+    let reward = reward_service::get_reward(&state.db, &reward_id).await.ok().flatten();
+    let details = reward.as_ref()
+        .map(|r| serde_json::json!({ "name": r.name }).to_string());
+
     match reward_service::delete_reward(&state.db, &reward_id).await {
-        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Ok(_) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::RewardDeleted,
+                Some("reward"),
+                Some(&reward_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::NoContent().finish())
+        }
         Err(e) => {
             log::error!("Error deleting reward: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -376,8 +410,27 @@ async fn purchase_reward(
         }));
     }
 
+    // Get reward details for logging
+    let reward = reward_service::get_reward(&state.db, &reward_id).await.ok().flatten();
+    let details = reward.as_ref()
+        .map(|r| serde_json::json!({ "name": r.name }).to_string());
+
     match reward_service::purchase_reward(&state.db, &reward_id, &user_id, &household_id).await {
-        Ok(user_reward) => Ok(HttpResponse::Created().json(ApiSuccess::new(user_reward))),
+        Ok(user_reward) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                Some(&user_id),
+                ActivityType::RewardPurchased,
+                Some("reward"),
+                Some(&reward_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Created().json(ApiSuccess::new(user_reward)))
+        }
         Err(e) => {
             log::error!("Error purchasing reward: {:?}", e);
             Ok(HttpResponse::BadRequest().json(ApiError {
@@ -463,8 +516,27 @@ async fn assign_reward(
         }));
     }
 
+    // Get reward details for logging
+    let reward = reward_service::get_reward(&state.db, &reward_id).await.ok().flatten();
+    let details = reward.as_ref()
+        .map(|r| serde_json::json!({ "name": r.name }).to_string());
+
     match reward_service::assign_reward(&state.db, &reward_id, &target_user_id, &household_id).await {
-        Ok(user_reward) => Ok(HttpResponse::Created().json(ApiSuccess::new(user_reward))),
+        Ok(user_reward) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &current_user_id,
+                Some(&target_user_id),
+                ActivityType::RewardAssigned,
+                Some("reward"),
+                Some(&reward_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Created().json(ApiSuccess::new(user_reward)))
+        }
         Err(e) => {
             log::error!("Error assigning reward: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -757,7 +829,26 @@ async fn redeem_reward(
     }
 
     match reward_service::redeem_reward(&state.db, &user_reward_id, &user_id).await {
-        Ok(user_reward) => Ok(HttpResponse::Ok().json(ApiSuccess::new(user_reward))),
+        Ok(user_reward) => {
+            // Get reward details for logging
+            let reward = reward_service::get_reward(&state.db, &user_reward.reward_id).await.ok().flatten();
+            let details = reward.as_ref()
+                .map(|r| serde_json::json!({ "name": r.name }).to_string());
+
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                Some(&user_id),
+                ActivityType::RewardRedeemed,
+                Some("reward"),
+                Some(&user_reward.reward_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(user_reward)))
+        }
         Err(e) => {
             log::error!("Error redeeming reward: {:?}", e);
             Ok(HttpResponse::BadRequest().json(ApiError {

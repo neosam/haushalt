@@ -6,6 +6,7 @@ pub enum HouseholdTab {
     Tasks,
     Rewards,
     Punishments,
+    Activity,
     Settings,
 }
 
@@ -16,6 +17,7 @@ impl HouseholdTab {
             HouseholdTab::Tasks => "Tasks",
             HouseholdTab::Rewards => "Rewards",
             HouseholdTab::Punishments => "Punishments",
+            HouseholdTab::Activity => "Activity",
             HouseholdTab::Settings => "Settings",
         }
     }
@@ -26,6 +28,7 @@ impl HouseholdTab {
             HouseholdTab::Tasks => format!("/households/{}/tasks", household_id),
             HouseholdTab::Rewards => format!("/households/{}/rewards", household_id),
             HouseholdTab::Punishments => format!("/households/{}/punishments", household_id),
+            HouseholdTab::Activity => format!("/households/{}/activity", household_id),
             HouseholdTab::Settings => format!("/households/{}/settings", household_id),
         }
     }
@@ -41,6 +44,7 @@ pub fn HouseholdTabs(
         HouseholdTab::Tasks,
         HouseholdTab::Rewards,
         HouseholdTab::Punishments,
+        HouseholdTab::Activity,
         HouseholdTab::Settings,
     ];
 
@@ -109,6 +113,17 @@ mod tests {
     fn test_tab_path_punishments() {
         let path = HouseholdTab::Punishments.path("abc-123");
         assert_eq!(path, "/households/abc-123/punishments");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_label_activity() {
+        assert_eq!(HouseholdTab::Activity.label(), "Activity");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_path_activity() {
+        let path = HouseholdTab::Activity.path("abc-123");
+        assert_eq!(path, "/households/abc-123/activity");
     }
 
     #[wasm_bindgen_test]

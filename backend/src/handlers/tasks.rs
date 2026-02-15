@@ -1,10 +1,11 @@
 use actix_web::{web, HttpResponse, Result};
 use serde::Deserialize;
-use shared::{ApiError, ApiSuccess, CreateTaskRequest, HierarchyType, UpdateTaskRequest};
+use shared::{ActivityType, ApiError, ApiSuccess, CreateTaskRequest, HierarchyType, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
 use crate::services::{
+    activity_logs,
     household_settings,
     households as household_service,
     task_consequences,
@@ -159,7 +160,36 @@ async fn create_task(
     }
 
     match task_service::create_task(&state.db, &household_id, &request).await {
-        Ok(task) => Ok(HttpResponse::Created().json(ApiSuccess::new(task))),
+        Ok(task) => {
+            // Log activity
+            let details = serde_json::json!({ "title": task.title }).to_string();
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                request.assigned_user_id.as_ref(),
+                ActivityType::TaskCreated,
+                Some("task"),
+                Some(&task.id),
+                Some(&details),
+            ).await;
+
+            // If task was assigned, also log assignment
+            if let Some(ref assigned_id) = request.assigned_user_id {
+                let _ = activity_logs::log_activity(
+                    &state.db,
+                    &household_id,
+                    &user_id,
+                    Some(assigned_id),
+                    ActivityType::TaskAssigned,
+                    Some("task"),
+                    Some(&task.id),
+                    Some(&details),
+                ).await;
+            }
+
+            Ok(HttpResponse::Created().json(ApiSuccess::new(task)))
+        }
         Err(e) => {
             log::error!("Error creating task: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -305,8 +335,43 @@ async fn update_task(
         }
     }
 
+    // Get the old task to check if assignment changed
+    let old_task = task_service::get_task(&state.db, &task_id).await.ok().flatten();
+    let old_assigned = old_task.as_ref().and_then(|t| t.assigned_user_id);
+
     match task_service::update_task(&state.db, &task_id, &request).await {
-        Ok(task) => Ok(HttpResponse::Ok().json(ApiSuccess::new(task))),
+        Ok(task) => {
+            // Log activity
+            let details = serde_json::json!({ "title": task.title }).to_string();
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                task.assigned_user_id.as_ref(),
+                ActivityType::TaskUpdated,
+                Some("task"),
+                Some(&task.id),
+                Some(&details),
+            ).await;
+
+            // If assignment changed, log the assignment
+            if request.assigned_user_id != old_assigned {
+                if let Some(ref assigned_id) = request.assigned_user_id {
+                    let _ = activity_logs::log_activity(
+                        &state.db,
+                        &household_id,
+                        &user_id,
+                        Some(assigned_id),
+                        ActivityType::TaskAssigned,
+                        Some("task"),
+                        Some(&task.id),
+                        Some(&details),
+                    ).await;
+                }
+            }
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(task)))
+        }
         Err(e) => {
             log::error!("Error updating task: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -375,8 +440,27 @@ async fn delete_task(
         }));
     }
 
+    // Get the task details before deletion for logging
+    let task = task_service::get_task(&state.db, &task_id).await.ok().flatten();
+    let details = task.as_ref()
+        .map(|t| serde_json::json!({ "title": t.title }).to_string());
+
     match task_service::delete_task(&state.db, &task_id).await {
-        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Ok(_) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::TaskDeleted,
+                Some("task"),
+                Some(&task_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::NoContent().finish())
+        }
         Err(e) => {
             log::error!("Error deleting task: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -432,8 +516,27 @@ async fn complete_task(
         }));
     }
 
+    // Get the task details for logging
+    let task = task_service::get_task(&state.db, &task_id).await.ok().flatten();
+    let details = task.as_ref()
+        .map(|t| serde_json::json!({ "title": t.title }).to_string());
+
     match task_service::complete_task(&state.db, &task_id, &user_id, &household_id).await {
-        Ok(completion) => Ok(HttpResponse::Created().json(ApiSuccess::new(completion))),
+        Ok(completion) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                Some(&user_id),
+                ActivityType::TaskCompleted,
+                Some("task"),
+                Some(&task_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Created().json(ApiSuccess::new(completion)))
+        }
         Err(e) => {
             log::error!("Error completing task: {:?}", e);
             Ok(HttpResponse::BadRequest().json(ApiError {

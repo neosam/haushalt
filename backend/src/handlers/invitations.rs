@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse, Result};
-use shared::{ApiError, ApiSuccess};
+use shared::{ActivityType, ApiError, ApiSuccess};
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{auth as auth_service, invitations as invitation_service};
+use crate::services::{activity_logs, auth as auth_service, invitations as invitation_service};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -103,8 +103,40 @@ async fn accept_invitation(
         }
     };
 
+    // Get invitation to know household_id for logging
+    let invitation = match invitation_service::get_invitation(&state.db, &invitation_id).await {
+        Ok(inv) => inv,
+        Err(invitation_service::InvitationError::NotFound) => {
+            return Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Invitation not found".to_string(),
+            }));
+        }
+        Err(e) => {
+            log::error!("Error fetching invitation: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch invitation".to_string(),
+            }));
+        }
+    };
+
     match invitation_service::accept_invitation(&state.db, &invitation_id, &user).await {
-        Ok(membership) => Ok(HttpResponse::Ok().json(ApiSuccess::new(membership))),
+        Ok(membership) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &invitation.household_id,
+                &user_id,
+                None,
+                ActivityType::MemberJoined,
+                Some("member"),
+                None,
+                None,
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(membership)))
+        }
         Err(invitation_service::InvitationError::NotFound) => {
             Ok(HttpResponse::NotFound().json(ApiError {
                 error: "not_found".to_string(),

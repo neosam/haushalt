@@ -12,6 +12,7 @@ pub mod point_condition;
 pub mod reward;
 pub mod punishment;
 pub mod invitation;
+pub mod activity_log;
 
 pub use user::*;
 pub use household::*;
@@ -23,6 +24,7 @@ pub use point_condition::*;
 pub use reward::*;
 pub use punishment::*;
 pub use invitation::*;
+pub use activity_log::*;
 
 /// Application state shared across all handlers
 pub struct AppState {

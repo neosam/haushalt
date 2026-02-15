@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse, Result};
-use shared::{ApiError, ApiSuccess, CreatePunishmentRequest, UpdatePunishmentRequest};
+use shared::{ActivityType, ApiError, ApiSuccess, CreatePunishmentRequest, UpdatePunishmentRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{household_settings, households as household_service, punishments as punishment_service};
+use crate::services::{activity_logs, household_settings, households as household_service, punishments as punishment_service};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -121,7 +121,22 @@ async fn create_punishment(
     }
 
     match punishment_service::create_punishment(&state.db, &household_id, &request).await {
-        Ok(punishment) => Ok(HttpResponse::Created().json(ApiSuccess::new(punishment))),
+        Ok(punishment) => {
+            // Log activity
+            let details = serde_json::json!({ "name": punishment.name }).to_string();
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::PunishmentCreated,
+                Some("punishment"),
+                Some(&punishment.id),
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Created().json(ApiSuccess::new(punishment)))
+        }
         Err(e) => {
             log::error!("Error creating punishment: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -319,8 +334,27 @@ async fn delete_punishment(
         }));
     }
 
+    // Get punishment details before deletion for logging
+    let punishment = punishment_service::get_punishment(&state.db, &punishment_id).await.ok().flatten();
+    let details = punishment.as_ref()
+        .map(|p| serde_json::json!({ "name": p.name }).to_string());
+
     match punishment_service::delete_punishment(&state.db, &punishment_id).await {
-        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Ok(_) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::PunishmentDeleted,
+                Some("punishment"),
+                Some(&punishment_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::NoContent().finish())
+        }
         Err(e) => {
             log::error!("Error deleting punishment: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -406,8 +440,27 @@ async fn assign_punishment(
         }));
     }
 
+    // Get punishment details for logging
+    let punishment = punishment_service::get_punishment(&state.db, &punishment_id).await.ok().flatten();
+    let details = punishment.as_ref()
+        .map(|p| serde_json::json!({ "name": p.name }).to_string());
+
     match punishment_service::assign_punishment(&state.db, &punishment_id, &target_user_id, &household_id).await {
-        Ok(user_punishment) => Ok(HttpResponse::Created().json(ApiSuccess::new(user_punishment))),
+        Ok(user_punishment) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &current_user_id,
+                Some(&target_user_id),
+                ActivityType::PunishmentAssigned,
+                Some("punishment"),
+                Some(&punishment_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Created().json(ApiSuccess::new(user_punishment)))
+        }
         Err(e) => {
             log::error!("Error assigning punishment: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
@@ -714,7 +767,26 @@ async fn complete_punishment(
     }
 
     match punishment_service::complete_punishment(&state.db, &user_punishment_id, &user_id).await {
-        Ok(user_punishment) => Ok(HttpResponse::Ok().json(ApiSuccess::new(user_punishment))),
+        Ok(user_punishment) => {
+            // Get punishment details for logging
+            let punishment = punishment_service::get_punishment(&state.db, &user_punishment.punishment_id).await.ok().flatten();
+            let details = punishment.as_ref()
+                .map(|p| serde_json::json!({ "name": p.name }).to_string());
+
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                Some(&user_punishment.user_id),
+                ActivityType::PunishmentCompleted,
+                Some("punishment"),
+                Some(&user_punishment.punishment_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(user_punishment)))
+        }
         Err(e) => {
             log::error!("Error completing punishment: {:?}", e);
             Ok(HttpResponse::BadRequest().json(ApiError {

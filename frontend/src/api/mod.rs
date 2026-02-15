@@ -3,7 +3,7 @@ use gloo_storage::{LocalStorage, Storage};
 use leptos::*;
 use serde::{de::DeserializeOwned, Serialize};
 use shared::{
-    AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, AuthResponse,
+    ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, AuthResponse,
     CreateHouseholdRequest, CreateInvitationRequest, CreatePointConditionRequest,
     CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
     HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
@@ -719,6 +719,19 @@ impl ApiClient {
             true,
         )
         .await
+    }
+
+    // Activity log endpoints
+    pub async fn list_activities(
+        household_id: &str,
+        limit: Option<i64>,
+    ) -> Result<Vec<ActivityLogWithUsers>, String> {
+        let url = if let Some(limit) = limit {
+            format!("/households/{}/activities?limit={}", household_id, limit)
+        } else {
+            format!("/households/{}/activities", household_id)
+        };
+        Self::request::<Vec<ActivityLogWithUsers>>("GET", &url, None::<()>, true).await
     }
 }
 
