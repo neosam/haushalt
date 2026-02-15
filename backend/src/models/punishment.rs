@@ -10,6 +10,7 @@ pub struct PunishmentRow {
     pub household_id: String,
     pub name: String,
     pub description: String,
+    pub requires_confirmation: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -20,6 +21,7 @@ impl PunishmentRow {
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
             name: self.name.clone(),
             description: self.description.clone(),
+            requires_confirmation: self.requires_confirmation,
             created_at: self.created_at,
         }
     }
@@ -32,6 +34,7 @@ pub struct TaskPunishmentRow {
     pub household_id: String,
     pub name: String,
     pub description: String,
+    pub requires_confirmation: bool,
     pub created_at: DateTime<Utc>,
     pub amount: i32,
 }
@@ -44,6 +47,7 @@ impl TaskPunishmentRow {
                 household_id: Uuid::parse_str(&self.household_id).unwrap(),
                 name: self.name.clone(),
                 description: self.description.clone(),
+                requires_confirmation: self.requires_confirmation,
                 created_at: self.created_at,
             },
             amount: self.amount,
@@ -60,6 +64,7 @@ pub struct UserPunishmentRow {
     pub household_id: String,
     pub amount: i32,
     pub completed_amount: i32,
+    pub pending_completion: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -72,6 +77,7 @@ impl UserPunishmentRow {
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
             amount: self.amount,
             completed_amount: self.completed_amount,
+            pending_completion: self.pending_completion,
             updated_at: self.updated_at,
         }
     }
@@ -92,6 +98,7 @@ mod tests {
             household_id: household_id.to_string(),
             name: "Extra Chores".to_string(),
             description: "Do an extra chore as punishment".to_string(),
+            requires_confirmation: true,
             created_at: now,
         };
 
@@ -101,6 +108,7 @@ mod tests {
         assert_eq!(shared.household_id, household_id);
         assert_eq!(shared.name, "Extra Chores");
         assert_eq!(shared.description, "Do an extra chore as punishment");
+        assert!(shared.requires_confirmation);
     }
 
     #[test]
@@ -118,6 +126,7 @@ mod tests {
             household_id: household_id.to_string(),
             amount: 2,
             completed_amount: 0,
+            pending_completion: 1,
             updated_at: now,
         };
 
@@ -128,5 +137,6 @@ mod tests {
         assert_eq!(shared.punishment_id, punishment_id);
         assert_eq!(shared.amount, 2);
         assert_eq!(shared.completed_amount, 0);
+        assert_eq!(shared.pending_completion, 1);
     }
 }

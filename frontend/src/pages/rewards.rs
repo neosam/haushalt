@@ -1,11 +1,11 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{CreateRewardRequest, HouseholdSettings, MemberWithUser, Reward, UserReward, UserRewardWithUser};
+use shared::{HouseholdSettings, MemberWithUser, Reward, UserReward, UserRewardWithUser};
 
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
-use crate::components::modal::Modal;
+use crate::components::reward_modal::RewardModal;
 
 #[component]
 pub fn RewardsPage() -> impl IntoView {
@@ -20,13 +20,9 @@ pub fn RewardsPage() -> impl IntoView {
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
     let success = create_rw_signal(Option::<String>::None);
-    let show_create_modal = create_rw_signal(false);
 
-    // Form fields
-    let name = create_rw_signal(String::new());
-    let description = create_rw_signal(String::new());
-    let point_cost = create_rw_signal(String::new());
-    let is_purchasable = create_rw_signal(true);
+    // Modal state: None = closed, Some(None) = create mode, Some(Some(reward)) = edit mode
+    let modal_reward = create_rw_signal(Option::<Option<Reward>>::None);
 
     // Load rewards
     create_effect(move |_| {
@@ -83,33 +79,6 @@ pub fn RewardsPage() -> impl IntoView {
             }
         });
     });
-
-    let on_create = move |ev: web_sys::SubmitEvent| {
-        ev.prevent_default();
-
-        let id = household_id();
-        let cost: Option<i64> = point_cost.get().parse().ok();
-
-        let request = CreateRewardRequest {
-            name: name.get(),
-            description: Some(description.get()),
-            point_cost: cost,
-            is_purchasable: is_purchasable.get(),
-        };
-
-        wasm_bindgen_futures::spawn_local(async move {
-            match ApiClient::create_reward(&id, request).await {
-                Ok(reward) => {
-                    rewards.update(|r| r.push(reward));
-                    show_create_modal.set(false);
-                    name.set(String::new());
-                    description.set(String::new());
-                    point_cost.set(String::new());
-                }
-                Err(e) => error.set(Some(e)),
-            }
-        });
-    };
 
     let on_purchase = move |reward_id: String| {
         let id = household_id();
@@ -225,59 +194,64 @@ pub fn RewardsPage() -> impl IntoView {
         </Show>
 
         <Show when=move || !loading.get() fallback=|| ()>
-            // My Rewards Section
-            <Show when=move || !my_rewards.get().is_empty() fallback=|| ()>
+            // My Rewards Section - only show rewards with available redemptions or pending
+            <Show when=move || my_rewards.get().iter().any(|ur| ur.amount > ur.redeemed_amount) fallback=|| ()>
                 <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--success-color);">
                     <div class="card-header">
                         <h3 class="card-title">"My Rewards"</h3>
                     </div>
                     {move || {
                         let all_rewards = rewards.get();
-                        my_rewards.get().into_iter().map(|user_reward| {
-                            let reward_name = all_rewards.iter()
-                                .find(|r| r.id == user_reward.reward_id)
-                                .map(|r| r.name.clone())
-                                .unwrap_or_else(|| "Unknown Reward".to_string());
-                            let reward_desc = all_rewards.iter()
-                                .find(|r| r.id == user_reward.reward_id)
-                                .map(|r| r.description.clone())
-                                .unwrap_or_default();
-                            let ur_id = user_reward.id.to_string();
-                            let redeem_id = ur_id.clone();
-                            let available = user_reward.amount - user_reward.redeemed_amount;
-                            view! {
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
-                                    <div>
-                                        <div style="font-weight: 600;">{reward_name}</div>
-                                        <div style="font-size: 0.75rem; color: var(--text-muted);">
-                                            {format!("{} available, {} redeemed", available, user_reward.redeemed_amount)}
-                                            {if !reward_desc.is_empty() { format!(" • {}", reward_desc) } else { String::new() }}
+                        my_rewards.get().into_iter()
+                            // Only show rewards that have available redemptions or pending confirmations
+                            .filter(|ur| ur.amount > ur.redeemed_amount)
+                            .map(|user_reward| {
+                                let reward_name = all_rewards.iter()
+                                    .find(|r| r.id == user_reward.reward_id)
+                                    .map(|r| r.name.clone())
+                                    .unwrap_or_else(|| "Unknown Reward".to_string());
+                                let reward_desc = all_rewards.iter()
+                                    .find(|r| r.id == user_reward.reward_id)
+                                    .map(|r| r.description.clone())
+                                    .unwrap_or_default();
+                                let ur_id = user_reward.id.to_string();
+                                let redeem_id = ur_id.clone();
+                                let available = user_reward.amount - user_reward.redeemed_amount - user_reward.pending_redemption;
+                                let pending = user_reward.pending_redemption;
+                                view! {
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
+                                        <div>
+                                            <div style="font-weight: 600;">{reward_name}</div>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                                {format!("{} available, {} redeemed", available, user_reward.redeemed_amount)}
+                                                {if pending > 0 { format!(", {} pending", pending) } else { String::new() }}
+                                                {if !reward_desc.is_empty() { format!(" • {}", reward_desc) } else { String::new() }}
+                                            </div>
                                         </div>
+                                        {if pending > 0 {
+                                            view! {
+                                                <span class="badge" style="background: var(--warning-color); color: white;">"Awaiting Confirmation"</span>
+                                            }.into_view()
+                                        } else {
+                                            view! {
+                                                <button
+                                                    class="btn btn-success"
+                                                    style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                                    on:click=move |_| on_redeem(redeem_id.clone())
+                                                >
+                                                    "Redeem"
+                                                </button>
+                                            }.into_view()
+                                        }}
                                     </div>
-                                    {if available > 0 {
-                                        view! {
-                                            <button
-                                                class="btn btn-success"
-                                                style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
-                                                on:click=move |_| on_redeem(redeem_id.clone())
-                                            >
-                                                "Redeem"
-                                            </button>
-                                        }.into_view()
-                                    } else {
-                                        view! {
-                                            <span class="badge" style="background: var(--success-color); color: white;">"All Redeemed"</span>
-                                        }.into_view()
-                                    }}
-                                </div>
-                            }
-                        }).collect_view()
+                                }
+                            }).collect_view()
                     }}
                 </div>
             </Show>
 
             <div style="margin-bottom: 1rem;">
-                <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
+                <button class="btn btn-primary" on:click=move |_| modal_reward.set(Some(None))>
                     "+ Create Reward"
                 </button>
             </div>
@@ -288,6 +262,7 @@ pub fn RewardsPage() -> impl IntoView {
                 let r = rewards.get();
                 let user_rewards = all_user_rewards.get();
                 let member_list = members.get();
+                let hierarchy = settings.get().map(|s| s.hierarchy_type).unwrap_or_default();
 
                 if r.is_empty() {
                     view! {
@@ -300,15 +275,28 @@ pub fn RewardsPage() -> impl IntoView {
                     view! {
                         <div class="grid grid-3">
                             {r.into_iter().map(|reward| {
+                                let reward_for_edit = reward.clone();
                                 let reward_id = reward.id;
                                 let reward_id_str = reward_id.to_string();
                                 let purchase_id = reward_id_str.clone();
                                 let delete_id = reward_id_str.clone();
 
-                                // Get user assignments for this reward (now one row per user with amount)
+                                // Get user assignments for this reward - show only open (unredeemed) count
+                                // Filter by hierarchy: only show assignable roles
                                 let user_assignments: Vec<_> = user_rewards.iter()
                                     .filter(|ur| ur.user_reward.reward_id == reward_id)
-                                    .map(|ur| (ur.user_reward.user_id, ur.user.username.clone(), ur.user_reward.amount))
+                                    .filter(|ur| {
+                                        // Check if user's role can be assigned in this hierarchy
+                                        member_list.iter()
+                                            .find(|m| m.user.id == ur.user_reward.user_id)
+                                            .map(|m| hierarchy.can_be_assigned(&m.membership.role))
+                                            .unwrap_or(false)
+                                    })
+                                    .map(|ur| {
+                                        let open = ur.user_reward.amount - ur.user_reward.redeemed_amount;
+                                        (ur.user_reward.user_id, ur.user.username.clone(), open)
+                                    })
+                                    .filter(|(_, _, open)| *open > 0)  // Only show if there are open rewards
                                     .collect();
 
                                 view! {
@@ -379,14 +367,17 @@ pub fn RewardsPage() -> impl IntoView {
                                                 }).collect_view()
                                             }}
 
-                                            // Add assignment for members without any
+                                            // Add assignment for members without any open rewards
+                                            // Filter by hierarchy: only show assignable roles
                                             {
-                                                let assigned_user_ids: std::collections::HashSet<_> = user_rewards.iter()
+                                                let users_with_open: std::collections::HashSet<_> = user_rewards.iter()
                                                     .filter(|ur| ur.user_reward.reward_id == reward_id)
+                                                    .filter(|ur| ur.user_reward.amount > ur.user_reward.redeemed_amount)
                                                     .map(|ur| ur.user_reward.user_id)
                                                     .collect();
                                                 let unassigned_members: Vec<_> = member_list.iter()
-                                                    .filter(|m| !assigned_user_ids.contains(&m.user.id))
+                                                    .filter(|m| !users_with_open.contains(&m.user.id))
+                                                    .filter(|m| hierarchy.can_be_assigned(&m.membership.role))
                                                     .collect();
 
                                                 if !unassigned_members.is_empty() {
@@ -417,13 +408,25 @@ pub fn RewardsPage() -> impl IntoView {
                                             }
                                         </div>
 
-                                        <button
-                                            class="btn btn-danger"
-                                            style="width: 100%; margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                                            on:click=move |_| on_delete(delete_id.clone())
-                                        >
-                                            "Delete"
-                                        </button>
+                                        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                                            <button
+                                                class="btn btn-outline"
+                                                style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                on:click={
+                                                    let reward_for_edit = reward_for_edit.clone();
+                                                    move |_| modal_reward.set(Some(Some(reward_for_edit.clone())))
+                                                }
+                                            >
+                                                "Edit"
+                                            </button>
+                                            <button
+                                                class="btn btn-danger"
+                                                style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                on:click=move |_| on_delete(delete_id.clone())
+                                            >
+                                                "Delete"
+                                            </button>
+                                        </div>
                                     </div>
                                 }
                             }).collect_view()}
@@ -433,71 +436,28 @@ pub fn RewardsPage() -> impl IntoView {
             }}
         </Show>
 
-        <Show when=move || show_create_modal.get() fallback=|| ()>
-            <Modal title="Create Reward" on_close=move |_| show_create_modal.set(false)>
-                <form on:submit=on_create>
-                    <div class="form-group">
-                        <label class="form-label" for="reward-name">"Name"</label>
-                        <input
-                            type="text"
-                            id="reward-name"
-                            class="form-input"
-                            placeholder="e.g., Movie Night"
-                            prop:value=move || name.get()
-                            on:input=move |ev| name.set(event_target_value(&ev))
-                            required
-                        />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="reward-description">"Description"</label>
-                        <input
-                            type="text"
-                            id="reward-description"
-                            class="form-input"
-                            placeholder="What do you get?"
-                            prop:value=move || description.get()
-                            on:input=move |ev| description.set(event_target_value(&ev))
-                        />
-                    </div>
-
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; gap: 0.5rem;">
-                            <input
-                                type="checkbox"
-                                checked=move || is_purchasable.get()
-                                on:change=move |ev| is_purchasable.set(event_target_checked(&ev))
-                            />
-                            "Can be purchased with points"
-                        </label>
-                    </div>
-
-                    <Show when=move || is_purchasable.get() fallback=|| ()>
-                        <div class="form-group">
-                            <label class="form-label" for="point-cost">"Point Cost"</label>
-                            <input
-                                type="number"
-                                id="point-cost"
-                                class="form-input"
-                                placeholder="100"
-                                min="1"
-                                prop:value=move || point_cost.get()
-                                on:input=move |ev| point_cost.set(event_target_value(&ev))
-                            />
-                        </div>
-                    </Show>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline" on:click=move |_| show_create_modal.set(false)>
-                            "Cancel"
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                            "Create"
-                        </button>
-                    </div>
-                </form>
-            </Modal>
-        </Show>
+        {move || modal_reward.get().map(|reward_opt| {
+            let hh_id = household_id();
+            view! {
+                <RewardModal
+                    reward=reward_opt
+                    household_id=hh_id
+                    on_close=move |_| modal_reward.set(None)
+                    on_save=move |saved_reward: Reward| {
+                        // Check if this is an existing reward (edit) or new (create)
+                        let existing_idx = rewards.get().iter().position(|r| r.id == saved_reward.id);
+                        if let Some(idx) = existing_idx {
+                            // Update existing reward
+                            rewards.update(|r| r[idx] = saved_reward);
+                        } else {
+                            // Add new reward
+                            rewards.update(|r| r.push(saved_reward));
+                        }
+                        modal_reward.set(None);
+                    }
+                />
+            }
+        })}
     }
 }
 

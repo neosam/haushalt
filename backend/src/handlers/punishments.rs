@@ -10,15 +10,20 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/punishments")
             .route("", web::get().to(list_punishments))
             .route("", web::post().to(create_punishment))
+            // Static routes must come before dynamic /{punishment_id} routes
+            .route("/user-punishments", web::get().to(list_user_punishments))
+            .route("/user-punishments/all", web::get().to(list_all_user_punishments))
+            .route("/user-punishments/{id}", web::delete().to(delete_user_punishment))
+            .route("/user-punishments/{id}/complete", web::post().to(complete_punishment))
+            .route("/user-punishments/{id}/approve", web::post().to(approve_completion))
+            .route("/user-punishments/{id}/reject", web::post().to(reject_completion))
+            .route("/pending-confirmations", web::get().to(list_pending_completions))
+            // Dynamic routes after static routes
             .route("/{punishment_id}", web::get().to(get_punishment))
             .route("/{punishment_id}", web::put().to(update_punishment))
             .route("/{punishment_id}", web::delete().to(delete_punishment))
             .route("/{punishment_id}/assign/{user_id}", web::post().to(assign_punishment))
             .route("/{punishment_id}/unassign/{user_id}", web::post().to(unassign_punishment))
-            .route("/user-punishments", web::get().to(list_user_punishments))
-            .route("/user-punishments/all", web::get().to(list_all_user_punishments))
-            .route("/user-punishments/{id}", web::delete().to(delete_user_punishment))
-            .route("/user-punishments/{id}/complete", web::post().to(complete_punishment))
     );
 }
 
@@ -745,6 +750,72 @@ async fn complete_punishment(
         }
     };
 
+    // Any member can trigger completion (user or manager)
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match punishment_service::complete_punishment(&state.db, &user_punishment_id, &user_id).await {
+        Ok((user_punishment, requires_confirmation)) => {
+            // Get punishment details for logging
+            let punishment = punishment_service::get_punishment(&state.db, &user_punishment.punishment_id).await.ok().flatten();
+            let details = punishment.as_ref()
+                .map(|p| serde_json::json!({ "name": p.name }).to_string());
+
+            // Only log PunishmentCompleted if no confirmation is required (direct completion)
+            if !requires_confirmation {
+                let _ = activity_logs::log_activity(
+                    &state.db,
+                    &household_id,
+                    &user_id,
+                    Some(&user_punishment.user_id),
+                    ActivityType::PunishmentCompleted,
+                    Some("punishment"),
+                    Some(&user_punishment.punishment_id),
+                    details.as_deref(),
+                ).await;
+            }
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(user_punishment)))
+        }
+        Err(e) => {
+            log::error!("Error completing punishment: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "completion_error".to_string(),
+                message: e.to_string(),
+            }))
+        }
+    }
+}
+
+async fn list_pending_completions(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
     // Get settings for hierarchy-aware permissions
     let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
         Ok(s) => s,
@@ -757,16 +828,84 @@ async fn complete_punishment(
         }
     };
 
-    // Only users with manage permission can mark punishments as complete
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "You do not have permission to mark punishments as complete".to_string(),
+            message: "You do not have permission to view pending confirmations".to_string(),
         }));
     }
 
-    match punishment_service::complete_punishment(&state.db, &user_punishment_id, &user_id).await {
+    match punishment_service::list_pending_completions(&state.db, &household_id).await {
+        Ok(pending) => Ok(HttpResponse::Ok().json(ApiSuccess::new(pending))),
+        Err(e) => {
+            log::error!("Error listing pending completions: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to list pending completions".to_string(),
+            }))
+        }
+    }
+}
+
+async fn approve_completion(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, user_punishment_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let user_punishment_id = match Uuid::parse_str(&user_punishment_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user punishment ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to approve completions".to_string(),
+        }));
+    }
+
+    match punishment_service::approve_completion(&state.db, &user_punishment_id).await {
         Ok(user_punishment) => {
             // Get punishment details for logging
             let punishment = punishment_service::get_punishment(&state.db, &user_punishment.punishment_id).await.ok().flatten();
@@ -779,7 +918,7 @@ async fn complete_punishment(
                 &household_id,
                 &user_id,
                 Some(&user_punishment.user_id),
-                ActivityType::PunishmentCompleted,
+                ActivityType::PunishmentCompletionApproved,
                 Some("punishment"),
                 Some(&user_punishment.punishment_id),
                 details.as_deref(),
@@ -788,9 +927,97 @@ async fn complete_punishment(
             Ok(HttpResponse::Ok().json(ApiSuccess::new(user_punishment)))
         }
         Err(e) => {
-            log::error!("Error completing punishment: {:?}", e);
+            log::error!("Error approving completion: {:?}", e);
             Ok(HttpResponse::BadRequest().json(ApiError {
-                error: "completion_error".to_string(),
+                error: "approve_error".to_string(),
+                message: e.to_string(),
+            }))
+        }
+    }
+}
+
+async fn reject_completion(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, user_punishment_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let user_punishment_id = match Uuid::parse_str(&user_punishment_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user punishment ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to reject completions".to_string(),
+        }));
+    }
+
+    match punishment_service::reject_completion(&state.db, &user_punishment_id).await {
+        Ok(user_punishment) => {
+            // Get punishment details for logging
+            let punishment = punishment_service::get_punishment(&state.db, &user_punishment.punishment_id).await.ok().flatten();
+            let details = punishment.as_ref()
+                .map(|p| serde_json::json!({ "name": p.name }).to_string());
+
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                Some(&user_punishment.user_id),
+                ActivityType::PunishmentCompletionRejected,
+                Some("punishment"),
+                Some(&user_punishment.punishment_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(user_punishment)))
+        }
+        Err(e) => {
+            log::error!("Error rejecting completion: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "reject_error".to_string(),
                 message: e.to_string(),
             }))
         }

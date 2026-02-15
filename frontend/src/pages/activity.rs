@@ -273,6 +273,54 @@ fn format_activity_description(activity: &ActivityLogWithUsers) -> String {
             }
         }
 
+        // Reward confirmation events
+        ActivityType::RewardRedemptionApproved => {
+            if let Some(user) = affected {
+                if entity_name.is_empty() {
+                    format!("{} approved {}'s reward redemption", actor, user)
+                } else {
+                    format!("{} approved {}'s redemption of reward '{}'", actor, user, entity_name)
+                }
+            } else {
+                format!("{} approved a reward redemption", actor)
+            }
+        }
+        ActivityType::RewardRedemptionRejected => {
+            if let Some(user) = affected {
+                if entity_name.is_empty() {
+                    format!("{} rejected {}'s reward redemption", actor, user)
+                } else {
+                    format!("{} rejected {}'s redemption of reward '{}'", actor, user, entity_name)
+                }
+            } else {
+                format!("{} rejected a reward redemption", actor)
+            }
+        }
+
+        // Punishment confirmation events
+        ActivityType::PunishmentCompletionApproved => {
+            if let Some(user) = affected {
+                if entity_name.is_empty() {
+                    format!("{} approved {}'s punishment completion", actor, user)
+                } else {
+                    format!("{} approved {}'s completion of punishment '{}'", actor, user, entity_name)
+                }
+            } else {
+                format!("{} approved a punishment completion", actor)
+            }
+        }
+        ActivityType::PunishmentCompletionRejected => {
+            if let Some(user) = affected {
+                if entity_name.is_empty() {
+                    format!("{} rejected {}'s punishment completion", actor, user)
+                } else {
+                    format!("{} rejected {}'s completion of punishment '{}'", actor, user, entity_name)
+                }
+            } else {
+                format!("{} rejected a punishment completion", actor)
+            }
+        }
+
         // Points events
         ActivityType::PointsAdjusted => {
             if let Some(user) = affected {

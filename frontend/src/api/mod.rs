@@ -7,9 +7,11 @@ use shared::{
     CreateHouseholdRequest, CreateInvitationRequest, CreatePointConditionRequest,
     CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
     HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
-    LeaderboardEntry, LoginRequest, MemberWithUser, PendingReview, PointCondition, Punishment, Reward, Task,
-    TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateHouseholdSettingsRequest,
-    UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward, UserRewardWithUser,
+    LeaderboardEntry, LoginRequest, MemberWithUser, PendingPunishmentCompletion, PendingReview,
+    PendingRewardRedemption, PointCondition, Punishment, Reward, Task, TaskCompletion,
+    TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateHouseholdSettingsRequest,
+    UpdatePunishmentRequest, UpdateRewardRequest, UpdateTaskRequest, User, UserPunishment,
+    UserPunishmentWithUser, UserReward, UserRewardWithUser,
 };
 
 const API_BASE: &str = "/api";
@@ -482,6 +484,16 @@ impl ApiClient {
         .await
     }
 
+    pub async fn update_reward(household_id: &str, reward_id: &str, request: UpdateRewardRequest) -> Result<Reward, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/rewards/{}", household_id, reward_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
     pub async fn purchase_reward(household_id: &str, reward_id: &str) -> Result<UserReward, String> {
         Self::request::<UserReward>(
             "POST",
@@ -542,6 +554,37 @@ impl ApiClient {
         .await
     }
 
+    // Reward confirmation endpoints
+    pub async fn get_pending_reward_redemptions(household_id: &str) -> Result<Vec<PendingRewardRedemption>, String> {
+        Self::request::<Vec<PendingRewardRedemption>>(
+            "GET",
+            &format!("/households/{}/rewards/pending-confirmations", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn approve_reward_redemption(household_id: &str, user_reward_id: &str) -> Result<UserReward, String> {
+        Self::request::<UserReward>(
+            "POST",
+            &format!("/households/{}/rewards/user-rewards/{}/approve", household_id, user_reward_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn reject_reward_redemption(household_id: &str, user_reward_id: &str) -> Result<UserReward, String> {
+        Self::request::<UserReward>(
+            "POST",
+            &format!("/households/{}/rewards/user-rewards/{}/reject", household_id, user_reward_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // Punishment endpoints
     pub async fn list_punishments(household_id: &str) -> Result<Vec<Punishment>, String> {
         Self::request::<Vec<Punishment>>(
@@ -560,6 +603,20 @@ impl ApiClient {
         Self::request(
             "POST",
             &format!("/households/{}/punishments", household_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_punishment(
+        household_id: &str,
+        punishment_id: &str,
+        request: UpdatePunishmentRequest,
+    ) -> Result<Punishment, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/punishments/{}", household_id, punishment_id),
             Some(request),
             true,
         )
@@ -752,6 +809,37 @@ impl ApiClient {
         Self::request::<UserPunishment>(
             "POST",
             &format!("/households/{}/punishments/user-punishments/{}/complete", household_id, user_punishment_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // Punishment confirmation endpoints
+    pub async fn get_pending_punishment_completions(household_id: &str) -> Result<Vec<PendingPunishmentCompletion>, String> {
+        Self::request::<Vec<PendingPunishmentCompletion>>(
+            "GET",
+            &format!("/households/{}/punishments/pending-confirmations", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn approve_punishment_completion(household_id: &str, user_punishment_id: &str) -> Result<UserPunishment, String> {
+        Self::request::<UserPunishment>(
+            "POST",
+            &format!("/households/{}/punishments/user-punishments/{}/approve", household_id, user_punishment_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn reject_punishment_completion(household_id: &str, user_punishment_id: &str) -> Result<UserPunishment, String> {
+        Self::request::<UserPunishment>(
+            "POST",
+            &format!("/households/{}/punishments/user-punishments/{}/reject", household_id, user_punishment_id),
             None::<()>,
             true,
         )

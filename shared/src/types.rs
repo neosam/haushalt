@@ -545,6 +545,7 @@ pub struct Reward {
     pub description: String,
     pub point_cost: Option<i64>,
     pub is_purchasable: bool,
+    pub requires_confirmation: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -554,6 +555,7 @@ pub struct CreateRewardRequest {
     pub description: Option<String>,
     pub point_cost: Option<i64>,
     pub is_purchasable: bool,
+    pub requires_confirmation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -562,6 +564,7 @@ pub struct UpdateRewardRequest {
     pub description: Option<String>,
     pub point_cost: Option<i64>,
     pub is_purchasable: Option<bool>,
+    pub requires_confirmation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -572,6 +575,7 @@ pub struct UserReward {
     pub household_id: Uuid,
     pub amount: i32,
     pub redeemed_amount: i32,
+    pub pending_redemption: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -597,6 +601,7 @@ pub struct Punishment {
     pub household_id: Uuid,
     pub name: String,
     pub description: String,
+    pub requires_confirmation: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -604,12 +609,14 @@ pub struct Punishment {
 pub struct CreatePunishmentRequest {
     pub name: String,
     pub description: Option<String>,
+    pub requires_confirmation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdatePunishmentRequest {
     pub name: Option<String>,
     pub description: Option<String>,
+    pub requires_confirmation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -620,6 +627,7 @@ pub struct UserPunishment {
     pub household_id: Uuid,
     pub amount: i32,
     pub completed_amount: i32,
+    pub pending_completion: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -632,6 +640,26 @@ pub struct UserPunishmentWithDetails {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPunishmentWithUser {
     pub user_punishment: UserPunishment,
+    pub user: User,
+}
+
+// ============================================================================
+// Pending Confirmation Types (for Rewards/Punishments)
+// ============================================================================
+
+/// A pending reward redemption awaiting confirmation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingRewardRedemption {
+    pub user_reward: UserReward,
+    pub reward: Reward,
+    pub user: User,
+}
+
+/// A pending punishment completion awaiting confirmation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingPunishmentCompletion {
+    pub user_punishment: UserPunishment,
+    pub punishment: Punishment,
     pub user: User,
 }
 
@@ -804,12 +832,16 @@ pub enum ActivityType {
     RewardAssigned,
     RewardPurchased,
     RewardRedeemed,
+    RewardRedemptionApproved,
+    RewardRedemptionRejected,
 
     // Punishment events
     PunishmentCreated,
     PunishmentDeleted,
     PunishmentAssigned,
     PunishmentCompleted,
+    PunishmentCompletionApproved,
+    PunishmentCompletionRejected,
 
     // Points events
     PointsAdjusted,
@@ -840,10 +872,14 @@ impl ActivityType {
             ActivityType::RewardAssigned => "reward_assigned",
             ActivityType::RewardPurchased => "reward_purchased",
             ActivityType::RewardRedeemed => "reward_redeemed",
+            ActivityType::RewardRedemptionApproved => "reward_redemption_approved",
+            ActivityType::RewardRedemptionRejected => "reward_redemption_rejected",
             ActivityType::PunishmentCreated => "punishment_created",
             ActivityType::PunishmentDeleted => "punishment_deleted",
             ActivityType::PunishmentAssigned => "punishment_assigned",
             ActivityType::PunishmentCompleted => "punishment_completed",
+            ActivityType::PunishmentCompletionApproved => "punishment_completion_approved",
+            ActivityType::PunishmentCompletionRejected => "punishment_completion_rejected",
             ActivityType::PointsAdjusted => "points_adjusted",
             ActivityType::MemberJoined => "member_joined",
             ActivityType::MemberLeft => "member_left",
@@ -872,10 +908,14 @@ impl FromStr for ActivityType {
             "reward_assigned" => Ok(ActivityType::RewardAssigned),
             "reward_purchased" => Ok(ActivityType::RewardPurchased),
             "reward_redeemed" => Ok(ActivityType::RewardRedeemed),
+            "reward_redemption_approved" => Ok(ActivityType::RewardRedemptionApproved),
+            "reward_redemption_rejected" => Ok(ActivityType::RewardRedemptionRejected),
             "punishment_created" => Ok(ActivityType::PunishmentCreated),
             "punishment_deleted" => Ok(ActivityType::PunishmentDeleted),
             "punishment_assigned" => Ok(ActivityType::PunishmentAssigned),
             "punishment_completed" => Ok(ActivityType::PunishmentCompleted),
+            "punishment_completion_approved" => Ok(ActivityType::PunishmentCompletionApproved),
+            "punishment_completion_rejected" => Ok(ActivityType::PunishmentCompletionRejected),
             "points_adjusted" => Ok(ActivityType::PointsAdjusted),
             "member_joined" => Ok(ActivityType::MemberJoined),
             "member_left" => Ok(ActivityType::MemberLeft),

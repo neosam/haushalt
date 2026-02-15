@@ -12,6 +12,7 @@ pub struct RewardRow {
     pub description: String,
     pub point_cost: Option<i64>,
     pub is_purchasable: bool,
+    pub requires_confirmation: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -24,6 +25,7 @@ impl RewardRow {
             description: self.description.clone(),
             point_cost: self.point_cost,
             is_purchasable: self.is_purchasable,
+            requires_confirmation: self.requires_confirmation,
             created_at: self.created_at,
         }
     }
@@ -38,6 +40,7 @@ pub struct TaskRewardRow {
     pub description: String,
     pub point_cost: Option<i64>,
     pub is_purchasable: bool,
+    pub requires_confirmation: bool,
     pub created_at: DateTime<Utc>,
     pub amount: i32,
 }
@@ -52,6 +55,7 @@ impl TaskRewardRow {
                 description: self.description.clone(),
                 point_cost: self.point_cost,
                 is_purchasable: self.is_purchasable,
+                requires_confirmation: self.requires_confirmation,
                 created_at: self.created_at,
             },
             amount: self.amount,
@@ -68,6 +72,7 @@ pub struct UserRewardRow {
     pub household_id: String,
     pub amount: i32,
     pub redeemed_amount: i32,
+    pub pending_redemption: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -80,6 +85,7 @@ impl UserRewardRow {
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
             amount: self.amount,
             redeemed_amount: self.redeemed_amount,
+            pending_redemption: self.pending_redemption,
             updated_at: self.updated_at,
         }
     }
@@ -102,6 +108,7 @@ mod tests {
             description: "Watch a movie of your choice".to_string(),
             point_cost: Some(100),
             is_purchasable: true,
+            requires_confirmation: false,
             created_at: now,
         };
 
@@ -112,6 +119,7 @@ mod tests {
         assert_eq!(shared.name, "Movie Night");
         assert_eq!(shared.point_cost, Some(100));
         assert!(shared.is_purchasable);
+        assert!(!shared.requires_confirmation);
     }
 
     #[test]
@@ -129,6 +137,7 @@ mod tests {
             household_id: household_id.to_string(),
             amount: 3,
             redeemed_amount: 1,
+            pending_redemption: 0,
             updated_at: now,
         };
 
@@ -139,5 +148,6 @@ mod tests {
         assert_eq!(shared.reward_id, reward_id);
         assert_eq!(shared.amount, 3);
         assert_eq!(shared.redeemed_amount, 1);
+        assert_eq!(shared.pending_redemption, 0);
     }
 }

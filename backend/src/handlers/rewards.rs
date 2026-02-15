@@ -10,16 +10,21 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/rewards")
             .route("", web::get().to(list_rewards))
             .route("", web::post().to(create_reward))
+            // Static routes must come before dynamic /{reward_id} routes
+            .route("/user-rewards", web::get().to(list_user_rewards))
+            .route("/user-rewards/all", web::get().to(list_all_user_rewards))
+            .route("/user-rewards/{id}", web::delete().to(delete_user_reward))
+            .route("/user-rewards/{id}/redeem", web::post().to(redeem_reward))
+            .route("/user-rewards/{id}/approve", web::post().to(approve_redemption))
+            .route("/user-rewards/{id}/reject", web::post().to(reject_redemption))
+            .route("/pending-confirmations", web::get().to(list_pending_redemptions))
+            // Dynamic routes after static routes
             .route("/{reward_id}", web::get().to(get_reward))
             .route("/{reward_id}", web::put().to(update_reward))
             .route("/{reward_id}", web::delete().to(delete_reward))
             .route("/{reward_id}/purchase", web::post().to(purchase_reward))
             .route("/{reward_id}/assign/{user_id}", web::post().to(assign_reward))
             .route("/{reward_id}/unassign/{user_id}", web::post().to(unassign_reward))
-            .route("/user-rewards", web::get().to(list_user_rewards))
-            .route("/user-rewards/all", web::get().to(list_all_user_rewards))
-            .route("/user-rewards/{id}", web::delete().to(delete_user_reward))
-            .route("/user-rewards/{id}/redeem", web::post().to(redeem_reward))
     );
 }
 
@@ -829,6 +834,153 @@ async fn redeem_reward(
     }
 
     match reward_service::redeem_reward(&state.db, &user_reward_id, &user_id).await {
+        Ok((user_reward, requires_confirmation)) => {
+            // Get reward details for logging
+            let reward = reward_service::get_reward(&state.db, &user_reward.reward_id).await.ok().flatten();
+            let details = reward.as_ref()
+                .map(|r| serde_json::json!({ "name": r.name }).to_string());
+
+            // Only log RewardRedeemed if no confirmation is required (direct redemption)
+            if !requires_confirmation {
+                let _ = activity_logs::log_activity(
+                    &state.db,
+                    &household_id,
+                    &user_id,
+                    Some(&user_id),
+                    ActivityType::RewardRedeemed,
+                    Some("reward"),
+                    Some(&user_reward.reward_id),
+                    details.as_deref(),
+                ).await;
+            }
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(user_reward)))
+        }
+        Err(e) => {
+            log::error!("Error redeeming reward: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "redeem_error".to_string(),
+                message: e.to_string(),
+            }))
+        }
+    }
+}
+
+async fn list_pending_redemptions(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to view pending confirmations".to_string(),
+        }));
+    }
+
+    match reward_service::list_pending_redemptions(&state.db, &household_id).await {
+        Ok(pending) => Ok(HttpResponse::Ok().json(ApiSuccess::new(pending))),
+        Err(e) => {
+            log::error!("Error listing pending redemptions: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to list pending redemptions".to_string(),
+            }))
+        }
+    }
+}
+
+async fn approve_redemption(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, user_reward_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let user_reward_id = match Uuid::parse_str(&user_reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user reward ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to approve redemptions".to_string(),
+        }));
+    }
+
+    match reward_service::approve_redemption(&state.db, &user_reward_id).await {
         Ok(user_reward) => {
             // Get reward details for logging
             let reward = reward_service::get_reward(&state.db, &user_reward.reward_id).await.ok().flatten();
@@ -840,8 +992,8 @@ async fn redeem_reward(
                 &state.db,
                 &household_id,
                 &user_id,
-                Some(&user_id),
-                ActivityType::RewardRedeemed,
+                Some(&user_reward.user_id),
+                ActivityType::RewardRedemptionApproved,
                 Some("reward"),
                 Some(&user_reward.reward_id),
                 details.as_deref(),
@@ -850,9 +1002,97 @@ async fn redeem_reward(
             Ok(HttpResponse::Ok().json(ApiSuccess::new(user_reward)))
         }
         Err(e) => {
-            log::error!("Error redeeming reward: {:?}", e);
+            log::error!("Error approving redemption: {:?}", e);
             Ok(HttpResponse::BadRequest().json(ApiError {
-                error: "redeem_error".to_string(),
+                error: "approve_error".to_string(),
+                message: e.to_string(),
+            }))
+        }
+    }
+}
+
+async fn reject_redemption(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, user_reward_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let user_reward_id = match Uuid::parse_str(&user_reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user reward ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to reject redemptions".to_string(),
+        }));
+    }
+
+    match reward_service::reject_redemption(&state.db, &user_reward_id).await {
+        Ok(user_reward) => {
+            // Get reward details for logging
+            let reward = reward_service::get_reward(&state.db, &user_reward.reward_id).await.ok().flatten();
+            let details = reward.as_ref()
+                .map(|r| serde_json::json!({ "name": r.name }).to_string());
+
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                Some(&user_reward.user_id),
+                ActivityType::RewardRedemptionRejected,
+                Some("reward"),
+                Some(&user_reward.reward_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(user_reward)))
+        }
+        Err(e) => {
+            log::error!("Error rejecting redemption: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "reject_error".to_string(),
                 message: e.to_string(),
             }))
         }

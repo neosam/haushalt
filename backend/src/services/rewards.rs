@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::models::{RewardRow, UserRewardRow};
 use crate::services::households;
-use shared::{CreateRewardRequest, Reward, UpdateRewardRequest, User, UserReward, UserRewardWithUser};
+use shared::{CreateRewardRequest, PendingRewardRedemption, Reward, UpdateRewardRequest, User, UserReward, UserRewardWithUser};
 
 #[derive(Debug, Error)]
 pub enum RewardError {
@@ -19,8 +19,8 @@ pub enum RewardError {
     UserRewardNotFound,
     #[error("No rewards to redeem")]
     NothingToRedeem,
-    #[error("Cannot redeem another user's reward")]
-    NotOwner,
+    #[error("No pending redemptions")]
+    NothingPending,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
     #[error("Household error: {0}")]
@@ -34,11 +34,12 @@ pub async fn create_reward(
 ) -> Result<Reward, RewardError> {
     let id = Uuid::new_v4();
     let now = Utc::now();
+    let requires_confirmation = request.requires_confirmation.unwrap_or(false);
 
     sqlx::query(
         r#"
-        INSERT INTO rewards (id, household_id, name, description, point_cost, is_purchasable, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO rewards (id, household_id, name, description, point_cost, is_purchasable, requires_confirmation, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -47,6 +48,7 @@ pub async fn create_reward(
     .bind(request.description.as_deref().unwrap_or(""))
     .bind(request.point_cost)
     .bind(request.is_purchasable)
+    .bind(requires_confirmation)
     .bind(now)
     .execute(pool)
     .await?;
@@ -58,6 +60,7 @@ pub async fn create_reward(
         description: request.description.clone().unwrap_or_default(),
         point_cost: request.point_cost,
         is_purchasable: request.is_purchasable,
+        requires_confirmation,
         created_at: now,
     })
 }
@@ -105,14 +108,18 @@ pub async fn update_reward(
     if let Some(is_purchasable) = request.is_purchasable {
         reward.is_purchasable = is_purchasable;
     }
+    if let Some(requires_confirmation) = request.requires_confirmation {
+        reward.requires_confirmation = requires_confirmation;
+    }
 
     sqlx::query(
-        "UPDATE rewards SET name = ?, description = ?, point_cost = ?, is_purchasable = ? WHERE id = ?",
+        "UPDATE rewards SET name = ?, description = ?, point_cost = ?, is_purchasable = ?, requires_confirmation = ? WHERE id = ?",
     )
     .bind(&reward.name)
     .bind(&reward.description)
     .bind(reward.point_cost)
     .bind(reward.is_purchasable)
+    .bind(reward.requires_confirmation)
     .bind(reward_id.to_string())
     .execute(pool)
     .await?;
@@ -205,8 +212,8 @@ pub async fn assign_reward(
         let id = Uuid::new_v4();
         sqlx::query(
             r#"
-            INSERT INTO user_rewards (id, user_id, reward_id, household_id, amount, redeemed_amount, updated_at)
-            VALUES (?, ?, ?, ?, 1, 0, ?)
+            INSERT INTO user_rewards (id, user_id, reward_id, household_id, amount, redeemed_amount, pending_redemption, updated_at)
+            VALUES (?, ?, ?, ?, 1, 0, 0, ?)
             "#,
         )
         .bind(id.to_string())
@@ -305,6 +312,7 @@ pub async fn list_all_user_rewards_in_household(
         household_id: String,
         amount: i32,
         redeemed_amount: i32,
+        pending_redemption: i32,
         updated_at: chrono::DateTime<chrono::Utc>,
         // users fields (aliased)
         u_id: String,
@@ -318,7 +326,7 @@ pub async fn list_all_user_rewards_in_household(
         r#"
         SELECT
             ur.id, ur.user_id, ur.reward_id, ur.household_id,
-            ur.amount, ur.redeemed_amount, ur.updated_at,
+            ur.amount, ur.redeemed_amount, ur.pending_redemption, ur.updated_at,
             u.id as u_id, u.username as u_username, u.email as u_email,
             u.created_at as u_created_at, u.updated_at as u_updated_at
         FROM user_rewards ur
@@ -341,6 +349,7 @@ pub async fn list_all_user_rewards_in_household(
                 household_id: Uuid::parse_str(&row.household_id).unwrap(),
                 amount: row.amount,
                 redeemed_amount: row.redeemed_amount,
+                pending_redemption: row.pending_redemption,
                 updated_at: row.updated_at,
             },
             user: User {
@@ -370,11 +379,155 @@ pub async fn delete_user_reward(
     Ok(())
 }
 
-/// Redeem one reward (increment redeemed_amount)
+/// Redeem one reward - if requires_confirmation, goes to pending; otherwise direct redemption
+/// Returns (UserReward, requires_confirmation) tuple
 pub async fn redeem_reward(
     pool: &SqlitePool,
     user_reward_id: &Uuid,
-    user_id: &Uuid,
+    _user_id: &Uuid,
+) -> Result<(UserReward, bool), RewardError> {
+    let user_reward: UserRewardRow = sqlx::query_as("SELECT * FROM user_rewards WHERE id = ?")
+        .bind(user_reward_id.to_string())
+        .fetch_optional(pool)
+        .await?
+        .ok_or(RewardError::UserRewardNotFound)?;
+
+    // Get the reward to check requires_confirmation
+    let reward_id = Uuid::parse_str(&user_reward.reward_id).unwrap();
+    let reward = get_reward(pool, &reward_id).await?.ok_or(RewardError::NotFound)?;
+
+    // Check if there are unredeemed rewards (excluding pending)
+    let available = user_reward.amount - user_reward.redeemed_amount - user_reward.pending_redemption;
+    if available <= 0 {
+        return Err(RewardError::NothingToRedeem);
+    }
+
+    let now = Utc::now();
+
+    if reward.requires_confirmation {
+        // Move to pending state
+        sqlx::query("UPDATE user_rewards SET pending_redemption = pending_redemption + 1, updated_at = ? WHERE id = ?")
+            .bind(now)
+            .bind(user_reward_id.to_string())
+            .execute(pool)
+            .await?;
+
+        let mut result = user_reward.to_shared();
+        result.pending_redemption += 1;
+        result.updated_at = now;
+
+        Ok((result, true))
+    } else {
+        // Direct redemption
+        sqlx::query("UPDATE user_rewards SET redeemed_amount = redeemed_amount + 1, updated_at = ? WHERE id = ?")
+            .bind(now)
+            .bind(user_reward_id.to_string())
+            .execute(pool)
+            .await?;
+
+        let mut result = user_reward.to_shared();
+        result.redeemed_amount += 1;
+        result.updated_at = now;
+
+        Ok((result, false))
+    }
+}
+
+/// List all pending reward redemptions for a household
+pub async fn list_pending_redemptions(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+) -> Result<Vec<PendingRewardRedemption>, RewardError> {
+    #[derive(sqlx::FromRow)]
+    struct JoinedRow {
+        // user_rewards fields
+        ur_id: String,
+        ur_user_id: String,
+        ur_reward_id: String,
+        ur_household_id: String,
+        ur_amount: i32,
+        ur_redeemed_amount: i32,
+        ur_pending_redemption: i32,
+        ur_updated_at: chrono::DateTime<chrono::Utc>,
+        // reward fields
+        r_id: String,
+        r_household_id: String,
+        r_name: String,
+        r_description: String,
+        r_point_cost: Option<i64>,
+        r_is_purchasable: bool,
+        r_requires_confirmation: bool,
+        r_created_at: chrono::DateTime<chrono::Utc>,
+        // user fields
+        u_id: String,
+        u_username: String,
+        u_email: String,
+        u_created_at: chrono::DateTime<chrono::Utc>,
+        u_updated_at: chrono::DateTime<chrono::Utc>,
+    }
+
+    let rows: Vec<JoinedRow> = sqlx::query_as(
+        r#"
+        SELECT
+            ur.id as ur_id, ur.user_id as ur_user_id, ur.reward_id as ur_reward_id,
+            ur.household_id as ur_household_id, ur.amount as ur_amount,
+            ur.redeemed_amount as ur_redeemed_amount, ur.pending_redemption as ur_pending_redemption,
+            ur.updated_at as ur_updated_at,
+            r.id as r_id, r.household_id as r_household_id, r.name as r_name,
+            r.description as r_description, r.point_cost as r_point_cost,
+            r.is_purchasable as r_is_purchasable, r.requires_confirmation as r_requires_confirmation,
+            r.created_at as r_created_at,
+            u.id as u_id, u.username as u_username, u.email as u_email,
+            u.created_at as u_created_at, u.updated_at as u_updated_at
+        FROM user_rewards ur
+        JOIN rewards r ON ur.reward_id = r.id
+        JOIN users u ON ur.user_id = u.id
+        WHERE ur.household_id = ? AND ur.pending_redemption > 0
+        ORDER BY ur.updated_at DESC
+        "#,
+    )
+    .bind(household_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| PendingRewardRedemption {
+            user_reward: UserReward {
+                id: Uuid::parse_str(&row.ur_id).unwrap(),
+                user_id: Uuid::parse_str(&row.ur_user_id).unwrap(),
+                reward_id: Uuid::parse_str(&row.ur_reward_id).unwrap(),
+                household_id: Uuid::parse_str(&row.ur_household_id).unwrap(),
+                amount: row.ur_amount,
+                redeemed_amount: row.ur_redeemed_amount,
+                pending_redemption: row.ur_pending_redemption,
+                updated_at: row.ur_updated_at,
+            },
+            reward: Reward {
+                id: Uuid::parse_str(&row.r_id).unwrap(),
+                household_id: Uuid::parse_str(&row.r_household_id).unwrap(),
+                name: row.r_name,
+                description: row.r_description,
+                point_cost: row.r_point_cost,
+                is_purchasable: row.r_is_purchasable,
+                requires_confirmation: row.r_requires_confirmation,
+                created_at: row.r_created_at,
+            },
+            user: User {
+                id: Uuid::parse_str(&row.u_id).unwrap(),
+                username: row.u_username,
+                email: row.u_email,
+                created_at: row.u_created_at,
+                updated_at: row.u_updated_at,
+            },
+        })
+        .collect())
+}
+
+/// Approve a pending redemption - decrement pending_redemption, increment redeemed_amount
+pub async fn approve_redemption(
+    pool: &SqlitePool,
+    user_reward_id: &Uuid,
 ) -> Result<UserReward, RewardError> {
     let user_reward: UserRewardRow = sqlx::query_as("SELECT * FROM user_rewards WHERE id = ?")
         .bind(user_reward_id.to_string())
@@ -382,25 +535,53 @@ pub async fn redeem_reward(
         .await?
         .ok_or(RewardError::UserRewardNotFound)?;
 
-    if Uuid::parse_str(&user_reward.user_id).unwrap() != *user_id {
-        return Err(RewardError::NotOwner);
-    }
-
-    // Check if there are unredeemed rewards
-    let available = user_reward.amount - user_reward.redeemed_amount;
-    if available <= 0 {
-        return Err(RewardError::NothingToRedeem);
+    if user_reward.pending_redemption <= 0 {
+        return Err(RewardError::NothingPending);
     }
 
     let now = Utc::now();
-    sqlx::query("UPDATE user_rewards SET redeemed_amount = redeemed_amount + 1, updated_at = ? WHERE id = ?")
-        .bind(now)
-        .bind(user_reward_id.to_string())
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "UPDATE user_rewards SET pending_redemption = pending_redemption - 1, redeemed_amount = redeemed_amount + 1, updated_at = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(user_reward_id.to_string())
+    .execute(pool)
+    .await?;
 
     let mut result = user_reward.to_shared();
+    result.pending_redemption -= 1;
     result.redeemed_amount += 1;
+    result.updated_at = now;
+
+    Ok(result)
+}
+
+/// Reject a pending redemption - decrement pending_redemption only (reset to available)
+pub async fn reject_redemption(
+    pool: &SqlitePool,
+    user_reward_id: &Uuid,
+) -> Result<UserReward, RewardError> {
+    let user_reward: UserRewardRow = sqlx::query_as("SELECT * FROM user_rewards WHERE id = ?")
+        .bind(user_reward_id.to_string())
+        .fetch_optional(pool)
+        .await?
+        .ok_or(RewardError::UserRewardNotFound)?;
+
+    if user_reward.pending_redemption <= 0 {
+        return Err(RewardError::NothingPending);
+    }
+
+    let now = Utc::now();
+    sqlx::query(
+        "UPDATE user_rewards SET pending_redemption = pending_redemption - 1, updated_at = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(user_reward_id.to_string())
+    .execute(pool)
+    .await?;
+
+    let mut result = user_reward.to_shared();
+    result.pending_redemption -= 1;
     result.updated_at = now;
 
     Ok(result)

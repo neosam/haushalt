@@ -1,11 +1,11 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{CreatePunishmentRequest, HouseholdSettings, MemberWithUser, Punishment, UserPunishment, UserPunishmentWithUser};
+use shared::{HouseholdSettings, MemberWithUser, Punishment, UserPunishment, UserPunishmentWithUser};
 
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
-use crate::components::modal::Modal;
+use crate::components::punishment_modal::PunishmentModal;
 
 #[component]
 pub fn PunishmentsPage() -> impl IntoView {
@@ -19,11 +19,10 @@ pub fn PunishmentsPage() -> impl IntoView {
     let settings = create_rw_signal(Option::<HouseholdSettings>::None);
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
-    let show_create_modal = create_rw_signal(false);
+    let success = create_rw_signal(Option::<String>::None);
 
-    // Form fields
-    let name = create_rw_signal(String::new());
-    let description = create_rw_signal(String::new());
+    // Modal state: None = closed, Some(None) = create mode, Some(Some(punishment)) = edit mode
+    let modal_punishment = create_rw_signal(Option::<Option<Punishment>>::None);
 
     // Load punishments
     create_effect(move |_| {
@@ -80,29 +79,6 @@ pub fn PunishmentsPage() -> impl IntoView {
             }
         });
     });
-
-    let on_create = move |ev: web_sys::SubmitEvent| {
-        ev.prevent_default();
-
-        let id = household_id();
-
-        let request = CreatePunishmentRequest {
-            name: name.get(),
-            description: Some(description.get()),
-        };
-
-        wasm_bindgen_futures::spawn_local(async move {
-            match ApiClient::create_punishment(&id, request).await {
-                Ok(punishment) => {
-                    punishments.update(|p| p.push(punishment));
-                    show_create_modal.set(false);
-                    name.set(String::new());
-                    description.set(String::new());
-                }
-                Err(e) => error.set(Some(e)),
-            }
-        });
-    };
 
     let on_delete = move |punishment_id: String| {
         let id = household_id();
@@ -168,6 +144,23 @@ pub fn PunishmentsPage() -> impl IntoView {
         });
     };
 
+    let on_complete = move |user_punishment_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::complete_punishment(&id, &user_punishment_id).await {
+                Ok(updated) => {
+                    my_punishments.update(|p| {
+                        if let Some(pos) = p.iter().position(|up| up.id.to_string() == user_punishment_id) {
+                            p[pos] = updated;
+                        }
+                    });
+                    success.set(Some("Punishment marked as completed!".to_string()));
+                }
+                Err(e) => error.set(Some(e)),
+            }
+        });
+    };
+
     view! {
         <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Punishments />
 
@@ -179,48 +172,65 @@ pub fn PunishmentsPage() -> impl IntoView {
             <div class="alert alert-error">{e}</div>
         })}
 
+        {move || success.get().map(|s| view! {
+            <div class="alert alert-success">{s}</div>
+        })}
+
         <Show when=move || loading.get() fallback=|| ()>
             <Loading />
         </Show>
 
         <Show when=move || !loading.get() fallback=|| ()>
-            // My Punishments Section
-            <Show when=move || !my_punishments.get().is_empty() fallback=|| ()>
+            // My Punishments Section - only show punishments with remaining or pending
+            <Show when=move || my_punishments.get().iter().any(|up| up.amount > up.completed_amount) fallback=|| ()>
                 <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--error-color);">
                     <div class="card-header">
                         <h3 class="card-title">"My Punishments"</h3>
                     </div>
                     {move || {
                         let all_punishments = punishments.get();
-                        my_punishments.get().into_iter().map(|user_punishment| {
-                            let punishment_name = all_punishments.iter()
-                                .find(|p| p.id == user_punishment.punishment_id)
-                                .map(|p| p.name.clone())
-                                .unwrap_or_else(|| "Unknown Punishment".to_string());
-                            let punishment_desc = all_punishments.iter()
-                                .find(|p| p.id == user_punishment.punishment_id)
-                                .map(|p| p.description.clone())
-                                .unwrap_or_default();
-                            let pending = user_punishment.amount - user_punishment.completed_amount;
-                            view! {
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
-                                    <div>
-                                        <div style="font-weight: 600;">{punishment_name}</div>
-                                        <div style="font-size: 0.75rem; color: var(--text-muted);">
-                                            {format!("{} pending, {} completed", pending, user_punishment.completed_amount)}
-                                            {if !punishment_desc.is_empty() { format!(" • {}", punishment_desc) } else { String::new() }}
+                        my_punishments.get().into_iter()
+                            // Only show punishments that have remaining or pending completions
+                            .filter(|up| up.amount > up.completed_amount)
+                            .map(|user_punishment| {
+                                let punishment_name = all_punishments.iter()
+                                    .find(|p| p.id == user_punishment.punishment_id)
+                                    .map(|p| p.name.clone())
+                                    .unwrap_or_else(|| "Unknown Punishment".to_string());
+                                let punishment_desc = all_punishments.iter()
+                                    .find(|p| p.id == user_punishment.punishment_id)
+                                    .map(|p| p.description.clone())
+                                    .unwrap_or_default();
+                                let up_id = user_punishment.id.to_string();
+                                let complete_id = up_id.clone();
+                                let available = user_punishment.amount - user_punishment.completed_amount - user_punishment.pending_completion;
+                                let pending_conf = user_punishment.pending_completion;
+                                view! {
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
+                                        <div>
+                                            <div style="font-weight: 600;">{punishment_name}</div>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                                {format!("{} remaining, {} completed", available, user_punishment.completed_amount)}
+                                                {if pending_conf > 0 { format!(", {} pending confirmation", pending_conf) } else { String::new() }}
+                                                {if !punishment_desc.is_empty() { format!(" • {}", punishment_desc) } else { String::new() }}
+                                            </div>
                                         </div>
+                                        {if pending_conf > 0 {
+                                            view! {
+                                                <span class="badge" style="background: var(--warning-color); color: white;">"Awaiting Confirmation"</span>
+                                            }.into_view()
+                                        } else {
+                                            view! {
+                                                <button
+                                                    class="btn btn-primary"
+                                                    style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                                    on:click=move |_| on_complete(complete_id.clone())
+                                                >
+                                                    "Mark Complete"
+                                                </button>
+                                            }.into_view()
+                                        }}
                                     </div>
-                                    {if pending == 0 {
-                                        view! {
-                                            <span class="badge" style="background: var(--success-color); color: white;">"All Completed"</span>
-                                        }.into_view()
-                                    } else {
-                                        view! {
-                                            <span class="badge" style="background: var(--warning-color); color: white;">{pending} " Pending"</span>
-                                        }.into_view()
-                                    }}
-                                </div>
                             }
                         }).collect_view()
                     }}
@@ -228,7 +238,7 @@ pub fn PunishmentsPage() -> impl IntoView {
             </Show>
 
             <div style="margin-bottom: 1rem;">
-                <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
+                <button class="btn btn-primary" on:click=move |_| modal_punishment.set(Some(None))>
                     "+ Create Punishment"
                 </button>
             </div>
@@ -239,6 +249,7 @@ pub fn PunishmentsPage() -> impl IntoView {
                 let p = punishments.get();
                 let user_punishments = all_user_punishments.get();
                 let member_list = members.get();
+                let hierarchy = settings.get().map(|s| s.hierarchy_type).unwrap_or_default();
 
                 if p.is_empty() {
                     view! {
@@ -251,14 +262,27 @@ pub fn PunishmentsPage() -> impl IntoView {
                     view! {
                         <div class="grid grid-3">
                             {p.into_iter().map(|punishment| {
+                                let punishment_for_edit = punishment.clone();
                                 let punishment_id = punishment.id;
                                 let punishment_id_str = punishment_id.to_string();
                                 let delete_id = punishment_id_str.clone();
 
-                                // Get user assignments for this punishment (now one row per user with amount)
+                                // Get user assignments for this punishment - show only open (uncompleted) count
+                                // Filter by hierarchy: only show assignable roles
                                 let user_assignments: Vec<_> = user_punishments.iter()
                                     .filter(|up| up.user_punishment.punishment_id == punishment_id)
-                                    .map(|up| (up.user_punishment.user_id, up.user.username.clone(), up.user_punishment.amount))
+                                    .filter(|up| {
+                                        // Check if user's role can be assigned in this hierarchy
+                                        member_list.iter()
+                                            .find(|m| m.user.id == up.user_punishment.user_id)
+                                            .map(|m| hierarchy.can_be_assigned(&m.membership.role))
+                                            .unwrap_or(false)
+                                    })
+                                    .map(|up| {
+                                        let open = up.user_punishment.amount - up.user_punishment.completed_amount;
+                                        (up.user_punishment.user_id, up.user.username.clone(), open)
+                                    })
+                                    .filter(|(_, _, open)| *open > 0)  // Only show if there are open punishments
                                     .collect();
 
                                 view! {
@@ -305,14 +329,17 @@ pub fn PunishmentsPage() -> impl IntoView {
                                                 }).collect_view()
                                             }}
 
-                                            // Add assignment for members without any
+                                            // Add assignment for members without any open punishments
+                                            // Filter by hierarchy: only show assignable roles
                                             {
-                                                let assigned_user_ids: std::collections::HashSet<_> = user_punishments.iter()
+                                                let users_with_open: std::collections::HashSet<_> = user_punishments.iter()
                                                     .filter(|up| up.user_punishment.punishment_id == punishment_id)
+                                                    .filter(|up| up.user_punishment.amount > up.user_punishment.completed_amount)
                                                     .map(|up| up.user_punishment.user_id)
                                                     .collect();
                                                 let unassigned_members: Vec<_> = member_list.iter()
-                                                    .filter(|m| !assigned_user_ids.contains(&m.user.id))
+                                                    .filter(|m| !users_with_open.contains(&m.user.id))
+                                                    .filter(|m| hierarchy.can_be_assigned(&m.membership.role))
                                                     .collect();
 
                                                 if !unassigned_members.is_empty() {
@@ -343,13 +370,25 @@ pub fn PunishmentsPage() -> impl IntoView {
                                             }
                                         </div>
 
-                                        <button
-                                            class="btn btn-danger"
-                                            style="width: 100%; margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                                            on:click=move |_| on_delete(delete_id.clone())
-                                        >
-                                            "Delete"
-                                        </button>
+                                        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                                            <button
+                                                class="btn btn-outline"
+                                                style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                on:click={
+                                                    let punishment_for_edit = punishment_for_edit.clone();
+                                                    move |_| modal_punishment.set(Some(Some(punishment_for_edit.clone())))
+                                                }
+                                            >
+                                                "Edit"
+                                            </button>
+                                            <button
+                                                class="btn btn-danger"
+                                                style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                on:click=move |_| on_delete(delete_id.clone())
+                                            >
+                                                "Delete"
+                                            </button>
+                                        </div>
                                     </div>
                                 }
                             }).collect_view()}
@@ -359,45 +398,28 @@ pub fn PunishmentsPage() -> impl IntoView {
             }}
         </Show>
 
-        <Show when=move || show_create_modal.get() fallback=|| ()>
-            <Modal title="Create Punishment" on_close=move |_| show_create_modal.set(false)>
-                <form on:submit=on_create>
-                    <div class="form-group">
-                        <label class="form-label" for="punishment-name">"Name"</label>
-                        <input
-                            type="text"
-                            id="punishment-name"
-                            class="form-input"
-                            placeholder="e.g., Extra Chores"
-                            prop:value=move || name.get()
-                            on:input=move |ev| name.set(event_target_value(&ev))
-                            required
-                        />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="punishment-description">"Description"</label>
-                        <input
-                            type="text"
-                            id="punishment-description"
-                            class="form-input"
-                            placeholder="What happens?"
-                            prop:value=move || description.get()
-                            on:input=move |ev| description.set(event_target_value(&ev))
-                        />
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline" on:click=move |_| show_create_modal.set(false)>
-                            "Cancel"
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                            "Create"
-                        </button>
-                    </div>
-                </form>
-            </Modal>
-        </Show>
+        {move || modal_punishment.get().map(|punishment_opt| {
+            let hh_id = household_id();
+            view! {
+                <PunishmentModal
+                    punishment=punishment_opt
+                    household_id=hh_id
+                    on_close=move |_| modal_punishment.set(None)
+                    on_save=move |saved_punishment: Punishment| {
+                        // Check if this is an existing punishment (edit) or new (create)
+                        let existing_idx = punishments.get().iter().position(|p| p.id == saved_punishment.id);
+                        if let Some(idx) = existing_idx {
+                            // Update existing punishment
+                            punishments.update(|p| p[idx] = saved_punishment);
+                        } else {
+                            // Add new punishment
+                            punishments.update(|p| p.push(saved_punishment));
+                        }
+                        modal_punishment.set(None);
+                    }
+                />
+            }
+        })}
     }
 }
 

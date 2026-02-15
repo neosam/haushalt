@@ -6,6 +6,7 @@ use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
+use crate::components::pending_confirmations::PendingConfirmations;
 use crate::components::pending_reviews::PendingReviews;
 use crate::components::points_display::PointsBadge;
 use crate::components::task_card::GroupedTaskList;
@@ -383,6 +384,7 @@ pub fn HouseholdPage() -> impl IntoView {
                             <Show when=move || current_user_can_manage.get() fallback=|| ()>
                                 {
                                     let hid = id.clone();
+                                    let hid2 = id.clone();
                                     view! {
                                         <div style="margin-top: 1.5rem;">
                                             <PendingReviews
@@ -394,6 +396,20 @@ pub fn HouseholdPage() -> impl IntoView {
                                                         if let Ok(t) = ApiClient::get_all_tasks_with_status(&hid).await {
                                                             tasks.set(t);
                                                         }
+                                                        if let Ok(l) = ApiClient::get_leaderboard(&hid).await {
+                                                            leaderboard.set(l);
+                                                        }
+                                                    });
+                                                }
+                                            />
+                                        </div>
+                                        <div style="margin-top: 1rem;">
+                                            <PendingConfirmations
+                                                household_id=hid2
+                                                on_confirmation_complete=move |_| {
+                                                    // Refresh leaderboard after confirmation
+                                                    let hid = household_id();
+                                                    wasm_bindgen_futures::spawn_local(async move {
                                                         if let Ok(l) = ApiClient::get_leaderboard(&hid).await {
                                                             leaderboard.set(l);
                                                         }
