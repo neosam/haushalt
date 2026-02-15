@@ -179,7 +179,7 @@ pub fn TaskModal(
                 Uuid::parse_str(&assigned).ok()
             };
 
-            let target = target_count.get().parse::<i32>().unwrap_or(1).max(1);
+            let target = target_count.get().parse::<i32>().unwrap_or(1).max(0);
             let new_rewards = selected_rewards.get(); // Vec<(String, i32)>
             let new_punishments = selected_punishments.get(); // Vec<(String, i32)>
 
@@ -527,7 +527,7 @@ pub fn TaskModal(
                                 type="number"
                                 id="task-target-count"
                                 class="form-input"
-                                min="1"
+                                min="0"
                                 prop:value=move || target_count.get()
                                 on:input=move |ev| target_count.set(event_target_value(&ev))
                             />

@@ -502,8 +502,9 @@ pub struct TaskWithStatus {
 
 impl TaskWithStatus {
     /// Returns true if the target for the current period is met
+    /// Tasks with target_count 0 are never considered "met" (they're free-form)
     pub fn is_target_met(&self) -> bool {
-        self.completions_today >= self.task.target_count
+        self.task.target_count > 0 && self.completions_today >= self.task.target_count
     }
 
     /// Returns remaining completions needed to meet the target
