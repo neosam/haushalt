@@ -500,3 +500,83 @@ body {
     font-size: 3rem;
     margin-bottom: 1rem;
 }
+
+/* ============================================================================
+   Dark Mode Theme
+   ============================================================================ */
+
+body.dark-mode {
+    --primary-color: #818cf8;
+    --primary-hover: #6366f1;
+    --success-color: #34d399;
+    --danger-color: #f87171;
+    --warning-color: #fbbf24;
+    --background-color: #0f172a;
+    --card-color: #1e293b;
+    --text-color: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border-color: #334155;
+}
+
+body.dark-mode .form-input,
+body.dark-mode .form-select,
+body.dark-mode .form-textarea {
+    background-color: var(--card-color);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .form-input:focus,
+body.dark-mode .form-select:focus,
+body.dark-mode .form-textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2);
+}
+
+body.dark-mode .form-input::placeholder {
+    color: var(--text-muted);
+}
+
+body.dark-mode .alert-error {
+    background-color: rgba(248, 113, 113, 0.1);
+    border-color: rgba(248, 113, 113, 0.3);
+    color: #f87171;
+}
+
+body.dark-mode .alert-success {
+    background-color: rgba(52, 211, 153, 0.1);
+    border-color: rgba(52, 211, 153, 0.3);
+    color: #34d399;
+}
+
+body.dark-mode .badge-owner {
+    background-color: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+}
+
+body.dark-mode .badge-admin {
+    background-color: rgba(129, 140, 248, 0.2);
+    color: #818cf8;
+}
+
+body.dark-mode .badge-member {
+    background-color: rgba(148, 163, 184, 0.2);
+    color: #94a3b8;
+}
+
+body.dark-mode .modal-backdrop {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+body.dark-mode .btn-outline {
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+body.dark-mode .btn-outline:hover {
+    background-color: var(--card-color);
+}
+
+body.dark-mode hr {
+    border-color: var(--border-color);
+}

@@ -4,6 +4,7 @@ use crate::config::Config;
 
 pub mod user;
 pub mod household;
+pub mod household_settings;
 pub mod membership;
 pub mod task;
 pub mod task_completion;
@@ -14,6 +15,7 @@ pub mod invitation;
 
 pub use user::*;
 pub use household::*;
+pub use household_settings::*;
 pub use membership::*;
 pub use task::*;
 pub use task_completion::*;

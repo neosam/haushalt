@@ -1,6 +1,6 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{AdjustPointsRequest, CreateInvitationRequest, Household, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus};
+use shared::{AdjustPointsRequest, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus};
 
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
@@ -19,6 +19,7 @@ pub fn HouseholdPage() -> impl IntoView {
     let tasks = create_rw_signal(Vec::<TaskWithStatus>::new());
     let leaderboard = create_rw_signal(Vec::<LeaderboardEntry>::new());
     let invitations = create_rw_signal(Vec::<Invitation>::new());
+    let settings = create_rw_signal(Option::<HouseholdSettings>::None);
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
 
@@ -108,6 +109,23 @@ pub fn HouseholdPage() -> impl IntoView {
             }
             if let Ok(p) = ApiClient::list_punishments(&id).await {
                 punishments.set(p);
+            }
+
+            // Load settings and apply dark mode
+            if let Ok(s) = ApiClient::get_household_settings(&id).await {
+                // Apply dark mode
+                if let Some(window) = web_sys::window() {
+                    if let Some(document) = window.document() {
+                        if let Some(body) = document.body() {
+                            if s.dark_mode {
+                                let _ = body.class_list().add_1("dark-mode");
+                            } else {
+                                let _ = body.class_list().remove_1("dark-mode");
+                            }
+                        }
+                    }
+                }
+                settings.set(Some(s));
             }
 
             loading.set(false);
@@ -415,6 +433,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                 {move || {
                                     let m = members.get();
                                     let can_manage = current_user_can_manage.get();
+                                    let current_settings = settings.get();
                                     view! {
                                         <div>
                                             {m.into_iter().map(|member| {
@@ -423,11 +442,17 @@ pub fn HouseholdPage() -> impl IntoView {
                                                     shared::Role::Admin => "badge badge-admin",
                                                     shared::Role::Member => "badge badge-member",
                                                 };
-                                                let role_text = match member.membership.role {
-                                                    shared::Role::Owner => "Owner",
-                                                    shared::Role::Admin => "Admin",
-                                                    shared::Role::Member => "Member",
-                                                };
+                                                let role_text = current_settings.as_ref()
+                                                    .map(|s| match member.membership.role {
+                                                        shared::Role::Owner => s.role_label_owner.clone(),
+                                                        shared::Role::Admin => s.role_label_admin.clone(),
+                                                        shared::Role::Member => s.role_label_member.clone(),
+                                                    })
+                                                    .unwrap_or_else(|| match member.membership.role {
+                                                        shared::Role::Owner => "Owner".to_string(),
+                                                        shared::Role::Admin => "Admin".to_string(),
+                                                        shared::Role::Member => "Member".to_string(),
+                                                    });
                                                 let user_id = member.user.id.to_string();
                                                 let username = member.user.username.clone();
                                                 let user_id_points = user_id.clone();
@@ -489,6 +514,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                     <div style="margin-top: 1rem; padding-top: 1rem; border-top: 2px solid var(--border-color);">
                                         <h4 style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem;">"Pending Invitations"</h4>
                                         {move || {
+                                            let current_settings = settings.get();
                                             invitations.get().into_iter().map(|inv| {
                                                 let inv_id = inv.id.to_string();
                                                 let cancel_id = inv_id.clone();
@@ -497,7 +523,17 @@ pub fn HouseholdPage() -> impl IntoView {
                                                 } else {
                                                     "badge badge-member"
                                                 };
-                                                let role_text = if inv.role == Role::Admin { "Admin" } else { "Member" };
+                                                let role_text = current_settings.as_ref()
+                                                    .map(|s| if inv.role == Role::Admin {
+                                                        s.role_label_admin.clone()
+                                                    } else {
+                                                        s.role_label_member.clone()
+                                                    })
+                                                    .unwrap_or_else(|| if inv.role == Role::Admin {
+                                                        "Admin".to_string()
+                                                    } else {
+                                                        "Member".to_string()
+                                                    });
                                                 view! {
                                                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); opacity: 0.7;">
                                                         <div>
@@ -554,8 +590,12 @@ pub fn HouseholdPage() -> impl IntoView {
                                 prop:value=move || invite_role.get()
                                 on:change=move |ev| invite_role.set(event_target_value(&ev))
                             >
-                                <option value="member">"Member"</option>
-                                <option value="admin">"Admin"</option>
+                                <option value="member">
+                                    {move || settings.get().map(|s| s.role_label_member).unwrap_or_else(|| "Member".to_string())}
+                                </option>
+                                <option value="admin">
+                                    {move || settings.get().map(|s| s.role_label_admin).unwrap_or_else(|| "Admin".to_string())}
+                                </option>
                             </select>
                             <small class="form-hint">"Admins can manage tasks, rewards, and invite other members"</small>
                         </div>

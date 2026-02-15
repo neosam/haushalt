@@ -6,6 +6,7 @@ pub enum HouseholdTab {
     Tasks,
     Rewards,
     Punishments,
+    Settings,
 }
 
 impl HouseholdTab {
@@ -15,6 +16,7 @@ impl HouseholdTab {
             HouseholdTab::Tasks => "Tasks",
             HouseholdTab::Rewards => "Rewards",
             HouseholdTab::Punishments => "Punishments",
+            HouseholdTab::Settings => "Settings",
         }
     }
 
@@ -24,6 +26,7 @@ impl HouseholdTab {
             HouseholdTab::Tasks => format!("/households/{}/tasks", household_id),
             HouseholdTab::Rewards => format!("/households/{}/rewards", household_id),
             HouseholdTab::Punishments => format!("/households/{}/punishments", household_id),
+            HouseholdTab::Settings => format!("/households/{}/settings", household_id),
         }
     }
 }
@@ -38,6 +41,7 @@ pub fn HouseholdTabs(
         HouseholdTab::Tasks,
         HouseholdTab::Rewards,
         HouseholdTab::Punishments,
+        HouseholdTab::Settings,
     ];
 
     view! {

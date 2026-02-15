@@ -6,10 +6,10 @@ use shared::{
     AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, AuthResponse,
     CreateHouseholdRequest, CreateInvitationRequest, CreatePointConditionRequest,
     CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
-    HouseholdMembership, Invitation, InvitationWithHousehold, InviteUserRequest, LeaderboardEntry,
-    LoginRequest, MemberWithUser, PointCondition, Punishment, Reward, Task, TaskCompletion,
-    TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateTaskRequest, User, UserPunishment,
-    UserPunishmentWithUser, UserReward, UserRewardWithUser,
+    HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
+    LeaderboardEntry, LoginRequest, MemberWithUser, PointCondition, Punishment, Reward, Task,
+    TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateHouseholdSettingsRequest,
+    UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward, UserRewardWithUser,
 };
 
 const API_BASE: &str = "/api";
@@ -172,6 +172,30 @@ impl ApiClient {
             "GET",
             &format!("/households/{}/leaderboard", household_id),
             None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // Household settings endpoints
+    pub async fn get_household_settings(household_id: &str) -> Result<HouseholdSettings, String> {
+        Self::request::<HouseholdSettings>(
+            "GET",
+            &format!("/households/{}/settings", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_household_settings(
+        household_id: &str,
+        request: UpdateHouseholdSettingsRequest,
+    ) -> Result<HouseholdSettings, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/settings", household_id),
+            Some(request),
             true,
         )
         .await

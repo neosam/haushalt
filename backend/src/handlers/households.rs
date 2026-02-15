@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse, Result};
-use shared::{AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, CreateHouseholdRequest, CreateInvitationRequest, UpdateHouseholdRequest, UpdateRoleRequest};
+use shared::{AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, CreateHouseholdRequest, CreateInvitationRequest, UpdateHouseholdRequest, UpdateHouseholdSettingsRequest, UpdateRoleRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{households as household_service, invitations as invitation_service};
+use crate::services::{households as household_service, household_settings as settings_service, invitations as invitation_service};
 use crate::handlers::{tasks, rewards, punishments, point_conditions};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -22,6 +22,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{id}/members/{user_id}/role", web::put().to(update_member_role))
             .route("/{id}/members/{user_id}/points", web::post().to(adjust_member_points))
             .route("/{id}/leaderboard", web::get().to(get_leaderboard))
+            .route("/{id}/settings", web::get().to(get_household_settings))
+            .route("/{id}/settings", web::put().to(update_household_settings))
             .service(
                 web::scope("/{household_id}")
                     .configure(tasks::configure)
@@ -754,6 +756,100 @@ async fn adjust_member_points(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to adjust points".to_string(),
+            }))
+        }
+    }
+}
+
+/// Get household settings
+async fn get_household_settings(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check membership - any member can view settings
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match settings_service::get_or_create_settings(&state.db, &household_id).await {
+        Ok(settings) => Ok(HttpResponse::Ok().json(ApiSuccess::new(settings))),
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch settings".to_string(),
+            }))
+        }
+    }
+}
+
+/// Update household settings (owner only)
+async fn update_household_settings(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<UpdateHouseholdSettingsRequest>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Only owner can modify settings
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r == shared::Role::Owner).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners can modify household settings".to_string(),
+        }));
+    }
+
+    match settings_service::update_settings(&state.db, &household_id, &body.into_inner()).await {
+        Ok(settings) => Ok(HttpResponse::Ok().json(ApiSuccess::new(settings))),
+        Err(e) => {
+            log::error!("Error updating settings: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to update settings".to_string(),
             }))
         }
     }

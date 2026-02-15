@@ -65,6 +65,41 @@ pub struct UpdateHouseholdRequest {
 }
 
 // ============================================================================
+// Household Settings Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HouseholdSettings {
+    pub household_id: Uuid,
+    pub dark_mode: bool,
+    pub role_label_owner: String,
+    pub role_label_admin: String,
+    pub role_label_member: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl Default for HouseholdSettings {
+    fn default() -> Self {
+        Self {
+            household_id: Uuid::nil(),
+            dark_mode: false,
+            role_label_owner: "Owner".to_string(),
+            role_label_admin: "Admin".to_string(),
+            role_label_member: "Member".to_string(),
+            updated_at: Utc::now(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateHouseholdSettingsRequest {
+    pub dark_mode: Option<bool>,
+    pub role_label_owner: Option<String>,
+    pub role_label_admin: Option<String>,
+    pub role_label_member: Option<String>,
+}
+
+// ============================================================================
 // Membership Types
 // ============================================================================
 
