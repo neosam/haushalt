@@ -12,31 +12,43 @@ const SHELL_URLS = [
 
 // Install: extract version from index.html and precache app shell
 self.addEventListener('install', event => {
-  // Force immediate activation
-  self.skipWaiting();
+  console.log('SW: Installing new version');
 
   event.waitUntil(
     // Fetch index.html to extract the JS bundle hash as version
-    fetch('/index.html')
+    fetch('/index.html', { cache: 'no-store' })
       .then(response => response.text())
       .then(html => {
         // Extract hash from script src like: frontend-abc123_bg.js
         const match = html.match(/frontend-([a-f0-9]+)_bg\.js/);
         if (match) {
           CACHE_NAME = `household-${match[1]}`;
+          console.log('SW: Cache version:', CACHE_NAME);
         }
         return caches.open(CACHE_NAME);
       })
       .then(cache => cache.addAll(SHELL_URLS))
+      .then(() => {
+        // Force immediate activation
+        console.log('SW: Skip waiting');
+        return self.skipWaiting();
+      })
   );
 });
 
-// Activate: clean old caches
+// Activate: clean old caches and take control immediately
 self.addEventListener('activate', event => {
+  console.log('SW: Activating, taking control');
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => {
+        console.log('SW: Deleting old cache:', k);
+        return caches.delete(k);
+      }))
+    ).then(() => {
+      console.log('SW: Claiming clients');
+      return self.clients.claim();
+    })
   );
 });
 
