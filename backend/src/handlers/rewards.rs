@@ -60,6 +60,24 @@ async fn list_rewards(
         }));
     }
 
+    // Check if rewards feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
     match reward_service::list_rewards(&state.db, &household_id).await {
         Ok(rewards) => Ok(HttpResponse::Ok().json(ApiSuccess::new(rewards))),
         Err(e) => {
@@ -109,6 +127,14 @@ async fn create_reward(
             }));
         }
     };
+
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
@@ -197,6 +223,24 @@ async fn get_reward(
         }));
     }
 
+    // Check if rewards feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
     match reward_service::get_reward(&state.db, &reward_id).await {
         Ok(Some(reward)) => Ok(HttpResponse::Ok().json(ApiSuccess::new(reward))),
         Ok(None) => Ok(HttpResponse::NotFound().json(ApiError {
@@ -262,6 +306,14 @@ async fn update_reward(
             }));
         }
     };
+
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
@@ -331,6 +383,14 @@ async fn delete_reward(
             }));
         }
     };
+
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
@@ -412,6 +472,24 @@ async fn purchase_reward(
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if rewards feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
         }));
     }
 
@@ -504,6 +582,14 @@ async fn assign_reward(
             }));
         }
     };
+
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
 
     let role = household_service::get_member_role(&state.db, &household_id, &current_user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
@@ -611,6 +697,14 @@ async fn unassign_reward(
         }
     };
 
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
     let role = household_service::get_member_role(&state.db, &household_id, &current_user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
@@ -663,6 +757,24 @@ async fn list_user_rewards(
         }));
     }
 
+    // Check if rewards feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
     match reward_service::list_user_rewards(&state.db, &user_id, &household_id).await {
         Ok(rewards) => Ok(HttpResponse::Ok().json(ApiSuccess::new(rewards))),
         Err(e) => {
@@ -704,6 +816,24 @@ async fn list_all_user_rewards(
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if rewards feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
         }));
     }
 
@@ -768,6 +898,14 @@ async fn delete_user_reward(
         }
     };
 
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
     // Only users with manage permission can delete user rewards
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
@@ -830,6 +968,24 @@ async fn redeem_reward(
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if rewards feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
         }));
     }
 
@@ -903,6 +1059,14 @@ async fn list_pending_redemptions(
         }
     };
 
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
@@ -971,6 +1135,14 @@ async fn approve_redemption(
             }));
         }
     };
+
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
@@ -1059,6 +1231,14 @@ async fn reject_redemption(
             }));
         }
     };
+
+    // Check if rewards feature is enabled
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {

@@ -254,6 +254,13 @@
   "settings.role_labels_hint": "Customize how roles are displayed throughout the household.",
   "settings.save_settings": "Save Settings",
   "settings.owner_only": "Only the household owner can modify settings.",
+  "settings.optional_features": "Optional Features",
+  "settings.enable_rewards": "Enable Rewards",
+  "settings.enable_punishments": "Enable Punishments",
+  "settings.enable_chat": "Enable Chat",
+  "settings.rewards_hint": "Allow members to earn and redeem rewards",
+  "settings.punishments_hint": "Allow assigning punishments for missed tasks",
+  "settings.chat_hint": "Enable real-time chat for household members",
 
   "hierarchy.equals": "Equals",
   "hierarchy.equals_desc": "Everyone can manage tasks, rewards, and punishments",

@@ -167,7 +167,7 @@ pub fn TasksPage() -> impl IntoView {
     };
 
     view! {
-        <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Tasks />
+        <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Tasks settings=settings.get() />
 
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("tasks.title")}</h1>

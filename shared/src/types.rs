@@ -130,6 +130,9 @@ pub struct HouseholdSettings {
     pub role_label_member: String,
     pub hierarchy_type: HierarchyType,
     pub timezone: String,
+    pub rewards_enabled: bool,
+    pub punishments_enabled: bool,
+    pub chat_enabled: bool,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -143,6 +146,9 @@ impl Default for HouseholdSettings {
             role_label_member: "Member".to_string(),
             hierarchy_type: HierarchyType::default(),
             timezone: "UTC".to_string(),
+            rewards_enabled: false,
+            punishments_enabled: false,
+            chat_enabled: false,
             updated_at: Utc::now(),
         }
     }
@@ -156,6 +162,9 @@ pub struct UpdateHouseholdSettingsRequest {
     pub role_label_member: Option<String>,
     pub hierarchy_type: Option<HierarchyType>,
     pub timezone: Option<String>,
+    pub rewards_enabled: Option<bool>,
+    pub punishments_enabled: Option<bool>,
+    pub chat_enabled: Option<bool>,
 }
 
 // ============================================================================

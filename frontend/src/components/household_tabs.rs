@@ -1,4 +1,5 @@
 use leptos::*;
+use shared::HouseholdSettings;
 
 use crate::i18n::use_i18n;
 
@@ -46,20 +47,33 @@ impl HouseholdTab {
 pub fn HouseholdTabs(
     household_id: String,
     active_tab: HouseholdTab,
+    settings: Option<HouseholdSettings>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
 
-    let tabs = [
-        HouseholdTab::Overview,
-        HouseholdTab::Tasks,
-        HouseholdTab::Notes,
-        HouseholdTab::Rewards,
-        HouseholdTab::Punishments,
-        HouseholdTab::Chat,
-        HouseholdTab::Activity,
-        HouseholdTab::Settings,
-    ];
+    // Build tabs based on settings
+    let tabs = {
+        let mut tabs = vec![
+            HouseholdTab::Overview,
+            HouseholdTab::Tasks,
+            HouseholdTab::Notes,
+        ];
+        if let Some(ref s) = settings {
+            if s.rewards_enabled {
+                tabs.push(HouseholdTab::Rewards);
+            }
+            if s.punishments_enabled {
+                tabs.push(HouseholdTab::Punishments);
+            }
+            if s.chat_enabled {
+                tabs.push(HouseholdTab::Chat);
+            }
+        }
+        tabs.push(HouseholdTab::Activity);
+        tabs.push(HouseholdTab::Settings);
+        tabs
+    };
 
     view! {
         <nav class="household-tabs">

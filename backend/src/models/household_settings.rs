@@ -14,6 +14,9 @@ pub struct HouseholdSettingsRow {
     pub role_label_member: String,
     pub hierarchy_type: String,
     pub timezone: String,
+    pub rewards_enabled: bool,
+    pub punishments_enabled: bool,
+    pub chat_enabled: bool,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -28,6 +31,9 @@ impl HouseholdSettingsRow {
             hierarchy_type: HierarchyType::from_str(&self.hierarchy_type)
                 .unwrap_or_default(),
             timezone: self.timezone.clone(),
+            rewards_enabled: self.rewards_enabled,
+            punishments_enabled: self.punishments_enabled,
+            chat_enabled: self.chat_enabled,
             updated_at: self.updated_at,
         }
     }
@@ -50,6 +56,9 @@ mod tests {
             role_label_member: "Child".to_string(),
             hierarchy_type: "hierarchy".to_string(),
             timezone: "America/New_York".to_string(),
+            rewards_enabled: true,
+            punishments_enabled: false,
+            chat_enabled: true,
             updated_at: now,
         };
 
@@ -62,6 +71,9 @@ mod tests {
         assert_eq!(shared.role_label_member, "Child");
         assert_eq!(shared.hierarchy_type, HierarchyType::Hierarchy);
         assert_eq!(shared.timezone, "America/New_York");
+        assert!(shared.rewards_enabled);
+        assert!(!shared.punishments_enabled);
+        assert!(shared.chat_enabled);
     }
 
     #[test]
@@ -77,6 +89,9 @@ mod tests {
             role_label_member: "Member".to_string(),
             hierarchy_type: "invalid".to_string(),
             timezone: "UTC".to_string(),
+            rewards_enabled: false,
+            punishments_enabled: false,
+            chat_enabled: false,
             updated_at: now,
         };
 

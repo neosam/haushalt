@@ -385,7 +385,7 @@ pub fn HouseholdPage() -> impl IntoView {
             {move || household.get().map(|h| {
                 let id = h.id.to_string();
                 view! {
-                    <HouseholdTabs household_id=id.clone() active_tab=HouseholdTab::Overview />
+                    <HouseholdTabs household_id=id.clone() active_tab=HouseholdTab::Overview settings=settings.get() />
 
                     // Announcement Banner
                     {move || {

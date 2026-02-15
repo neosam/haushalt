@@ -3,7 +3,7 @@ use shared::{ApiError, ApiSuccess, CreateChatMessageRequest, ListChatMessagesReq
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{chat as chat_service, households as household_service};
+use crate::services::{chat as chat_service, household_settings, households as household_service};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -50,6 +50,24 @@ async fn list_messages(
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if chat feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.chat_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Chat is not enabled for this household".to_string(),
         }));
     }
 
@@ -103,6 +121,24 @@ async fn create_message(
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if chat feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.chat_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Chat is not enabled for this household".to_string(),
         }));
     }
 
@@ -184,6 +220,24 @@ async fn update_message(
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if chat feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.chat_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Chat is not enabled for this household".to_string(),
         }));
     }
 
@@ -276,6 +330,24 @@ async fn delete_message(
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if chat feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.chat_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Chat is not enabled for this household".to_string(),
         }));
     }
 

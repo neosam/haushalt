@@ -32,6 +32,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let role_label_member = create_rw_signal(String::new());
     let hierarchy_type = create_rw_signal(HierarchyType::Organized);
     let timezone = create_rw_signal("UTC".to_string());
+    let rewards_enabled = create_rw_signal(false);
+    let punishments_enabled = create_rw_signal(false);
+    let chat_enabled = create_rw_signal(false);
 
     // Load settings and check permissions
     create_effect(move |_| {
@@ -53,6 +56,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     role_label_member.set(s.role_label_member.clone());
                     hierarchy_type.set(s.hierarchy_type);
                     timezone.set(s.timezone.clone());
+                    rewards_enabled.set(s.rewards_enabled);
+                    punishments_enabled.set(s.punishments_enabled);
+                    chat_enabled.set(s.chat_enabled);
                     settings.set(Some(s));
                 }
                 Err(e) => error.set(Some(e)),
@@ -88,6 +94,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             role_label_member: Some(role_label_member.get()),
             hierarchy_type: Some(hierarchy_type.get()),
             timezone: Some(timezone.get()),
+            rewards_enabled: Some(rewards_enabled.get()),
+            punishments_enabled: Some(punishments_enabled.get()),
+            chat_enabled: Some(chat_enabled.get()),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -108,7 +117,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     };
 
     view! {
-        <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Settings />
+        <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Settings settings=settings.get() />
 
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("settings.household_settings")}</h1>
@@ -208,6 +217,55 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                 <label for="dark-mode">{i18n_stored.get_value().t("settings.enable_dark_mode")}</label>
                             </div>
                             <small class="form-hint">{i18n_stored.get_value().t("settings.dark_mode_hint")}</small>
+                        </div>
+
+                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+
+                        <h3 style="margin-bottom: 1rem;">{i18n_stored.get_value().t("settings.optional_features")}</h3>
+
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input
+                                    type="checkbox"
+                                    id="rewards-enabled"
+                                    prop:checked=move || rewards_enabled.get()
+                                    on:change=move |ev| {
+                                        rewards_enabled.set(event_target_checked(&ev));
+                                    }
+                                />
+                                <label for="rewards-enabled">{i18n_stored.get_value().t("settings.enable_rewards")}</label>
+                            </div>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.rewards_hint")}</small>
+                        </div>
+
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input
+                                    type="checkbox"
+                                    id="punishments-enabled"
+                                    prop:checked=move || punishments_enabled.get()
+                                    on:change=move |ev| {
+                                        punishments_enabled.set(event_target_checked(&ev));
+                                    }
+                                />
+                                <label for="punishments-enabled">{i18n_stored.get_value().t("settings.enable_punishments")}</label>
+                            </div>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.punishments_hint")}</small>
+                        </div>
+
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input
+                                    type="checkbox"
+                                    id="chat-enabled"
+                                    prop:checked=move || chat_enabled.get()
+                                    on:change=move |ev| {
+                                        chat_enabled.set(event_target_checked(&ev));
+                                    }
+                                />
+                                <label for="chat-enabled">{i18n_stored.get_value().t("settings.enable_chat")}</label>
+                            </div>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.chat_hint")}</small>
                         </div>
 
                         <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />

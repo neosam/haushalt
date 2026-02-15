@@ -166,7 +166,7 @@ pub fn PunishmentsPage() -> impl IntoView {
     };
 
     view! {
-        <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Punishments />
+        <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Punishments settings=settings.get() />
 
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("punishments.title")}</h1>

@@ -254,6 +254,13 @@
   "settings.role_labels_hint": "Anpassen, wie Rollen im Haushalt angezeigt werden.",
   "settings.save_settings": "Einstellungen speichern",
   "settings.owner_only": "Nur der Haushaltsbesitzer kann Einstellungen ändern.",
+  "settings.optional_features": "Optionale Funktionen",
+  "settings.enable_rewards": "Belohnungen aktivieren",
+  "settings.enable_punishments": "Strafen aktivieren",
+  "settings.enable_chat": "Chat aktivieren",
+  "settings.rewards_hint": "Ermöglicht Mitgliedern, Belohnungen zu verdienen und einzulösen",
+  "settings.punishments_hint": "Ermöglicht das Zuweisen von Strafen für verpasste Aufgaben",
+  "settings.chat_hint": "Aktiviert Echtzeit-Chat für Haushaltsmitglieder",
 
   "hierarchy.equals": "Gleichberechtigt",
   "hierarchy.equals_desc": "Jeder kann Aufgaben, Belohnungen und Strafen verwalten",
