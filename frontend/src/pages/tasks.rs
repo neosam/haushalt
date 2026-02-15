@@ -5,6 +5,7 @@ use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Rewar
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::components::pending_reviews::PendingReviews;
 use crate::components::task_modal::TaskModal;
 
 #[component]
@@ -21,6 +22,8 @@ pub fn TasksPage() -> impl IntoView {
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
     let show_create_modal = create_rw_signal(false);
+    let can_manage = create_rw_signal(false);
+    let pending_reviews_version = create_rw_signal(0u32); // For triggering re-fetch
 
     // Edit modal state
     let editing_task = create_rw_signal(Option::<Task>::None);
@@ -88,7 +91,22 @@ pub fn TasksPage() -> impl IntoView {
             if let Ok(s) = ApiClient::get_household_settings(&id_for_settings).await {
                 // Apply dark mode
                 apply_dark_mode(s.dark_mode);
+                // Check if current user can manage based on hierarchy
+                // For now, we'll determine this from member role
                 settings.set(Some(s));
+            }
+        });
+
+        // Check if user can manage (has Owner or Admin role)
+        let id_for_role = id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(user) = ApiClient::get_current_user().await {
+                if let Ok(members_list) = ApiClient::list_members(&id_for_role).await {
+                    if let Some(member) = members_list.iter().find(|m| m.user.id == user.id) {
+                        let user_can_manage = member.membership.role.can_manage_tasks();
+                        can_manage.set(user_can_manage);
+                    }
+                }
             }
         });
     });
@@ -186,6 +204,25 @@ pub fn TasksPage() -> impl IntoView {
                         }).collect_view()
                     }}
                 </div>
+            </Show>
+
+            // Pending Reviews Section (only for managers/owners)
+            <Show when=move || can_manage.get() fallback=|| ()>
+                {
+                    let hid = household_id();
+                    let _ = pending_reviews_version.get(); // Subscribe to version changes
+                    view! {
+                        <div style="margin-bottom: 1.5rem;">
+                            <PendingReviews
+                                household_id=hid
+                                on_review_complete=move |_| {
+                                    // Trigger refresh
+                                    pending_reviews_version.update(|v| *v += 1);
+                                }
+                            />
+                        </div>
+                    }
+                }
             </Show>
 
             <div style="margin-bottom: 1rem;">
@@ -360,6 +397,7 @@ mod tests {
             target_count: 1,
             time_period: None,
             allow_exceed_target: true,
+            requires_review: false,
             assigned_user_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

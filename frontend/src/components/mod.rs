@@ -6,3 +6,4 @@ pub mod modal;
 pub mod task_modal;
 pub mod household_tabs;
 pub mod calendar_picker;
+pub mod pending_reviews;

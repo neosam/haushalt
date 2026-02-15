@@ -358,6 +358,8 @@ pub struct Task {
     /// When true, users can track completions beyond the target count.
     /// When false, the complete button is disabled once target is reached.
     pub allow_exceed_target: bool,
+    /// When true, task completions require owner/admin approval before being finalized.
+    pub requires_review: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -373,6 +375,8 @@ pub struct CreateTaskRequest {
     pub time_period: Option<TimePeriod>,
     /// When true (default), users can track completions beyond the target count.
     pub allow_exceed_target: Option<bool>,
+    /// When true, completions require owner/admin approval.
+    pub requires_review: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -385,6 +389,39 @@ pub struct UpdateTaskRequest {
     pub target_count: Option<i32>,
     pub time_period: Option<TimePeriod>,
     pub allow_exceed_target: Option<bool>,
+    pub requires_review: Option<bool>,
+}
+
+/// Status of a task completion
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CompletionStatus {
+    /// Completion is approved (default for tasks without review, or after owner approval)
+    #[default]
+    Approved,
+    /// Completion is awaiting owner/admin review
+    Pending,
+}
+
+impl CompletionStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CompletionStatus::Approved => "approved",
+            CompletionStatus::Pending => "pending",
+        }
+    }
+}
+
+impl FromStr for CompletionStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "approved" => Ok(CompletionStatus::Approved),
+            "pending" => Ok(CompletionStatus::Pending),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -394,6 +431,7 @@ pub struct TaskCompletion {
     pub user_id: Uuid,
     pub completed_at: DateTime<Utc>,
     pub due_date: NaiveDate,
+    pub status: CompletionStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -757,6 +795,8 @@ pub enum ActivityType {
     TaskAssigned,
     TaskCompleted,
     TaskMissed,
+    TaskCompletionApproved,
+    TaskCompletionRejected,
 
     // Reward events
     RewardCreated,
@@ -793,6 +833,8 @@ impl ActivityType {
             ActivityType::TaskAssigned => "task_assigned",
             ActivityType::TaskCompleted => "task_completed",
             ActivityType::TaskMissed => "task_missed",
+            ActivityType::TaskCompletionApproved => "task_completion_approved",
+            ActivityType::TaskCompletionRejected => "task_completion_rejected",
             ActivityType::RewardCreated => "reward_created",
             ActivityType::RewardDeleted => "reward_deleted",
             ActivityType::RewardAssigned => "reward_assigned",
@@ -823,6 +865,8 @@ impl FromStr for ActivityType {
             "task_assigned" => Ok(ActivityType::TaskAssigned),
             "task_completed" => Ok(ActivityType::TaskCompleted),
             "task_missed" => Ok(ActivityType::TaskMissed),
+            "task_completion_approved" => Ok(ActivityType::TaskCompletionApproved),
+            "task_completion_rejected" => Ok(ActivityType::TaskCompletionRejected),
             "reward_created" => Ok(ActivityType::RewardCreated),
             "reward_deleted" => Ok(ActivityType::RewardDeleted),
             "reward_assigned" => Ok(ActivityType::RewardAssigned),
@@ -861,6 +905,18 @@ pub struct ActivityLogWithUsers {
     pub log: ActivityLog,
     pub actor: User,
     pub affected_user: Option<User>,
+}
+
+// ============================================================================
+// Pending Review Types
+// ============================================================================
+
+/// A pending task completion awaiting review, with task and user details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingReview {
+    pub completion: TaskCompletion,
+    pub task: Task,
+    pub user: User,
 }
 
 // ============================================================================
@@ -1013,6 +1069,7 @@ mod tests {
                 target_count: target,
                 time_period: None,
                 allow_exceed_target: allow_exceed,
+                requires_review: false,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },

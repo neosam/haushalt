@@ -221,6 +221,27 @@ pub async fn assign_missed_task_punishments(
     Ok(assigned_punishments)
 }
 
+/// Reverse rewards assigned from a task completion (called when rejecting a completion)
+/// Each reward linked to the task is unassigned `amount` times
+pub async fn reverse_task_completion_rewards(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    user_id: &Uuid,
+    household_id: &Uuid,
+) -> Result<(), TaskConsequenceError> {
+    let task_rewards = get_task_rewards(pool, task_id).await?;
+
+    for task_reward in task_rewards {
+        // Unassign the reward `amount` times
+        for _ in 0..task_reward.amount {
+            // Ignore errors here since the user might not have the reward anymore
+            let _ = rewards::unassign_reward(pool, &task_reward.reward.id, user_id, household_id).await;
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

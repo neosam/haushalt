@@ -6,6 +6,7 @@ use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
+use crate::components::pending_reviews::PendingReviews;
 use crate::components::points_display::PointsBadge;
 use crate::components::task_card::GroupedTaskList;
 
@@ -377,6 +378,32 @@ pub fn HouseholdPage() -> impl IntoView {
                     <div class="grid grid-2">
                         <div>
                             <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task />
+
+                            // Pending Reviews Section (only for managers/owners)
+                            <Show when=move || current_user_can_manage.get() fallback=|| ()>
+                                {
+                                    let hid = id.clone();
+                                    view! {
+                                        <div style="margin-top: 1.5rem;">
+                                            <PendingReviews
+                                                household_id=hid
+                                                on_review_complete=move |_| {
+                                                    // Refresh tasks and leaderboard after review
+                                                    let hid = household_id();
+                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                        if let Ok(t) = ApiClient::get_all_tasks_with_status(&hid).await {
+                                                            tasks.set(t);
+                                                        }
+                                                        if let Ok(l) = ApiClient::get_leaderboard(&hid).await {
+                                                            leaderboard.set(l);
+                                                        }
+                                                    });
+                                                }
+                                            />
+                                        </div>
+                                    }
+                                }
+                            </Show>
                         </div>
 
                         <div>

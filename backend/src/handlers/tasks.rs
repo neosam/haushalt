@@ -30,6 +30,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/due", web::get().to(get_due_tasks))
             .route("/all", web::get().to(get_all_tasks_with_status))
             .route("/assigned-to-me", web::get().to(get_assigned_tasks))
+            .route("/pending-reviews", web::get().to(get_pending_reviews))
             .route("/{task_id}", web::get().to(get_task))
             .route("/{task_id}", web::put().to(update_task))
             .route("/{task_id}", web::delete().to(delete_task))
@@ -43,6 +44,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{task_id}/punishments", web::get().to(get_task_punishments))
             .route("/{task_id}/punishments/{punishment_id}", web::post().to(add_task_punishment))
             .route("/{task_id}/punishments/{punishment_id}", web::delete().to(remove_task_punishment))
+            // Review endpoints
+            .route("/completions/{completion_id}/approve", web::post().to(approve_completion))
+            .route("/completions/{completion_id}/reject", web::post().to(reject_completion))
     );
 }
 
@@ -1200,6 +1204,269 @@ async fn remove_task_punishment(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to unlink punishment from task".to_string(),
+            }))
+        }
+    }
+}
+
+// ============================================================================
+// Review Endpoints
+// ============================================================================
+
+async fn get_pending_reviews(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions (only owners/managers can see pending reviews)
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to view pending reviews".to_string(),
+        }));
+    }
+
+    match task_service::list_pending_reviews(&state.db, &household_id).await {
+        Ok(reviews) => Ok(HttpResponse::Ok().json(ApiSuccess::new(reviews))),
+        Err(e) => {
+            log::error!("Error fetching pending reviews: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch pending reviews".to_string(),
+            }))
+        }
+    }
+}
+
+async fn approve_completion(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, completion_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let completion_id = match Uuid::parse_str(&completion_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid completion ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to approve task completions".to_string(),
+        }));
+    }
+
+    // Get completion details for logging
+    let completion = task_service::get_completion(&state.db, &completion_id).await.ok().flatten();
+    let task = if let Some(ref c) = completion {
+        task_service::get_task(&state.db, &c.task_id).await.ok().flatten()
+    } else {
+        None
+    };
+    let details = task.as_ref()
+        .map(|t| serde_json::json!({ "title": t.title }).to_string());
+
+    match task_service::approve_completion(&state.db, &completion_id).await {
+        Ok(approved) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                completion.as_ref().map(|c| &c.user_id),
+                ActivityType::TaskCompletionApproved,
+                Some("task_completion"),
+                Some(&completion_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(approved)))
+        }
+        Err(task_service::TaskError::NotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Completion not found or not pending".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error approving completion: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to approve completion".to_string(),
+            }))
+        }
+    }
+}
+
+async fn reject_completion(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, completion_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let completion_id = match Uuid::parse_str(&completion_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid completion ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to reject task completions".to_string(),
+        }));
+    }
+
+    // Get completion details for logging before deletion
+    let completion = task_service::get_completion(&state.db, &completion_id).await.ok().flatten();
+    let task = if let Some(ref c) = completion {
+        task_service::get_task(&state.db, &c.task_id).await.ok().flatten()
+    } else {
+        None
+    };
+    let details = task.as_ref()
+        .map(|t| serde_json::json!({ "title": t.title }).to_string());
+    let affected_user_id = completion.as_ref().map(|c| c.user_id);
+
+    match task_service::reject_completion(&state.db, &completion_id, &household_id).await {
+        Ok(_) => {
+            // Log activity
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                affected_user_id.as_ref(),
+                ActivityType::TaskCompletionRejected,
+                Some("task_completion"),
+                Some(&completion_id),
+                details.as_deref(),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(())))
+        }
+        Err(task_service::TaskError::NotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Completion not found or not pending".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error rejecting completion: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to reject completion".to_string(),
             }))
         }
     }

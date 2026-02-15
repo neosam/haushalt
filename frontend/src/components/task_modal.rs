@@ -51,6 +51,11 @@ pub fn TaskModal(
             .map(|t| t.allow_exceed_target)
             .unwrap_or(true)  // Default to true for new tasks
     );
+    let requires_review = create_rw_signal(
+        task.as_ref()
+            .map(|t| t.requires_review)
+            .unwrap_or(false)  // Default to false for new tasks
+    );
 
     // Recurrence value signals
     let selected_weekdays = create_rw_signal(
@@ -168,6 +173,7 @@ pub fn TaskModal(
                         target_count: Some(target),
                         time_period: None,
                         allow_exceed_target: Some(allow_exceed_target.get()),
+                        requires_review: Some(requires_review.get()),
                     };
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
@@ -225,6 +231,7 @@ pub fn TaskModal(
                         target_count: Some(target),
                         time_period: None,
                         allow_exceed_target: Some(allow_exceed_target.get()),
+                        requires_review: Some(requires_review.get()),
                     };
 
                     match ApiClient::create_task(&household_id, request).await {
@@ -447,6 +454,18 @@ pub fn TaskModal(
                                 <span>"Allow exceeding target"</span>
                             </label>
                             <small class="form-hint">"When unchecked, the complete button is disabled once the target is reached"</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input
+                                    type="checkbox"
+                                    prop:checked=move || requires_review.get()
+                                    on:change=move |ev| requires_review.set(event_target_checked(&ev))
+                                />
+                                <span>"Require review"</span>
+                            </label>
+                            <small class="form-hint">"When enabled, completions must be approved by an owner before points/rewards are finalized"</small>
                         </div>
 
                         // Assignment Section

@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::models::{TaskCompletionRow, TaskRow};
 use crate::services::{points as points_service, scheduler, task_consequences};
-use shared::{CreateTaskRequest, Task, TaskCompletion, TaskWithStatus, UpdateTaskRequest};
+use shared::{CompletionStatus, CreateTaskRequest, PendingReview, Task, TaskCompletion, TaskWithStatus, UpdateTaskRequest};
 
 #[derive(Debug, Error)]
 pub enum TaskError {
@@ -30,6 +30,7 @@ pub async fn create_task(
     let now = Utc::now();
     let target_count = request.target_count.unwrap_or(1);
     let allow_exceed_target = request.allow_exceed_target.unwrap_or(true);
+    let requires_review = request.requires_review.unwrap_or(false);
 
     let recurrence_value = request
         .recurrence_value
@@ -40,8 +41,8 @@ pub async fn create_task(
 
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -54,6 +55,7 @@ pub async fn create_task(
     .bind(target_count)
     .bind(time_period_str)
     .bind(allow_exceed_target)
+    .bind(requires_review)
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -70,6 +72,7 @@ pub async fn create_task(
         target_count,
         time_period: request.time_period,
         allow_exceed_target,
+        requires_review,
         created_at: now,
         updated_at: now,
     })
@@ -194,13 +197,16 @@ pub async fn update_task(
     if let Some(allow_exceed_target) = request.allow_exceed_target {
         task.allow_exceed_target = allow_exceed_target;
     }
+    if let Some(requires_review) = request.requires_review {
+        task.requires_review = requires_review;
+    }
 
     let now = Utc::now();
     task.updated_at = now;
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -212,6 +218,7 @@ pub async fn update_task(
     .bind(task.target_count)
     .bind(&task.time_period)
     .bind(task.allow_exceed_target)
+    .bind(task.requires_review)
     .bind(now)
     .bind(task_id.to_string())
     .execute(pool)
@@ -307,10 +314,17 @@ pub async fn complete_task(
     let id = Uuid::new_v4();
     let now = Utc::now();
 
+    // Determine status based on task's requires_review setting
+    let status = if task.requires_review {
+        CompletionStatus::Pending
+    } else {
+        CompletionStatus::Approved
+    };
+
     sqlx::query(
         r#"
-        INSERT INTO task_completions (id, task_id, user_id, completed_at, due_date)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO task_completions (id, task_id, user_id, completed_at, due_date, status)
+        VALUES (?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -318,16 +332,17 @@ pub async fn complete_task(
     .bind(user_id.to_string())
     .bind(now)
     .bind(today)
+    .bind(status.as_str())
     .execute(pool)
     .await?;
 
-    // Award points
+    // Award points immediately (will be reversed if rejected)
     let streak = calculate_streak(pool, &task, user_id).await?;
     points_service::award_task_completion_points(pool, household_id, user_id, task_id, streak)
         .await
         .ok();
 
-    // Assign task-specific rewards
+    // Assign task-specific rewards immediately (will be reversed if rejected)
     task_consequences::assign_task_completion_rewards(pool, task_id, user_id, household_id)
         .await
         .ok();
@@ -338,6 +353,7 @@ pub async fn complete_task(
         user_id: *user_id,
         completed_at: now,
         due_date: today,
+        status,
     })
 }
 
@@ -376,6 +392,191 @@ pub async fn uncomplete_task(
     }
 
     Ok(())
+}
+
+/// List all pending completions for a household (for owner review)
+pub async fn list_pending_reviews(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+) -> Result<Vec<PendingReview>, TaskError> {
+    #[derive(sqlx::FromRow)]
+    struct PendingReviewRow {
+        // TaskCompletion fields
+        tc_id: String,
+        tc_task_id: String,
+        tc_user_id: String,
+        tc_completed_at: chrono::DateTime<chrono::Utc>,
+        tc_due_date: chrono::NaiveDate,
+        tc_status: String,
+        // Task fields
+        t_id: String,
+        t_household_id: String,
+        t_title: String,
+        t_description: String,
+        t_recurrence_type: String,
+        t_recurrence_value: Option<String>,
+        t_assigned_user_id: Option<String>,
+        t_target_count: i32,
+        t_time_period: Option<String>,
+        t_allow_exceed_target: bool,
+        t_requires_review: bool,
+        t_created_at: chrono::DateTime<chrono::Utc>,
+        t_updated_at: chrono::DateTime<chrono::Utc>,
+        // User fields
+        u_id: String,
+        u_username: String,
+        u_email: String,
+        u_created_at: chrono::DateTime<chrono::Utc>,
+        u_updated_at: chrono::DateTime<chrono::Utc>,
+    }
+
+    let rows: Vec<PendingReviewRow> = sqlx::query_as(
+        r#"
+        SELECT
+            tc.id as tc_id, tc.task_id as tc_task_id, tc.user_id as tc_user_id,
+            tc.completed_at as tc_completed_at, tc.due_date as tc_due_date, tc.status as tc_status,
+            t.id as t_id, t.household_id as t_household_id, t.title as t_title,
+            t.description as t_description, t.recurrence_type as t_recurrence_type,
+            t.recurrence_value as t_recurrence_value, t.assigned_user_id as t_assigned_user_id,
+            t.target_count as t_target_count, t.time_period as t_time_period,
+            t.allow_exceed_target as t_allow_exceed_target, t.requires_review as t_requires_review,
+            t.created_at as t_created_at, t.updated_at as t_updated_at,
+            u.id as u_id, u.username as u_username, u.email as u_email,
+            u.created_at as u_created_at, u.updated_at as u_updated_at
+        FROM task_completions tc
+        JOIN tasks t ON tc.task_id = t.id
+        JOIN users u ON tc.user_id = u.id
+        WHERE t.household_id = ? AND tc.status = 'pending'
+        ORDER BY tc.completed_at DESC
+        "#,
+    )
+    .bind(household_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let recurrence_value = row.t_recurrence_value.as_ref().and_then(|v| {
+                serde_json::from_str(v).ok()
+            });
+            let time_period = row.t_time_period.as_ref().and_then(|p| p.parse().ok());
+
+            PendingReview {
+                completion: shared::TaskCompletion {
+                    id: Uuid::parse_str(&row.tc_id).unwrap(),
+                    task_id: Uuid::parse_str(&row.tc_task_id).unwrap(),
+                    user_id: Uuid::parse_str(&row.tc_user_id).unwrap(),
+                    completed_at: row.tc_completed_at,
+                    due_date: row.tc_due_date,
+                    status: row.tc_status.parse().unwrap_or(CompletionStatus::Approved),
+                },
+                task: shared::Task {
+                    id: Uuid::parse_str(&row.t_id).unwrap(),
+                    household_id: Uuid::parse_str(&row.t_household_id).unwrap(),
+                    title: row.t_title,
+                    description: row.t_description,
+                    recurrence_type: row.t_recurrence_type.parse().unwrap_or(shared::RecurrenceType::Daily),
+                    recurrence_value,
+                    assigned_user_id: row.t_assigned_user_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
+                    target_count: row.t_target_count,
+                    time_period,
+                    allow_exceed_target: row.t_allow_exceed_target,
+                    requires_review: row.t_requires_review,
+                    created_at: row.t_created_at,
+                    updated_at: row.t_updated_at,
+                },
+                user: shared::User {
+                    id: Uuid::parse_str(&row.u_id).unwrap(),
+                    username: row.u_username,
+                    email: row.u_email,
+                    created_at: row.u_created_at,
+                    updated_at: row.u_updated_at,
+                },
+            }
+        })
+        .collect())
+}
+
+/// Get a specific task completion by ID
+pub async fn get_completion(
+    pool: &SqlitePool,
+    completion_id: &Uuid,
+) -> Result<Option<TaskCompletion>, TaskError> {
+    let completion: Option<TaskCompletionRow> =
+        sqlx::query_as("SELECT * FROM task_completions WHERE id = ?")
+            .bind(completion_id.to_string())
+            .fetch_optional(pool)
+            .await?;
+
+    Ok(completion.map(|c| c.to_shared()))
+}
+
+/// Approve a pending task completion
+pub async fn approve_completion(
+    pool: &SqlitePool,
+    completion_id: &Uuid,
+) -> Result<TaskCompletion, TaskError> {
+    let result = sqlx::query(
+        "UPDATE task_completions SET status = 'approved' WHERE id = ? AND status = 'pending'",
+    )
+    .bind(completion_id.to_string())
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(TaskError::NotFound);
+    }
+
+    get_completion(pool, completion_id)
+        .await?
+        .ok_or(TaskError::NotFound)
+}
+
+/// Reject a pending task completion (deletes it and reverses points/rewards)
+pub async fn reject_completion(
+    pool: &SqlitePool,
+    completion_id: &Uuid,
+    household_id: &Uuid,
+) -> Result<TaskCompletion, TaskError> {
+    // Get the completion before deleting
+    let completion = get_completion(pool, completion_id)
+        .await?
+        .ok_or(TaskError::NotFound)?;
+
+    if completion.status != CompletionStatus::Pending {
+        return Err(TaskError::NotFound); // Can only reject pending completions
+    }
+
+    // Reverse points - deduct the points that were awarded
+    points_service::reverse_task_completion_points(
+        pool,
+        household_id,
+        &completion.user_id,
+        &completion.task_id,
+    )
+    .await
+    .ok();
+
+    // Reverse rewards that were assigned from this completion
+    // Note: This is a simplified approach - ideally we'd track which rewards came from which completion
+    // For now, we'll just remove one instance of each linked reward
+    task_consequences::reverse_task_completion_rewards(
+        pool,
+        &completion.task_id,
+        &completion.user_id,
+        household_id,
+    )
+    .await
+    .ok();
+
+    // Delete the completion
+    sqlx::query("DELETE FROM task_completions WHERE id = ?")
+        .bind(completion_id.to_string())
+        .execute(pool)
+        .await?;
+
+    Ok(completion)
 }
 
 pub async fn get_due_tasks(

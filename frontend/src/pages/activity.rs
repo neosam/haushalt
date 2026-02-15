@@ -175,6 +175,28 @@ fn format_activity_description(activity: &ActivityLogWithUsers) -> String {
                 format!("A task was missed")
             }
         }
+        ActivityType::TaskCompletionApproved => {
+            if let Some(user) = affected {
+                if entity_name.is_empty() {
+                    format!("{} approved {}'s task completion", actor, user)
+                } else {
+                    format!("{} approved {}'s completion of task '{}'", actor, user, entity_name)
+                }
+            } else {
+                format!("{} approved a task completion", actor)
+            }
+        }
+        ActivityType::TaskCompletionRejected => {
+            if let Some(user) = affected {
+                if entity_name.is_empty() {
+                    format!("{} rejected {}'s task completion", actor, user)
+                } else {
+                    format!("{} rejected {}'s completion of task '{}'", actor, user, entity_name)
+                }
+            } else {
+                format!("{} rejected a task completion", actor)
+            }
+        }
 
         // Reward events
         ActivityType::RewardCreated => {

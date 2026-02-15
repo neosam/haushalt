@@ -16,6 +16,7 @@ pub struct TaskRow {
     pub target_count: i32,
     pub time_period: Option<String>,
     pub allow_exceed_target: bool,
+    pub requires_review: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -39,6 +40,7 @@ impl TaskRow {
             target_count: self.target_count,
             time_period,
             allow_exceed_target: self.allow_exceed_target,
+            requires_review: self.requires_review,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -67,6 +69,7 @@ mod tests {
             target_count: 1,
             time_period: None,
             allow_exceed_target: true,
+            requires_review: false,
             created_at: now,
             updated_at: now,
         };
@@ -98,6 +101,7 @@ mod tests {
             target_count: 3,
             time_period: None,
             allow_exceed_target: false,
+            requires_review: false,
             created_at: now,
             updated_at: now,
         };
@@ -126,6 +130,7 @@ mod tests {
             target_count: 5,
             time_period: None,
             allow_exceed_target: true,
+            requires_review: false,
             created_at: now,
             updated_at: now,
         };
@@ -143,6 +148,7 @@ mod tests {
             target_count: 5,
             time_period: None,
             allow_exceed_target: false,
+            requires_review: false,
             created_at: now,
             updated_at: now,
         };

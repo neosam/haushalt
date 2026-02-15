@@ -202,6 +202,46 @@ pub async fn award_task_completion_points(
     Ok(total_points)
 }
 
+/// Reverse points awarded for a task completion (used when rejecting a pending completion)
+/// This calculates the base points that would have been awarded (without streak bonuses) and deducts them
+pub async fn reverse_task_completion_points(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    user_id: &Uuid,
+    task_id: &Uuid,
+) -> Result<i64, PointsError> {
+    let conditions = list_point_conditions(pool, household_id).await?;
+
+    let mut total_points: i64 = 0;
+
+    for condition in conditions {
+        if condition.condition_type == ConditionType::TaskComplete {
+            // Check if this condition applies to this task or all tasks
+            let applies = condition.task_id.is_none() || condition.task_id == Some(*task_id);
+
+            if applies {
+                let mut points = condition.points_value;
+
+                // Apply multiplier if set
+                if let Some(multiplier) = condition.multiplier {
+                    points = (points as f64 * multiplier) as i64;
+                }
+
+                total_points += points;
+            }
+        }
+        // Note: We don't reverse streak bonuses since the streak calculation is complex
+        // and the completion being rejected may have affected the streak
+    }
+
+    // Deduct the points (negative adjustment)
+    if total_points != 0 {
+        households::update_member_points(pool, household_id, user_id, -total_points).await?;
+    }
+
+    Ok(total_points)
+}
+
 /// Deduct points when a task is missed
 pub async fn deduct_missed_task_points(
     pool: &SqlitePool,

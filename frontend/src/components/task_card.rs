@@ -83,10 +83,21 @@ pub fn TaskCard(
     let today = chrono::Utc::now().date_naive();
     let next_due_display = task.next_due_date.map(|d| format_next_due_date(d, today));
 
+    let requires_review = task.task.requires_review;
+
     view! {
         <div class=card_class>
             <div class="task-content" style="flex: 1;">
-                <div class="task-title">{task.task.title.clone()}</div>
+                <div class="task-title">
+                    {task.task.title.clone()}
+                    {if requires_review {
+                        view! {
+                            <span class="task-badge task-badge-review" title="Requires review">"Review"</span>
+                        }.into_view()
+                    } else {
+                        ().into_view()
+                    }}
+                </div>
                 <div class="task-meta">
                     {format!("{:?}", task.task.recurrence_type)}
                     {next_due_display.map(|due| format!(" | Due: {}", due)).unwrap_or_default()}
@@ -287,6 +298,7 @@ mod tests {
                 target_count: target,
                 time_period: None,
                 allow_exceed_target: allow_exceed,
+                requires_review: false,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -387,6 +399,7 @@ mod tests {
                 target_count: 1,
                 time_period: None,
                 allow_exceed_target: true,
+                requires_review: false,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },

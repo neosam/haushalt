@@ -7,7 +7,7 @@ use shared::{
     CreateHouseholdRequest, CreateInvitationRequest, CreatePointConditionRequest,
     CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
     HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
-    LeaderboardEntry, LoginRequest, MemberWithUser, PointCondition, Punishment, Reward, Task,
+    LeaderboardEntry, LoginRequest, MemberWithUser, PendingReview, PointCondition, Punishment, Reward, Task,
     TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateHouseholdSettingsRequest,
     UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward, UserRewardWithUser,
 };
@@ -383,6 +383,43 @@ impl ApiClient {
             &format!(
                 "/households/{}/tasks/{}/punishments/{}",
                 household_id, task_id, punishment_id
+            ),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // Task review endpoints
+    pub async fn get_pending_reviews(household_id: &str) -> Result<Vec<PendingReview>, String> {
+        Self::request::<Vec<PendingReview>>(
+            "GET",
+            &format!("/households/{}/tasks/pending-reviews", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn approve_completion(household_id: &str, completion_id: &str) -> Result<TaskCompletion, String> {
+        Self::request::<TaskCompletion>(
+            "POST",
+            &format!(
+                "/households/{}/tasks/completions/{}/approve",
+                household_id, completion_id
+            ),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn reject_completion(household_id: &str, completion_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "POST",
+            &format!(
+                "/households/{}/tasks/completions/{}/reject",
+                household_id, completion_id
             ),
             None::<()>,
             true,
