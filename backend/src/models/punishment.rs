@@ -25,6 +25,32 @@ impl PunishmentRow {
     }
 }
 
+/// Database model for punishment linked to a task with amount
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct TaskPunishmentRow {
+    pub id: String,
+    pub household_id: String,
+    pub name: String,
+    pub description: String,
+    pub created_at: DateTime<Utc>,
+    pub amount: i32,
+}
+
+impl TaskPunishmentRow {
+    pub fn to_task_punishment_link(&self) -> shared::TaskPunishmentLink {
+        shared::TaskPunishmentLink {
+            punishment: shared::Punishment {
+                id: Uuid::parse_str(&self.id).unwrap(),
+                household_id: Uuid::parse_str(&self.household_id).unwrap(),
+                name: self.name.clone(),
+                description: self.description.clone(),
+                created_at: self.created_at,
+            },
+            amount: self.amount,
+        }
+    }
+}
+
 /// Database model for user punishments (amount-based)
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct UserPunishmentRow {

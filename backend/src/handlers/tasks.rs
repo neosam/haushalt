@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse, Result};
+use serde::Deserialize;
 use shared::{ApiError, ApiSuccess, CreateTaskRequest, UpdateTaskRequest};
 use uuid::Uuid;
 
@@ -8,6 +9,16 @@ use crate::services::{
     task_consequences,
     tasks as task_service,
 };
+
+#[derive(Debug, Deserialize)]
+struct AddLinkQuery {
+    #[serde(default = "default_amount")]
+    amount: i32,
+}
+
+fn default_amount() -> i32 {
+    1
+}
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -625,6 +636,7 @@ async fn add_task_reward(
     state: web::Data<AppState>,
     req: actix_web::HttpRequest,
     path: web::Path<(String, String, String)>,
+    query: web::Query<AddLinkQuery>,
 ) -> Result<HttpResponse> {
     let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
         Ok(id) => id,
@@ -637,6 +649,7 @@ async fn add_task_reward(
     };
 
     let (household_id_str, task_id_str, reward_id_str) = path.into_inner();
+    let amount = query.amount;
 
     let household_id = match Uuid::parse_str(&household_id_str) {
         Ok(id) => id,
@@ -677,7 +690,7 @@ async fn add_task_reward(
         }));
     }
 
-    match task_consequences::add_task_reward(&state.db, &task_id, &reward_id).await {
+    match task_consequences::add_task_reward(&state.db, &task_id, &reward_id, amount).await {
         Ok(_) => Ok(HttpResponse::Created().json(ApiSuccess::new(()))),
         Err(task_consequences::TaskConsequenceError::AlreadyExists) => {
             Ok(HttpResponse::Conflict().json(ApiError {
@@ -830,6 +843,7 @@ async fn add_task_punishment(
     state: web::Data<AppState>,
     req: actix_web::HttpRequest,
     path: web::Path<(String, String, String)>,
+    query: web::Query<AddLinkQuery>,
 ) -> Result<HttpResponse> {
     let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
         Ok(id) => id,
@@ -842,6 +856,7 @@ async fn add_task_punishment(
     };
 
     let (household_id_str, task_id_str, punishment_id_str) = path.into_inner();
+    let amount = query.amount;
 
     let household_id = match Uuid::parse_str(&household_id_str) {
         Ok(id) => id,
@@ -882,7 +897,7 @@ async fn add_task_punishment(
         }));
     }
 
-    match task_consequences::add_task_punishment(&state.db, &task_id, &punishment_id).await {
+    match task_consequences::add_task_punishment(&state.db, &task_id, &punishment_id, amount).await {
         Ok(_) => Ok(HttpResponse::Created().json(ApiSuccess::new(()))),
         Err(task_consequences::TaskConsequenceError::AlreadyExists) => {
             Ok(HttpResponse::Conflict().json(ApiError {

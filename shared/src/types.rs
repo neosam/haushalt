@@ -586,6 +586,20 @@ pub struct TaskPunishment {
     pub punishment_id: Uuid,
 }
 
+/// Reward linked to a task with amount (how many times to apply)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskRewardLink {
+    pub reward: Reward,
+    pub amount: i32,
+}
+
+/// Punishment linked to a task with amount (how many times to apply)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskPunishmentLink {
+    pub punishment: Punishment,
+    pub amount: i32,
+}
+
 // ============================================================================
 // Extended Task Types
 // ============================================================================
@@ -594,8 +608,8 @@ pub struct TaskPunishment {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskWithConfig {
     pub task: Task,
-    pub linked_rewards: Vec<Reward>,
-    pub linked_punishments: Vec<Punishment>,
+    pub linked_rewards: Vec<TaskRewardLink>,
+    pub linked_punishments: Vec<TaskPunishmentLink>,
 }
 
 /// Result of task completion including points and rewards assigned

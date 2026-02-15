@@ -8,8 +8,8 @@ use shared::{
     CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
     HouseholdMembership, Invitation, InvitationWithHousehold, InviteUserRequest, LeaderboardEntry,
     LoginRequest, MemberWithUser, PointCondition, Punishment, Reward, Task, TaskCompletion,
-    TaskWithStatus, UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward,
-    UserRewardWithUser,
+    TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateTaskRequest, User, UserPunishment,
+    UserPunishmentWithUser, UserReward, UserRewardWithUser,
 };
 
 const API_BASE: &str = "/api";
@@ -273,8 +273,8 @@ impl ApiClient {
     }
 
     // Task rewards/punishments endpoints
-    pub async fn get_task_rewards(household_id: &str, task_id: &str) -> Result<Vec<Reward>, String> {
-        Self::request::<Vec<Reward>>(
+    pub async fn get_task_rewards(household_id: &str, task_id: &str) -> Result<Vec<TaskRewardLink>, String> {
+        Self::request::<Vec<TaskRewardLink>>(
             "GET",
             &format!("/households/{}/tasks/{}/rewards", household_id, task_id),
             None::<()>,
@@ -287,12 +287,13 @@ impl ApiClient {
         household_id: &str,
         task_id: &str,
         reward_id: &str,
+        amount: i32,
     ) -> Result<(), String> {
         Self::request::<()>(
             "POST",
             &format!(
-                "/households/{}/tasks/{}/rewards/{}",
-                household_id, task_id, reward_id
+                "/households/{}/tasks/{}/rewards/{}?amount={}",
+                household_id, task_id, reward_id, amount
             ),
             None::<()>,
             true,
@@ -320,8 +321,8 @@ impl ApiClient {
     pub async fn get_task_punishments(
         household_id: &str,
         task_id: &str,
-    ) -> Result<Vec<Punishment>, String> {
-        Self::request::<Vec<Punishment>>(
+    ) -> Result<Vec<TaskPunishmentLink>, String> {
+        Self::request::<Vec<TaskPunishmentLink>>(
             "GET",
             &format!("/households/{}/tasks/{}/punishments", household_id, task_id),
             None::<()>,
@@ -334,12 +335,13 @@ impl ApiClient {
         household_id: &str,
         task_id: &str,
         punishment_id: &str,
+        amount: i32,
     ) -> Result<(), String> {
         Self::request::<()>(
             "POST",
             &format!(
-                "/households/{}/tasks/{}/punishments/{}",
-                household_id, task_id, punishment_id
+                "/households/{}/tasks/{}/punishments/{}?amount={}",
+                household_id, task_id, punishment_id, amount
             ),
             None::<()>,
             true,

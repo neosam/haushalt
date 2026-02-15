@@ -1,5 +1,5 @@
 use leptos::*;
-use shared::{CreateTaskRequest, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, UpdateTaskRequest};
+use shared::{CreateTaskRequest, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
@@ -12,8 +12,8 @@ pub fn TaskModal(
     members: Vec<MemberWithUser>,
     household_rewards: Vec<Reward>,
     household_punishments: Vec<Punishment>,
-    linked_rewards: Vec<Reward>,
-    linked_punishments: Vec<Punishment>,
+    linked_rewards: Vec<TaskRewardLink>,
+    linked_punishments: Vec<TaskPunishmentLink>,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
@@ -81,16 +81,22 @@ pub fn TaskModal(
             .unwrap_or_default()
     );
 
-    // Track linked rewards/punishments
+    // Track linked rewards/punishments with amounts: Vec<(id, amount)>
     let selected_rewards = create_rw_signal(
-        linked_rewards.iter().map(|r| r.id.to_string()).collect::<Vec<_>>()
+        linked_rewards.iter().map(|r| (r.reward.id.to_string(), r.amount)).collect::<Vec<_>>()
     );
     let selected_punishments = create_rw_signal(
-        linked_punishments.iter().map(|p| p.id.to_string()).collect::<Vec<_>>()
+        linked_punishments.iter().map(|p| (p.punishment.id.to_string(), p.amount)).collect::<Vec<_>>()
     );
 
-    let original_rewards = linked_rewards.iter().map(|r| r.id.to_string()).collect::<Vec<_>>();
-    let original_punishments = linked_punishments.iter().map(|p| p.id.to_string()).collect::<Vec<_>>();
+    let original_rewards: Vec<(String, i32)> = linked_rewards.iter().map(|r| (r.reward.id.to_string(), r.amount)).collect();
+    let original_punishments: Vec<(String, i32)> = linked_punishments.iter().map(|p| (p.punishment.id.to_string(), p.amount)).collect();
+
+    // Signals for the "add new" dropdown selections
+    let selected_new_reward = create_rw_signal(String::new());
+    let new_reward_amount = create_rw_signal(1i32);
+    let selected_new_punishment = create_rw_signal(String::new());
+    let new_punishment_amount = create_rw_signal(1i32);
 
     let task_id = task.as_ref().map(|t| t.id.to_string());
 
@@ -137,8 +143,8 @@ pub fn TaskModal(
             };
 
             let target = target_count.get().parse::<i32>().unwrap_or(1).max(1);
-            let new_rewards = selected_rewards.get();
-            let new_punishments = selected_punishments.get();
+            let new_rewards = selected_rewards.get(); // Vec<(String, i32)>
+            let new_punishments = selected_punishments.get(); // Vec<(String, i32)>
 
             wasm_bindgen_futures::spawn_local(async move {
                 if let Some(task_id) = task_id {
@@ -156,26 +162,36 @@ pub fn TaskModal(
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
                         Ok(updated_task) => {
-                            // Update reward links
-                            for reward_id in &new_rewards {
-                                if !original_rewards.contains(reward_id) {
-                                    let _ = ApiClient::add_task_reward(&household_id, &task_id, reward_id).await;
+                            // Update reward links - compare by ID
+                            let new_reward_ids: Vec<&String> = new_rewards.iter().map(|(id, _)| id).collect();
+                            let original_reward_ids: Vec<&String> = original_rewards.iter().map(|(id, _)| id).collect();
+
+                            // Add new rewards
+                            for (reward_id, amount) in &new_rewards {
+                                if !original_reward_ids.contains(&reward_id) {
+                                    let _ = ApiClient::add_task_reward(&household_id, &task_id, reward_id, *amount).await;
                                 }
                             }
-                            for reward_id in &original_rewards {
-                                if !new_rewards.contains(reward_id) {
+                            // Remove rewards that were unlinked
+                            for (reward_id, _) in &original_rewards {
+                                if !new_reward_ids.contains(&reward_id) {
                                     let _ = ApiClient::remove_task_reward(&household_id, &task_id, reward_id).await;
                                 }
                             }
 
-                            // Update punishment links
-                            for punishment_id in &new_punishments {
-                                if !original_punishments.contains(punishment_id) {
-                                    let _ = ApiClient::add_task_punishment(&household_id, &task_id, punishment_id).await;
+                            // Update punishment links - compare by ID
+                            let new_punishment_ids: Vec<&String> = new_punishments.iter().map(|(id, _)| id).collect();
+                            let original_punishment_ids: Vec<&String> = original_punishments.iter().map(|(id, _)| id).collect();
+
+                            // Add new punishments
+                            for (punishment_id, amount) in &new_punishments {
+                                if !original_punishment_ids.contains(&punishment_id) {
+                                    let _ = ApiClient::add_task_punishment(&household_id, &task_id, punishment_id, *amount).await;
                                 }
                             }
-                            for punishment_id in &original_punishments {
-                                if !new_punishments.contains(punishment_id) {
+                            // Remove punishments that were unlinked
+                            for (punishment_id, _) in &original_punishments {
+                                if !new_punishment_ids.contains(&punishment_id) {
                                     let _ = ApiClient::remove_task_punishment(&household_id, &task_id, punishment_id).await;
                                 }
                             }
@@ -205,14 +221,14 @@ pub fn TaskModal(
                         Ok(created_task) => {
                             let task_id = created_task.id.to_string();
 
-                            // Add reward links
-                            for reward_id in &new_rewards {
-                                let _ = ApiClient::add_task_reward(&household_id, &task_id, reward_id).await;
+                            // Add reward links with amounts
+                            for (reward_id, amount) in &new_rewards {
+                                let _ = ApiClient::add_task_reward(&household_id, &task_id, reward_id, *amount).await;
                             }
 
-                            // Add punishment links
-                            for punishment_id in &new_punishments {
-                                let _ = ApiClient::add_task_punishment(&household_id, &task_id, punishment_id).await;
+                            // Add punishment links with amounts
+                            for (punishment_id, amount) in &new_punishments {
+                                let _ = ApiClient::add_task_punishment(&household_id, &task_id, punishment_id, *amount).await;
                             }
 
                             saving.set(false);
@@ -448,77 +464,237 @@ pub fn TaskModal(
                         // Rewards Section
                         <div class="form-group">
                             <label class="form-label">"Rewards on Completion"</label>
-                            <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.5rem;">
-                                {if household_rewards.is_empty() {
-                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem;">"No rewards defined"</p> }.into_view()
-                                } else {
-                                    household_rewards.clone().into_iter().map(|reward| {
-                                        let reward_id = reward.id.to_string();
-                                        let reward_id_for_check = reward_id.clone();
-                                        let reward_id_for_change = reward_id.clone();
-                                        view! {
-                                            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer;">
-                                                <input
-                                                    type="checkbox"
-                                                    prop:checked=move || selected_rewards.get().contains(&reward_id_for_check)
-                                                    on:change=move |ev| {
-                                                        let checked = event_target_checked(&ev);
+                            <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
+                                // Add new reward row
+                                {
+                                    let household_rewards_for_dropdown = household_rewards.clone();
+                                    view! {
+                                        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+                                            <select
+                                                class="form-select"
+                                                style="flex: 1;"
+                                                prop:value=move || selected_new_reward.get()
+                                                on:change=move |ev| selected_new_reward.set(event_target_value(&ev))
+                                            >
+                                                <option value="">"Select a reward..."</option>
+                                                {move || {
+                                                    let current_reward_ids: Vec<String> = selected_rewards.get().iter().map(|(id, _)| id.clone()).collect();
+                                                    household_rewards_for_dropdown.iter()
+                                                        .filter(|r| !current_reward_ids.contains(&r.id.to_string()))
+                                                        .map(|reward| {
+                                                            let reward_id = reward.id.to_string();
+                                                            let name = reward.name.clone();
+                                                            view! {
+                                                                <option value=reward_id>{name}</option>
+                                                            }
+                                                        })
+                                                        .collect_view()
+                                                }}
+                                            </select>
+                                            <input
+                                                type="number"
+                                                class="form-input"
+                                                style="width: 70px;"
+                                                min="1"
+                                                prop:value=move || new_reward_amount.get().to_string()
+                                                on:input=move |ev| {
+                                                    if let Ok(val) = event_target_value(&ev).parse::<i32>() {
+                                                        new_reward_amount.set(val.max(1));
+                                                    }
+                                                }
+                                            />
+                                            <button
+                                                type="button"
+                                                class="btn btn-outline"
+                                                style="padding: 0.5rem 1rem;"
+                                                disabled=move || selected_new_reward.get().is_empty()
+                                                on:click=move |_| {
+                                                    let reward_id = selected_new_reward.get();
+                                                    let amount = new_reward_amount.get();
+                                                    if !reward_id.is_empty() {
                                                         selected_rewards.update(|r| {
-                                                            if checked {
-                                                                if !r.contains(&reward_id_for_change) {
-                                                                    r.push(reward_id_for_change.clone());
-                                                                }
-                                                            } else {
-                                                                r.retain(|id| id != &reward_id_for_change);
+                                                            if !r.iter().any(|(id, _)| id == &reward_id) {
+                                                                r.push((reward_id.clone(), amount));
                                                             }
                                                         });
+                                                        selected_new_reward.set(String::new());
+                                                        new_reward_amount.set(1);
                                                     }
-                                                />
-                                                <span>{reward.name}</span>
-                                            </label>
-                                        }
-                                    }).collect_view().into_view()
-                                }}
+                                                }
+                                            >
+                                                "Add"
+                                            </button>
+                                        </div>
+                                    }
+                                }
+
+                                // List of linked rewards
+                                {
+                                    let household_rewards_for_list = household_rewards.clone();
+                                    view! {
+                                        <div>
+                                            {move || {
+                                                let rewards = selected_rewards.get();
+                                                if rewards.is_empty() {
+                                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">"No rewards linked"</p> }.into_view()
+                                                } else {
+                                                    rewards.iter().map(|(reward_id, amount)| {
+                                                        let reward_name = household_rewards_for_list.iter()
+                                                            .find(|r| r.id.to_string() == *reward_id)
+                                                            .map(|r| r.name.clone())
+                                                            .unwrap_or_else(|| "Unknown".to_string());
+                                                        let reward_id_for_remove = reward_id.clone();
+                                                        let amount_display = *amount;
+                                                        view! {
+                                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
+                                                                <span>
+                                                                    {reward_name}
+                                                                    {if amount_display > 1 {
+                                                                        view! { <span style="color: var(--text-muted); margin-left: 0.5rem;">" ×"{amount_display}</span> }.into_view()
+                                                                    } else {
+                                                                        ().into_view()
+                                                                    }}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    class="btn btn-outline"
+                                                                    style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                                    on:click=move |_| {
+                                                                        selected_rewards.update(|r| {
+                                                                            r.retain(|(id, _)| id != &reward_id_for_remove);
+                                                                        });
+                                                                    }
+                                                                >
+                                                                    "Remove"
+                                                                </button>
+                                                            </div>
+                                                        }
+                                                    }).collect_view().into_view()
+                                                }
+                                            }}
+                                        </div>
+                                    }
+                                }
                             </div>
-                            <small class="form-hint">"Selected rewards will be automatically assigned when this task is completed"</small>
+                            <small class="form-hint">"Rewards will be automatically assigned when this task is completed"</small>
                         </div>
 
                         // Punishments Section
                         <div class="form-group">
                             <label class="form-label">"Punishments on Miss"</label>
-                            <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.5rem;">
-                                {if household_punishments.is_empty() {
-                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem;">"No punishments defined"</p> }.into_view()
-                                } else {
-                                    household_punishments.clone().into_iter().map(|punishment| {
-                                        let punishment_id = punishment.id.to_string();
-                                        let punishment_id_for_check = punishment_id.clone();
-                                        let punishment_id_for_change = punishment_id.clone();
-                                        view! {
-                                            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer;">
-                                                <input
-                                                    type="checkbox"
-                                                    prop:checked=move || selected_punishments.get().contains(&punishment_id_for_check)
-                                                    on:change=move |ev| {
-                                                        let checked = event_target_checked(&ev);
+                            <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
+                                // Add new punishment row
+                                {
+                                    let household_punishments_for_dropdown = household_punishments.clone();
+                                    view! {
+                                        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+                                            <select
+                                                class="form-select"
+                                                style="flex: 1;"
+                                                prop:value=move || selected_new_punishment.get()
+                                                on:change=move |ev| selected_new_punishment.set(event_target_value(&ev))
+                                            >
+                                                <option value="">"Select a punishment..."</option>
+                                                {move || {
+                                                    let current_punishment_ids: Vec<String> = selected_punishments.get().iter().map(|(id, _)| id.clone()).collect();
+                                                    household_punishments_for_dropdown.iter()
+                                                        .filter(|p| !current_punishment_ids.contains(&p.id.to_string()))
+                                                        .map(|punishment| {
+                                                            let punishment_id = punishment.id.to_string();
+                                                            let name = punishment.name.clone();
+                                                            view! {
+                                                                <option value=punishment_id>{name}</option>
+                                                            }
+                                                        })
+                                                        .collect_view()
+                                                }}
+                                            </select>
+                                            <input
+                                                type="number"
+                                                class="form-input"
+                                                style="width: 70px;"
+                                                min="1"
+                                                prop:value=move || new_punishment_amount.get().to_string()
+                                                on:input=move |ev| {
+                                                    if let Ok(val) = event_target_value(&ev).parse::<i32>() {
+                                                        new_punishment_amount.set(val.max(1));
+                                                    }
+                                                }
+                                            />
+                                            <button
+                                                type="button"
+                                                class="btn btn-outline"
+                                                style="padding: 0.5rem 1rem;"
+                                                disabled=move || selected_new_punishment.get().is_empty()
+                                                on:click=move |_| {
+                                                    let punishment_id = selected_new_punishment.get();
+                                                    let amount = new_punishment_amount.get();
+                                                    if !punishment_id.is_empty() {
                                                         selected_punishments.update(|p| {
-                                                            if checked {
-                                                                if !p.contains(&punishment_id_for_change) {
-                                                                    p.push(punishment_id_for_change.clone());
-                                                                }
-                                                            } else {
-                                                                p.retain(|id| id != &punishment_id_for_change);
+                                                            if !p.iter().any(|(id, _)| id == &punishment_id) {
+                                                                p.push((punishment_id.clone(), amount));
                                                             }
                                                         });
+                                                        selected_new_punishment.set(String::new());
+                                                        new_punishment_amount.set(1);
                                                     }
-                                                />
-                                                <span>{punishment.name}</span>
-                                            </label>
-                                        }
-                                    }).collect_view().into_view()
-                                }}
+                                                }
+                                            >
+                                                "Add"
+                                            </button>
+                                        </div>
+                                    }
+                                }
+
+                                // List of linked punishments
+                                {
+                                    let household_punishments_for_list = household_punishments.clone();
+                                    view! {
+                                        <div>
+                                            {move || {
+                                                let punishments = selected_punishments.get();
+                                                if punishments.is_empty() {
+                                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">"No punishments linked"</p> }.into_view()
+                                                } else {
+                                                    punishments.iter().map(|(punishment_id, amount)| {
+                                                        let punishment_name = household_punishments_for_list.iter()
+                                                            .find(|p| p.id.to_string() == *punishment_id)
+                                                            .map(|p| p.name.clone())
+                                                            .unwrap_or_else(|| "Unknown".to_string());
+                                                        let punishment_id_for_remove = punishment_id.clone();
+                                                        let amount_display = *amount;
+                                                        view! {
+                                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
+                                                                <span>
+                                                                    {punishment_name}
+                                                                    {if amount_display > 1 {
+                                                                        view! { <span style="color: var(--text-muted); margin-left: 0.5rem;">" ×"{amount_display}</span> }.into_view()
+                                                                    } else {
+                                                                        ().into_view()
+                                                                    }}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    class="btn btn-outline"
+                                                                    style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                                    on:click=move |_| {
+                                                                        selected_punishments.update(|p| {
+                                                                            p.retain(|(id, _)| id != &punishment_id_for_remove);
+                                                                        });
+                                                                    }
+                                                                >
+                                                                    "Remove"
+                                                                </button>
+                                                            </div>
+                                                        }
+                                                    }).collect_view().into_view()
+                                                }
+                                            }}
+                                        </div>
+                                    }
+                                }
                             </div>
-                            <small class="form-hint">"Selected punishments will be automatically assigned when this task is missed"</small>
+                            <small class="form-hint">"Punishments will be automatically assigned when this task is missed"</small>
                         </div>
                     </div>
 
@@ -691,21 +867,29 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn test_rewards_list_change_add() {
-        let mut selected: Vec<String> = vec!["r1".to_string()];
+        let mut selected: Vec<(String, i32)> = vec![("r1".to_string(), 1)];
         let reward_id = "r2".to_string();
-        if !selected.contains(&reward_id) {
-            selected.push(reward_id);
+        let amount = 2;
+        if !selected.iter().any(|(id, _)| id == &reward_id) {
+            selected.push((reward_id, amount));
         }
         assert_eq!(selected.len(), 2);
-        assert!(selected.contains(&"r2".to_string()));
+        assert!(selected.iter().any(|(id, _)| id == "r2"));
     }
 
     #[wasm_bindgen_test]
     fn test_rewards_list_change_remove() {
-        let mut selected: Vec<String> = vec!["r1".to_string(), "r2".to_string()];
+        let mut selected: Vec<(String, i32)> = vec![("r1".to_string(), 1), ("r2".to_string(), 2)];
         let reward_id = "r1".to_string();
-        selected.retain(|id| id != &reward_id);
+        selected.retain(|(id, _)| id != &reward_id);
         assert_eq!(selected.len(), 1);
-        assert!(!selected.contains(&"r1".to_string()));
+        assert!(!selected.iter().any(|(id, _)| id == "r1"));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_rewards_with_amounts() {
+        let selected: Vec<(String, i32)> = vec![("r1".to_string(), 3), ("r2".to_string(), 1)];
+        let r1_amount = selected.iter().find(|(id, _)| id == "r1").map(|(_, a)| *a);
+        assert_eq!(r1_amount, Some(3));
     }
 }

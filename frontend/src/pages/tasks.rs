@@ -1,6 +1,6 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{MemberWithUser, Punishment, Reward, Task};
+use shared::{MemberWithUser, Punishment, Reward, Task, TaskPunishmentLink, TaskRewardLink};
 
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
@@ -23,8 +23,8 @@ pub fn TasksPage() -> impl IntoView {
 
     // Edit modal state
     let editing_task = create_rw_signal(Option::<Task>::None);
-    let task_linked_rewards = create_rw_signal(Vec::<Reward>::new());
-    let task_linked_punishments = create_rw_signal(Vec::<Punishment>::new());
+    let task_linked_rewards = create_rw_signal(Vec::<TaskRewardLink>::new());
+    let task_linked_punishments = create_rw_signal(Vec::<TaskPunishmentLink>::new());
 
     // Load tasks and supporting data
     create_effect(move |_| {

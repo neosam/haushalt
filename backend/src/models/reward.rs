@@ -29,6 +29,36 @@ impl RewardRow {
     }
 }
 
+/// Database model for reward linked to a task with amount
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct TaskRewardRow {
+    pub id: String,
+    pub household_id: String,
+    pub name: String,
+    pub description: String,
+    pub point_cost: Option<i64>,
+    pub is_purchasable: bool,
+    pub created_at: DateTime<Utc>,
+    pub amount: i32,
+}
+
+impl TaskRewardRow {
+    pub fn to_task_reward_link(&self) -> shared::TaskRewardLink {
+        shared::TaskRewardLink {
+            reward: shared::Reward {
+                id: Uuid::parse_str(&self.id).unwrap(),
+                household_id: Uuid::parse_str(&self.household_id).unwrap(),
+                name: self.name.clone(),
+                description: self.description.clone(),
+                point_cost: self.point_cost,
+                is_purchasable: self.is_purchasable,
+                created_at: self.created_at,
+            },
+            amount: self.amount,
+        }
+    }
+}
+
 /// Database model for user rewards (amount-based)
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct UserRewardRow {

@@ -2,9 +2,9 @@ use sqlx::SqlitePool;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::models::{RewardRow, PunishmentRow};
+use crate::models::{TaskRewardRow, TaskPunishmentRow};
 use crate::services::{rewards, punishments};
-use shared::{Punishment, Reward, UserPunishment, UserReward};
+use shared::{TaskRewardLink, TaskPunishmentLink, UserPunishment, UserReward};
 
 #[derive(Debug, Error)]
 pub enum TaskConsequenceError {
@@ -20,14 +20,16 @@ pub enum TaskConsequenceError {
     PunishmentError(#[from] punishments::PunishmentError),
 }
 
-/// Get all rewards linked to a task
+/// Get all rewards linked to a task with their amounts
 pub async fn get_task_rewards(
     pool: &SqlitePool,
     task_id: &Uuid,
-) -> Result<Vec<Reward>, TaskConsequenceError> {
-    let rewards: Vec<RewardRow> = sqlx::query_as(
+) -> Result<Vec<TaskRewardLink>, TaskConsequenceError> {
+    // Query rewards with their amounts from the join table
+    let rows: Vec<TaskRewardRow> = sqlx::query_as(
         r#"
-        SELECT r.* FROM rewards r
+        SELECT r.id, r.household_id, r.name, r.description, r.point_cost, r.is_purchasable, r.created_at, tr.amount
+        FROM rewards r
         INNER JOIN task_rewards tr ON r.id = tr.reward_id
         WHERE tr.task_id = ?
         ORDER BY r.name
@@ -37,17 +39,21 @@ pub async fn get_task_rewards(
     .fetch_all(pool)
     .await?;
 
-    Ok(rewards.into_iter().map(|r| r.to_shared()).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| r.to_task_reward_link())
+        .collect())
 }
 
-/// Get all punishments linked to a task
+/// Get all punishments linked to a task with their amounts
 pub async fn get_task_punishments(
     pool: &SqlitePool,
     task_id: &Uuid,
-) -> Result<Vec<Punishment>, TaskConsequenceError> {
-    let punishments: Vec<PunishmentRow> = sqlx::query_as(
+) -> Result<Vec<TaskPunishmentLink>, TaskConsequenceError> {
+    let rows: Vec<TaskPunishmentRow> = sqlx::query_as(
         r#"
-        SELECT p.* FROM punishments p
+        SELECT p.id, p.household_id, p.name, p.description, p.created_at, tp.amount
+        FROM punishments p
         INNER JOIN task_punishments tp ON p.id = tp.punishment_id
         WHERE tp.task_id = ?
         ORDER BY p.name
@@ -57,14 +63,18 @@ pub async fn get_task_punishments(
     .fetch_all(pool)
     .await?;
 
-    Ok(punishments.into_iter().map(|p| p.to_shared()).collect())
+    Ok(rows
+        .into_iter()
+        .map(|p| p.to_task_punishment_link())
+        .collect())
 }
 
-/// Link a reward to a task
+/// Link a reward to a task with an amount
 pub async fn add_task_reward(
     pool: &SqlitePool,
     task_id: &Uuid,
     reward_id: &Uuid,
+    amount: i32,
 ) -> Result<(), TaskConsequenceError> {
     // Check if the association already exists
     let existing = sqlx::query_scalar::<_, i64>(
@@ -79,9 +89,10 @@ pub async fn add_task_reward(
         return Err(TaskConsequenceError::AlreadyExists);
     }
 
-    sqlx::query("INSERT INTO task_rewards (task_id, reward_id) VALUES (?, ?)")
+    sqlx::query("INSERT INTO task_rewards (task_id, reward_id, amount) VALUES (?, ?, ?)")
         .bind(task_id.to_string())
         .bind(reward_id.to_string())
+        .bind(amount)
         .execute(pool)
         .await?;
 
@@ -107,11 +118,12 @@ pub async fn remove_task_reward(
     Ok(())
 }
 
-/// Link a punishment to a task
+/// Link a punishment to a task with an amount
 pub async fn add_task_punishment(
     pool: &SqlitePool,
     task_id: &Uuid,
     punishment_id: &Uuid,
+    amount: i32,
 ) -> Result<(), TaskConsequenceError> {
     // Check if the association already exists
     let existing = sqlx::query_scalar::<_, i64>(
@@ -126,9 +138,10 @@ pub async fn add_task_punishment(
         return Err(TaskConsequenceError::AlreadyExists);
     }
 
-    sqlx::query("INSERT INTO task_punishments (task_id, punishment_id) VALUES (?, ?)")
+    sqlx::query("INSERT INTO task_punishments (task_id, punishment_id, amount) VALUES (?, ?, ?)")
         .bind(task_id.to_string())
         .bind(punishment_id.to_string())
+        .bind(amount)
         .execute(pool)
         .await?;
 
@@ -156,6 +169,7 @@ pub async fn remove_task_punishment(
 }
 
 /// Assign all rewards linked to a task to a user (called on task completion)
+/// Each reward is assigned `amount` times based on the task-reward link
 pub async fn assign_task_completion_rewards(
     pool: &SqlitePool,
     task_id: &Uuid,
@@ -166,16 +180,20 @@ pub async fn assign_task_completion_rewards(
 
     let mut assigned_rewards = Vec::new();
 
-    for reward in task_rewards {
-        let user_reward = rewards::assign_reward(pool, &reward.id, user_id, household_id)
-            .await?;
-        assigned_rewards.push(user_reward);
+    for task_reward in task_rewards {
+        // Apply the reward `amount` times
+        for _ in 0..task_reward.amount {
+            let user_reward = rewards::assign_reward(pool, &task_reward.reward.id, user_id, household_id)
+                .await?;
+            assigned_rewards.push(user_reward);
+        }
     }
 
     Ok(assigned_rewards)
 }
 
 /// Assign all punishments linked to a task to a user (called on missed task)
+/// Each punishment is assigned `amount` times based on the task-punishment link
 pub async fn assign_missed_task_punishments(
     pool: &SqlitePool,
     task_id: &Uuid,
@@ -186,15 +204,18 @@ pub async fn assign_missed_task_punishments(
 
     let mut assigned_punishments = Vec::new();
 
-    for punishment in task_punishments {
-        let user_punishment = punishments::assign_punishment(
-            pool,
-            &punishment.id,
-            user_id,
-            household_id,
-        )
-        .await?;
-        assigned_punishments.push(user_punishment);
+    for task_punishment in task_punishments {
+        // Apply the punishment `amount` times
+        for _ in 0..task_punishment.amount {
+            let user_punishment = punishments::assign_punishment(
+                pool,
+                &task_punishment.punishment.id,
+                user_id,
+                household_id,
+            )
+            .await?;
+            assigned_punishments.push(user_punishment);
+        }
     }
 
     Ok(assigned_punishments)
