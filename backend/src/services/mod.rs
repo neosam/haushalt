@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod households;
 pub mod household_settings;
+pub mod user_settings;
 pub mod tasks;
 pub mod points;
 pub mod rewards;

@@ -5,10 +5,14 @@ use shared::{HierarchyType, HouseholdSettings, Role, UpdateHouseholdSettingsRequ
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::i18n::use_i18n;
 use crate::utils::COMMON_TIMEZONES;
 
 #[component]
 pub fn HouseholdSettingsPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let params = use_params_map();
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
@@ -90,7 +94,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             match ApiClient::update_household_settings(&id, request).await {
                 Ok(s) => {
                     settings.set(Some(s.clone()));
-                    success.set(Some("Settings saved successfully!".to_string()));
+                    success.set(Some(i18n_stored.get_value().t("settings.saved")));
 
                     // Apply dark mode immediately
                     apply_dark_mode(s.dark_mode);
@@ -107,7 +111,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
         <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Settings />
 
         <div class="dashboard-header">
-            <h1 class="dashboard-title">"Household Settings"</h1>
+            <h1 class="dashboard-title">{i18n_stored.get_value().t("settings.household_settings")}</h1>
         </div>
 
         <Show when=move || loading.get() fallback=|| ()>
@@ -126,15 +130,15 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             <div class="card">
                 <Show
                     when=move || is_owner.get()
-                    fallback=|| view! {
+                    fallback=move || view! {
                         <div class="empty-state">
-                            <p>"Only the household owner can modify settings."</p>
+                            <p>{i18n_stored.get_value().t("settings.owner_only")}</p>
                         </div>
                     }
                 >
                     <form on:submit=on_save>
                         <div class="form-group">
-                            <label class="form-label" for="hierarchy-type">"Household Structure"</label>
+                            <label class="form-label" for="hierarchy-type">{i18n_stored.get_value().t("settings.household_structure")}</label>
                             <select
                                 id="hierarchy-type"
                                 class="form-select"
@@ -149,22 +153,22 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                 }
                             >
                                 <option value="equals" selected=move || hierarchy_type.get() == HierarchyType::Equals>
-                                    "Equals - Everyone can manage tasks and rewards"
+                                    {i18n_stored.get_value().t("hierarchy.equals")} " - " {i18n_stored.get_value().t("hierarchy.equals_desc")}
                                 </option>
                                 <option value="organized" selected=move || hierarchy_type.get() == HierarchyType::Organized>
-                                    "Organized - Only admins can manage (default)"
+                                    {i18n_stored.get_value().t("hierarchy.organized")} " - " {i18n_stored.get_value().t("hierarchy.organized_desc")}
                                 </option>
                                 <option value="hierarchy" selected=move || hierarchy_type.get() == HierarchyType::Hierarchy>
-                                    "Hierarchy - Admins manage, only members get assigned tasks"
+                                    {i18n_stored.get_value().t("hierarchy.hierarchy")} " - " {i18n_stored.get_value().t("hierarchy.hierarchy_desc")}
                                 </option>
                             </select>
-                            <small class="form-hint">"Controls who can manage tasks, rewards, and punishments, and who can be assigned tasks"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.structure_hint")}</small>
                         </div>
 
                         <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
 
                         <div class="form-group">
-                            <label class="form-label" for="timezone">"Timezone"</label>
+                            <label class="form-label" for="timezone">{i18n_stored.get_value().t("settings.timezone")}</label>
                             <select
                                 id="timezone"
                                 class="form-select"
@@ -185,13 +189,13 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                     }
                                 }).collect_view()}
                             </select>
-                            <small class="form-hint">"All dates and times will be displayed in this timezone"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.timezone_hint")}</small>
                         </div>
 
                         <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
 
                         <div class="form-group">
-                            <label class="form-label">"Theme"</label>
+                            <label class="form-label">{i18n_stored.get_value().t("settings.theme")}</label>
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
                                 <input
                                     type="checkbox"
@@ -201,49 +205,49 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                         dark_mode.set(event_target_checked(&ev));
                                     }
                                 />
-                                <label for="dark-mode">"Enable Dark Mode"</label>
+                                <label for="dark-mode">{i18n_stored.get_value().t("settings.enable_dark_mode")}</label>
                             </div>
-                            <small class="form-hint">"All household members will see the dark theme when viewing this household"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.dark_mode_hint")}</small>
                         </div>
 
                         <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
 
-                        <h3 style="margin-bottom: 1rem;">"Custom Role Labels"</h3>
+                        <h3 style="margin-bottom: 1rem;">{i18n_stored.get_value().t("settings.custom_role_labels")}</h3>
                         <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.875rem;">
-                            "Customize how roles are displayed throughout the household."
+                            {i18n_stored.get_value().t("settings.role_labels_hint")}
                         </p>
 
                         <div class="form-group">
-                            <label class="form-label" for="label-owner">"Owner Role Label"</label>
+                            <label class="form-label" for="label-owner">{i18n_stored.get_value().t("settings.owner_label")}</label>
                             <input
                                 type="text"
                                 id="label-owner"
                                 class="form-input"
-                                placeholder="Owner"
+                                placeholder=i18n_stored.get_value().t("roles.owner")
                                 prop:value=move || role_label_owner.get()
                                 on:input=move |ev| role_label_owner.set(event_target_value(&ev))
                             />
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="label-admin">"Admin Role Label"</label>
+                            <label class="form-label" for="label-admin">{i18n_stored.get_value().t("settings.admin_label")}</label>
                             <input
                                 type="text"
                                 id="label-admin"
                                 class="form-input"
-                                placeholder="Admin"
+                                placeholder=i18n_stored.get_value().t("roles.admin")
                                 prop:value=move || role_label_admin.get()
                                 on:input=move |ev| role_label_admin.set(event_target_value(&ev))
                             />
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="label-member">"Member Role Label"</label>
+                            <label class="form-label" for="label-member">{i18n_stored.get_value().t("settings.member_label")}</label>
                             <input
                                 type="text"
                                 id="label-member"
                                 class="form-input"
-                                placeholder="Member"
+                                placeholder=i18n_stored.get_value().t("roles.member")
                                 prop:value=move || role_label_member.get()
                                 on:input=move |ev| role_label_member.set(event_target_value(&ev))
                             />
@@ -255,7 +259,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                 class="btn btn-primary"
                                 disabled=move || saving.get()
                             >
-                                {move || if saving.get() { "Saving..." } else { "Save Settings" }}
+                                {move || if saving.get() { i18n_stored.get_value().t("common.saving") } else { i18n_stored.get_value().t("settings.save_settings") }}
                             </button>
                         </div>
                     </form>

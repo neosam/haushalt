@@ -1,19 +1,24 @@
 use leptos::*;
 use leptos_router::*;
 
-use crate::api::AuthState;
+use crate::api::{ApiClient, AuthState};
 use crate::components::navbar::Navbar;
+use crate::i18n::{provide_i18n, use_i18n};
 use crate::pages::{
     activity::ActivityPage, chat::ChatPage, dashboard::Dashboard, household::HouseholdPage,
     household_settings::HouseholdSettingsPage, login::Login, notes::NotesPage,
     punishments::PunishmentsPage, register::Register, rewards::RewardsPage,
-    settings::SettingsPage, tasks::TasksPage,
+    settings::SettingsPage, tasks::TasksPage, user_settings::UserSettingsPage,
 };
 
 #[component]
 pub fn App() -> impl IntoView {
     let auth_state = AuthState::new();
     provide_context(auth_state.clone());
+
+    // Provide i18n context with default language
+    // The language will be updated when user settings are loaded
+    provide_i18n("en".to_string());
 
     view! {
         <Router>
@@ -32,6 +37,7 @@ pub fn App() -> impl IntoView {
                         <Route path="/households/:id/activity" view=ActivityPage />
                         <Route path="/households/:id/settings" view=HouseholdSettingsPage />
                         <Route path="/settings" view=SettingsPage />
+                        <Route path="/user-settings" view=UserSettingsPage />
                     </Route>
                 </Routes>
             </main>
@@ -42,6 +48,20 @@ pub fn App() -> impl IntoView {
 #[component]
 fn AuthenticatedLayout() -> impl IntoView {
     let auth_state = expect_context::<AuthState>();
+    let i18n = use_i18n();
+
+    // Load user settings and update language on authentication
+    let auth_state_effect = auth_state.clone();
+    create_effect(move |_| {
+        if auth_state_effect.is_authenticated() {
+            let i18n = i18n.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(settings) = ApiClient::get_user_settings().await {
+                    i18n.set_language(&settings.language);
+                }
+            });
+        }
+    });
 
     view! {
         <Show

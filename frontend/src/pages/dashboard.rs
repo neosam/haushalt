@@ -4,9 +4,13 @@ use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, Role};
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn Dashboard() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let households = create_rw_signal(Vec::<Household>::new());
     let invitations = create_rw_signal(Vec::<InvitationWithHousehold>::new());
     let loading = create_rw_signal(true);
@@ -85,8 +89,8 @@ pub fn Dashboard() -> impl IntoView {
 
     view! {
         <div class="dashboard-header">
-            <h1 class="dashboard-title">"Your Households"</h1>
-            <p class="dashboard-subtitle">"Manage your households and tasks"</p>
+            <h1 class="dashboard-title">{move || i18n_stored.get_value().t("dashboard.title")}</h1>
+            <p class="dashboard-subtitle">{move || i18n_stored.get_value().t("dashboard.subtitle")}</p>
         </div>
 
         {move || error.get().map(|e| view! {
@@ -102,7 +106,7 @@ pub fn Dashboard() -> impl IntoView {
             <Show when=move || !invitations.get().is_empty() fallback=|| ()>
                 <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--primary-color);">
                     <div class="card-header">
-                        <h3 class="card-title">"Pending Invitations"</h3>
+                        <h3 class="card-title">{move || i18n_stored.get_value().t("dashboard.pending_invitations")}</h3>
                     </div>
                     {move || {
                         invitations.get().into_iter().map(|inv| {
@@ -122,8 +126,10 @@ pub fn Dashboard() -> impl IntoView {
                                     <div>
                                         <div style="font-weight: 600; font-size: 1rem;">{inv.household.name.clone()}</div>
                                         <div style="font-size: 0.875rem; color: var(--text-muted);">
-                                            "Invited by " <span style="font-weight: 500;">{inv.invited_by_user.username.clone()}</span>
-                                            " as "<span class=role_badge style="margin-left: 0.25rem;">{role_text}</span>
+                                            {i18n_stored.get_value().t("dashboard.invited_by")} " "
+                                            <span style="font-weight: 500;">{inv.invited_by_user.username.clone()}</span>
+                                            " " {i18n_stored.get_value().t("dashboard.as_role")} " "
+                                            <span class=role_badge style="margin-left: 0.25rem;">{role_text}</span>
                                         </div>
                                     </div>
                                     <div style="display: flex; gap: 0.5rem;">
@@ -132,14 +138,14 @@ pub fn Dashboard() -> impl IntoView {
                                             style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
                                             on:click=move |_| on_decline_invitation(decline_id.clone())
                                         >
-                                            "Decline"
+                                            {i18n_stored.get_value().t("dashboard.decline")}
                                         </button>
                                         <button
                                             class="btn btn-primary"
                                             style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
                                             on:click=move |_| on_accept_invitation(accept_id.clone(), household_for_accept.clone())
                                         >
-                                            "Accept"
+                                            {i18n_stored.get_value().t("dashboard.accept")}
                                         </button>
                                     </div>
                                 </div>
@@ -151,7 +157,7 @@ pub fn Dashboard() -> impl IntoView {
 
             <div style="margin-bottom: 1rem;">
                 <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
-                    "+ Create Household"
+                    {move || i18n_stored.get_value().t("dashboard.create_household")}
                 </button>
             </div>
 
@@ -160,8 +166,8 @@ pub fn Dashboard() -> impl IntoView {
                 if h.is_empty() {
                     view! {
                         <div class="card empty-state">
-                            <p>"You don't have any households yet."</p>
-                            <p>"Create one to get started!"</p>
+                            <p>{i18n_stored.get_value().t("dashboard.no_households")}</p>
+                            <p>{i18n_stored.get_value().t("dashboard.get_started")}</p>
                         </div>
                     }.into_view()
                 } else {
@@ -174,7 +180,7 @@ pub fn Dashboard() -> impl IntoView {
                                         <div class="card" style="cursor: pointer; transition: transform 0.2s;">
                                             <h3 class="card-title">{household.name}</h3>
                                             <p style="color: var(--text-muted); font-size: 0.875rem;">
-                                                "Click to manage"
+                                                {i18n_stored.get_value().t("dashboard.click_to_manage")}
                                             </p>
                                         </div>
                                     </a>
@@ -187,15 +193,15 @@ pub fn Dashboard() -> impl IntoView {
         </Show>
 
         <Show when=move || show_create_modal.get() fallback=|| ()>
-            <Modal title="Create Household" on_close=move |_| show_create_modal.set(false)>
+            <Modal title=i18n_stored.get_value().t("household.create") on_close=move |_| show_create_modal.set(false)>
                 <form on:submit=on_create>
                     <div class="form-group">
-                        <label class="form-label" for="household-name">"Household Name"</label>
+                        <label class="form-label" for="household-name">{i18n_stored.get_value().t("household.name")}</label>
                         <input
                             type="text"
                             id="household-name"
                             class="form-input"
-                            placeholder="e.g., Smith Family"
+                            placeholder=i18n_stored.get_value().t("household.name_placeholder")
                             prop:value=move || new_household_name.get()
                             on:input=move |ev| new_household_name.set(event_target_value(&ev))
                             required
@@ -203,10 +209,10 @@ pub fn Dashboard() -> impl IntoView {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline" on:click=move |_| show_create_modal.set(false)>
-                            "Cancel"
+                            {i18n_stored.get_value().t("common.cancel")}
                         </button>
                         <button type="submit" class="btn btn-primary">
-                            "Create"
+                            {i18n_stored.get_value().t("common.create")}
                         </button>
                     </div>
                 </form>

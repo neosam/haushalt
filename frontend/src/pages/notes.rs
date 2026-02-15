@@ -8,9 +8,13 @@ use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::note_card::NoteCard;
 use crate::components::note_modal::NoteModal;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn NotesPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let params = use_params_map();
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
@@ -93,7 +97,7 @@ pub fn NotesPage() -> impl IntoView {
             match ApiClient::delete_note(&id, &note_id_str).await {
                 Ok(()) => {
                     notes.update(|n| n.retain(|note| note.note.id != note_id));
-                    success.set(Some("Note deleted".to_string()));
+                    success.set(Some(i18n_stored.get_value().t("notes.deleted")));
                 }
                 Err(e) => error.set(Some(e)),
             }
@@ -102,7 +106,7 @@ pub fn NotesPage() -> impl IntoView {
 
     let on_modal_save = move |_saved_note: Note| {
         modal_note.set(None);
-        success.set(Some("Note saved".to_string()));
+        success.set(Some(i18n_stored.get_value().t("notes.saved")));
         // Reload to get the updated note with user info
         reload_notes();
     };
@@ -136,9 +140,9 @@ pub fn NotesPage() -> impl IntoView {
         <HouseholdTabs household_id=hid.clone() active_tab=HouseholdTab::Notes />
 
         <div class="dashboard-header">
-            <h1 class="dashboard-title">"Notes"</h1>
+            <h1 class="dashboard-title">{i18n_stored.get_value().t("notes.title")}</h1>
             <button class="btn btn-primary" on:click=open_create_modal>
-                "New Note"
+                {i18n_stored.get_value().t("notes.new_note")}
             </button>
         </div>
 
@@ -163,7 +167,7 @@ pub fn NotesPage() -> impl IntoView {
                     prop:checked=move || show_shared.get()
                     on:change=move |ev| show_shared.set(event_target_checked(&ev))
                 />
-                <span>"Shared"</span>
+                <span>{i18n_stored.get_value().t("notes.shared")}</span>
             </label>
             <label class="filter-checkbox">
                 <input
@@ -171,7 +175,7 @@ pub fn NotesPage() -> impl IntoView {
                     prop:checked=move || show_private.get()
                     on:change=move |ev| show_private.set(event_target_checked(&ev))
                 />
-                <span>"Private"</span>
+                <span>{i18n_stored.get_value().t("notes.private")}</span>
             </label>
         </div>
 
@@ -188,7 +192,7 @@ pub fn NotesPage() -> impl IntoView {
                     if notes_vec.is_empty() {
                         view! {
                             <div class="empty-state">
-                                <p>"No notes yet. Create your first note!"</p>
+                                <p>{i18n_stored.get_value().t("notes.first_note")}</p>
                             </div>
                         }.into_view()
                     } else {

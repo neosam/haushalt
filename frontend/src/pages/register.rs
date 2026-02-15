@@ -3,9 +3,13 @@ use leptos_router::*;
 use shared::CreateUserRequest;
 
 use crate::api::{ApiClient, AuthState};
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn Register() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let auth_state = expect_context::<AuthState>();
     let navigate = use_navigate();
 
@@ -20,12 +24,12 @@ pub fn Register() -> impl IntoView {
         ev.prevent_default();
 
         if password.get() != confirm_password.get() {
-            error.set(Some("Passwords do not match".to_string()));
+            error.set(Some(i18n_stored.get_value().t("auth.password_mismatch")));
             return;
         }
 
         if password.get().len() < 8 {
-            error.set(Some("Password must be at least 8 characters".to_string()));
+            error.set(Some(i18n_stored.get_value().t("auth.password_min_length")));
             return;
         }
 
@@ -59,8 +63,8 @@ pub fn Register() -> impl IntoView {
         <div class="auth-container">
             <div class="auth-card card">
                 <div class="auth-header">
-                    <h1 class="auth-title">"Create Account"</h1>
-                    <p class="auth-subtitle">"Sign up to get started"</p>
+                    <h1 class="auth-title">{move || i18n_stored.get_value().t("auth.create_account")}</h1>
+                    <p class="auth-subtitle">{move || i18n_stored.get_value().t("auth.create_account_subtitle")}</p>
                 </div>
 
                 {move || error.get().map(|e| view! {
@@ -69,12 +73,12 @@ pub fn Register() -> impl IntoView {
 
                 <form on:submit=on_submit>
                     <div class="form-group">
-                        <label class="form-label" for="username">"Username"</label>
+                        <label class="form-label" for="username">{move || i18n_stored.get_value().t("auth.username")}</label>
                         <input
                             type="text"
                             id="username"
                             class="form-input"
-                            placeholder="Choose a username"
+                            placeholder=move || i18n_stored.get_value().t("auth.choose_username")
                             prop:value=move || username.get()
                             on:input=move |ev| username.set(event_target_value(&ev))
                             required
@@ -82,12 +86,12 @@ pub fn Register() -> impl IntoView {
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label" for="email">"Email"</label>
+                        <label class="form-label" for="email">{move || i18n_stored.get_value().t("auth.email")}</label>
                         <input
                             type="email"
                             id="email"
                             class="form-input"
-                            placeholder="Enter your email"
+                            placeholder=move || i18n_stored.get_value().t("auth.enter_email")
                             prop:value=move || email.get()
                             on:input=move |ev| email.set(event_target_value(&ev))
                             required
@@ -95,12 +99,12 @@ pub fn Register() -> impl IntoView {
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label" for="password">"Password"</label>
+                        <label class="form-label" for="password">{move || i18n_stored.get_value().t("auth.password")}</label>
                         <input
                             type="password"
                             id="password"
                             class="form-input"
-                            placeholder="Create a password (min 8 characters)"
+                            placeholder=move || i18n_stored.get_value().t("auth.create_password")
                             prop:value=move || password.get()
                             on:input=move |ev| password.set(event_target_value(&ev))
                             required
@@ -109,12 +113,12 @@ pub fn Register() -> impl IntoView {
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label" for="confirm-password">"Confirm Password"</label>
+                        <label class="form-label" for="confirm-password">{move || i18n_stored.get_value().t("auth.confirm_password")}</label>
                         <input
                             type="password"
                             id="confirm-password"
                             class="form-input"
-                            placeholder="Confirm your password"
+                            placeholder=move || i18n_stored.get_value().t("auth.confirm_your_password")
                             prop:value=move || confirm_password.get()
                             on:input=move |ev| confirm_password.set(event_target_value(&ev))
                             required
@@ -127,13 +131,13 @@ pub fn Register() -> impl IntoView {
                         style="width: 100%; margin-top: 1rem;"
                         disabled=move || loading.get()
                     >
-                        {move || if loading.get() { "Creating account..." } else { "Create Account" }}
+                        {move || if loading.get() { i18n_stored.get_value().t("auth.creating_account") } else { i18n_stored.get_value().t("auth.create_account") }}
                     </button>
                 </form>
 
                 <p style="text-align: center; margin-top: 1rem; color: var(--text-muted);">
-                    "Already have an account? "
-                    <a href="/login" style="color: var(--primary-color);">"Sign in"</a>
+                    {move || i18n_stored.get_value().t("auth.have_account")} " "
+                    <a href="/login" style="color: var(--primary-color);">{move || i18n_stored.get_value().t("auth.sign_in")}</a>
                 </p>
             </div>
         </div>

@@ -7,9 +7,13 @@ use crate::api::ApiClient;
 use crate::components::chat_message::ChatMessage;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn ChatPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let params = use_params_map();
 
     // Get household_id once at component creation
@@ -166,7 +170,7 @@ pub fn ChatPage() -> impl IntoView {
         <HouseholdTabs household_id=hid.clone() active_tab=HouseholdTab::Chat />
 
         <div class="dashboard-header">
-            <h1 class="dashboard-title">"Chat"</h1>
+            <h1 class="dashboard-title">{i18n_stored.get_value().t("chat.title")}</h1>
         </div>
 
         {move || error.get().map(|e| view! {
@@ -187,7 +191,7 @@ pub fn ChatPage() -> impl IntoView {
                         if msgs.is_empty() {
                             view! {
                                 <div class="chat-empty">
-                                    <p>"No messages yet. Start the conversation!"</p>
+                                    <p>{i18n_stored.get_value().t("chat.start_conversation")}</p>
                                 </div>
                             }.into_view()
                         } else {
@@ -213,7 +217,7 @@ pub fn ChatPage() -> impl IntoView {
                 <div class="chat-input-area">
                     <textarea
                         class="chat-input"
-                        placeholder="Type a message..."
+                        placeholder=i18n_stored.get_value().t("chat.placeholder")
                         prop:value=move || new_message.get()
                         on:input=move |ev| new_message.set(event_target_value(&ev))
                         on:keydown=handle_keydown
@@ -224,7 +228,7 @@ pub fn ChatPage() -> impl IntoView {
                         on:click=send_message
                         disabled=move || sending.get() || new_message.get().trim().is_empty()
                     >
-                        {move || if sending.get() { "Sending..." } else { "Send" }}
+                        {move || if sending.get() { i18n_stored.get_value().t("chat.sending") } else { i18n_stored.get_value().t("chat.send") }}
                     </button>
                 </div>
             </div>

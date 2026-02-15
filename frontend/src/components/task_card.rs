@@ -4,6 +4,7 @@ use shared::TaskWithStatus;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use crate::i18n::use_i18n;
 use crate::utils::timezone::today_in_tz;
 
 /// Format a next due date for display
@@ -40,6 +41,9 @@ pub fn TaskCard(
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let is_target_met = task.is_target_met();
     let can_complete = task.can_complete();
     let task_id = task.task.id.to_string();
@@ -95,7 +99,7 @@ pub fn TaskCard(
                     {task.task.title.clone()}
                     {if requires_review {
                         view! {
-                            <span class="task-badge task-badge-review" title="Requires review">"Review"</span>
+                            <span class="task-badge task-badge-review" title="Requires review">{i18n_stored.get_value().t("tasks.pending_review")}</span>
                         }.into_view()
                     } else {
                         ().into_view()
@@ -143,15 +147,18 @@ pub fn TaskList(
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     view! {
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">"Today's Tasks"</h3>
+                <h3 class="card-title">{i18n_stored.get_value().t("dates.today")} " - " {i18n_stored.get_value().t("tasks.title")}</h3>
             </div>
             {if tasks.is_empty() {
                 view! {
                     <div class="empty-state">
-                        <p>"No tasks due today!"</p>
+                        <p>{i18n_stored.get_value().t("tasks.no_tasks")}</p>
                     </div>
                 }.into_any()
             } else {
@@ -225,6 +232,9 @@ pub fn GroupedTaskList(
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let today = today_in_tz(&timezone);
 
     // Group tasks by their due date
@@ -240,12 +250,12 @@ pub fn GroupedTaskList(
     view! {
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">"Tasks"</h3>
+                <h3 class="card-title">{i18n_stored.get_value().t("tasks.title")}</h3>
             </div>
             {if groups.is_empty() {
                 view! {
                     <div class="empty-state">
-                        <p>"No tasks yet!"</p>
+                        <p>{i18n_stored.get_value().t("tasks.no_tasks")}</p>
                     </div>
                 }.into_any()
             } else {

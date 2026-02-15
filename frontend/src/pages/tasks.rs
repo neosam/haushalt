@@ -7,9 +7,13 @@ use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::pending_reviews::PendingReviews;
 use crate::components::task_modal::TaskModal;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn TasksPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let params = use_params_map();
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
@@ -166,7 +170,7 @@ pub fn TasksPage() -> impl IntoView {
         <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Tasks />
 
         <div class="dashboard-header">
-            <h1 class="dashboard-title">"Tasks"</h1>
+            <h1 class="dashboard-title">{i18n_stored.get_value().t("tasks.title")}</h1>
         </div>
 
         {move || error.get().map(|e| view! {
@@ -182,7 +186,7 @@ pub fn TasksPage() -> impl IntoView {
             <Show when=move || !my_assigned_tasks.get().is_empty() fallback=|| ()>
                 <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--primary-color);">
                     <div class="card-header">
-                        <h3 class="card-title">"My Assigned Tasks"</h3>
+                        <h3 class="card-title">{i18n_stored.get_value().t("tasks.my_assigned")}</h3>
                     </div>
                     {move || {
                         my_assigned_tasks.get().into_iter().map(|task| {
@@ -227,19 +231,19 @@ pub fn TasksPage() -> impl IntoView {
 
             <div style="margin-bottom: 1rem;">
                 <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
-                    "+ Create Task"
+                    "+ " {i18n_stored.get_value().t("tasks.create")}
                 </button>
             </div>
 
-            <h3 style="margin-bottom: 1rem; color: var(--text-muted);">"All Tasks"</h3>
+            <h3 style="margin-bottom: 1rem; color: var(--text-muted);">{i18n_stored.get_value().t("tasks.all_tasks")}</h3>
 
             {move || {
                 let t = tasks.get();
                 if t.is_empty() {
                     view! {
                         <div class="card empty-state">
-                            <p>"No tasks yet."</p>
-                            <p>"Create your first task to get started!"</p>
+                            <p>{i18n_stored.get_value().t("tasks.no_tasks")}</p>
+                            <p>{i18n_stored.get_value().t("tasks.add_first")}</p>
                         </div>
                     }.into_view()
                 } else {
@@ -276,14 +280,14 @@ pub fn TasksPage() -> impl IntoView {
                                                 style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
                                                 on:click=move |_| on_edit(edit_task.clone())
                                             >
-                                                "Edit"
+                                                {i18n_stored.get_value().t("common.edit")}
                                             </button>
                                             <button
                                                 class="btn btn-danger"
                                                 style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
                                                 on:click=move |_| on_delete(delete_id.clone())
                                             >
-                                                "Delete"
+                                                {i18n_stored.get_value().t("common.delete")}
                                             </button>
                                         </div>
                                     </div>

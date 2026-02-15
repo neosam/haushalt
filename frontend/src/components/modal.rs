@@ -2,7 +2,7 @@ use leptos::*;
 
 #[component]
 pub fn Modal(
-    title: &'static str,
+    #[prop(into)] title: String,
     #[prop(into)] on_close: Callback<()>,
     children: Children,
 ) -> impl IntoView {

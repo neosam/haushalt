@@ -14,7 +14,8 @@ use shared::{
     PendingReview, PendingRewardRedemption, PointCondition, Punishment, Reward, Task, TaskCompletion,
     TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest, UpdateChatMessageRequest,
     UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest, UpdateRewardRequest,
-    UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward, UserRewardWithUser,
+    UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment, UserPunishmentWithUser,
+    UserReward, UserRewardWithUser, UserSettings,
 };
 
 const API_BASE: &str = "/api";
@@ -1040,6 +1041,17 @@ impl ApiClient {
             true,
         )
         .await
+    }
+
+    // User settings endpoints
+    pub async fn get_user_settings() -> Result<UserSettings, String> {
+        Self::request::<UserSettings>("GET", "/users/me/settings", None::<()>, true).await
+    }
+
+    pub async fn update_user_settings(
+        request: UpdateUserSettingsRequest,
+    ) -> Result<UserSettings, String> {
+        Self::request("PUT", "/users/me/settings", Some(request), true).await
     }
 }
 

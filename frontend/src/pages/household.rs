@@ -12,9 +12,13 @@ use crate::components::pending_confirmations::PendingConfirmations;
 use crate::components::pending_reviews::PendingReviews;
 use crate::components::points_display::PointsBadge;
 use crate::components::task_card::GroupedTaskList;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn HouseholdPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let params = use_params_map();
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
@@ -243,13 +247,13 @@ pub fn HouseholdPage() -> impl IntoView {
         let points: i64 = match amount_str.parse() {
             Ok(p) => p,
             Err(_) => {
-                adjust_points_error.set(Some("Please enter a valid number".to_string()));
+                adjust_points_error.set(Some(i18n_stored.get_value().t("members.valid_number_error")));
                 return;
             }
         };
 
         if points == 0 {
-            adjust_points_error.set(Some("Points cannot be zero".to_string()));
+            adjust_points_error.set(Some(i18n_stored.get_value().t("members.zero_points_error")));
             return;
         }
 
@@ -297,7 +301,7 @@ pub fn HouseholdPage() -> impl IntoView {
         let reward_id = selected_reward_id.get();
 
         if reward_id.is_empty() {
-            assign_reward_error.set(Some("Please select a reward".to_string()));
+            assign_reward_error.set(Some(i18n_stored.get_value().t("members.select_reward_error")));
             return;
         }
 
@@ -341,7 +345,7 @@ pub fn HouseholdPage() -> impl IntoView {
         let punishment_id = selected_punishment_id.get();
 
         if punishment_id.is_empty() {
-            assign_punishment_error.set(Some("Please select a punishment".to_string()));
+            assign_punishment_error.set(Some(i18n_stored.get_value().t("members.select_punishment_error")));
             return;
         }
 
@@ -408,7 +412,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                         class="btn btn-secondary btn-sm announcement-manage-btn"
                                         on:click=move |_| show_announcement_modal.set(true)
                                     >
-                                        "Manage Announcements"
+                                        {i18n_stored.get_value().t("announcements.manage")}
                                     </button>
                                 </div>
                             }.into_view()
@@ -473,14 +477,14 @@ pub fn HouseholdPage() -> impl IntoView {
                         <div>
                             <div class="card">
                                 <div class="card-header">
-                                    <h3 class="card-title">"Leaderboard"</h3>
+                                    <h3 class="card-title">{i18n_stored.get_value().t("leaderboard.title")}</h3>
                                 </div>
                                 {move || {
                                     let lb = leaderboard.get();
                                     if lb.is_empty() {
                                         view! {
                                             <div class="empty-state">
-                                                <p>"No members yet"</p>
+                                                <p>{i18n_stored.get_value().t("leaderboard.no_members")}</p>
                                             </div>
                                         }.into_view()
                                     } else {
@@ -499,7 +503,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                                             <div class="leaderboard-user">
                                                                 <div style="font-weight: 500;">{entry.user.username}</div>
                                                                 <div style="font-size: 0.75rem; color: var(--text-muted);">
-                                                                    {entry.tasks_completed} " tasks completed"
+                                                                    {entry.tasks_completed} " " {i18n_stored.get_value().t("leaderboard.tasks_completed_count")}
                                                                 </div>
                                                             </div>
                                                             <PointsBadge points=entry.points />
@@ -514,14 +518,14 @@ pub fn HouseholdPage() -> impl IntoView {
 
                             <div class="card">
                                 <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                                    <h3 class="card-title">"Members"</h3>
+                                    <h3 class="card-title">{i18n_stored.get_value().t("members.title")}</h3>
                                     <Show when=move || current_user_can_manage.get() fallback=|| ()>
                                         <button
                                             class="btn btn-primary"
                                             style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
                                             on:click=move |_| show_invite_modal.set(true)
                                         >
-                                            "+ Invite"
+                                            "+ " {i18n_stored.get_value().t("household.invite")}
                                         </button>
                                     </Show>
                                 </div>
@@ -607,7 +611,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                 // Pending Invitations section
                                 <Show when=move || current_user_can_manage.get() && !invitations.get().is_empty() fallback=|| ()>
                                     <div style="margin-top: 1rem; padding-top: 1rem; border-top: 2px solid var(--border-color);">
-                                        <h4 style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem;">"Pending Invitations"</h4>
+                                        <h4 style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem;">{i18n_stored.get_value().t("invitations.pending")}</h4>
                                         {move || {
                                             let current_settings = settings.get();
                                             invitations.get().into_iter().map(|inv| {
@@ -634,14 +638,14 @@ pub fn HouseholdPage() -> impl IntoView {
                                                         <div>
                                                             <span style="font-weight: 500;">{inv.email.clone()}</span>
                                                             <span class=role_badge style="margin-left: 0.5rem;">{role_text}</span>
-                                                            <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-muted);">"(pending)"</span>
+                                                            <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-muted);">{i18n_stored.get_value().t("members.pending")}</span>
                                                         </div>
                                                         <button
                                                             class="btn btn-outline"
                                                             style="padding: 0.125rem 0.5rem; font-size: 0.75rem;"
                                                             on:click=move |_| on_cancel_invitation(cancel_id.clone())
                                                         >
-                                                            "Cancel"
+                                                            {i18n_stored.get_value().t("common.cancel")}
                                                         </button>
                                                     </div>
                                                 }
@@ -657,14 +661,14 @@ pub fn HouseholdPage() -> impl IntoView {
 
             // Invite Modal
             <Show when=move || show_invite_modal.get() fallback=|| ()>
-                <Modal title="Invite Member" on_close=move |_| show_invite_modal.set(false)>
+                <Modal title=i18n_stored.get_value().t("members.invite") on_close=move |_| show_invite_modal.set(false)>
                     {move || invite_error.get().map(|e| view! {
                         <div class="alert alert-error" style="margin-bottom: 1rem;">{e}</div>
                     })}
 
                     <form on:submit=on_invite_submit>
                         <div class="form-group">
-                            <label class="form-label" for="invite-email">"Email Address"</label>
+                            <label class="form-label" for="invite-email">{i18n_stored.get_value().t("members.email")}</label>
                             <input
                                 type="email"
                                 id="invite-email"
@@ -674,11 +678,11 @@ pub fn HouseholdPage() -> impl IntoView {
                                 on:input=move |ev| invite_email.set(event_target_value(&ev))
                                 required
                             />
-                            <small class="form-hint">"Enter the email of the user you want to invite"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("members.invite_hint")}</small>
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="invite-role">"Role"</label>
+                            <label class="form-label" for="invite-role">{i18n_stored.get_value().t("members.role")}</label>
                             <select
                                 id="invite-role"
                                 class="form-select"
@@ -686,13 +690,13 @@ pub fn HouseholdPage() -> impl IntoView {
                                 on:change=move |ev| invite_role.set(event_target_value(&ev))
                             >
                                 <option value="member">
-                                    {move || settings.get().map(|s| s.role_label_member).unwrap_or_else(|| "Member".to_string())}
+                                    {move || settings.get().map(|s| s.role_label_member).unwrap_or_else(|| i18n_stored.get_value().t("roles.member"))}
                                 </option>
                                 <option value="admin">
-                                    {move || settings.get().map(|s| s.role_label_admin).unwrap_or_else(|| "Admin".to_string())}
+                                    {move || settings.get().map(|s| s.role_label_admin).unwrap_or_else(|| i18n_stored.get_value().t("roles.admin"))}
                                 </option>
                             </select>
-                            <small class="form-hint">"Admins can manage tasks, rewards, and invite other members"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("members.role_hint")}</small>
                         </div>
 
                         <div class="modal-footer">
@@ -702,14 +706,14 @@ pub fn HouseholdPage() -> impl IntoView {
                                 on:click=move |_| show_invite_modal.set(false)
                                 disabled=move || inviting.get()
                             >
-                                "Cancel"
+                                {i18n_stored.get_value().t("common.cancel")}
                             </button>
                             <button
                                 type="submit"
                                 class="btn btn-primary"
                                 disabled=move || inviting.get()
                             >
-                                {move || if inviting.get() { "Sending..." } else { "Send Invitation" }}
+                                {move || if inviting.get() { i18n_stored.get_value().t("members.sending") } else { i18n_stored.get_value().t("members.send_invitation") }}
                             </button>
                         </div>
                     </form>
@@ -718,33 +722,33 @@ pub fn HouseholdPage() -> impl IntoView {
 
             // Adjust Points Modal
             <Show when=move || show_adjust_points_modal.get() fallback=|| ()>
-                <Modal title="Adjust Points" on_close=move |_| show_adjust_points_modal.set(false)>
+                <Modal title=i18n_stored.get_value().t("members.adjust_points_title") on_close=move |_| show_adjust_points_modal.set(false)>
                     {move || adjust_points_error.get().map(|e| view! {
                         <div class="alert alert-error" style="margin-bottom: 1rem;">{e}</div>
                     })}
 
                     <form on:submit=on_adjust_points_submit>
                         <div class="form-group">
-                            <label class="form-label" for="adjust-points-amount">"Points"</label>
+                            <label class="form-label" for="adjust-points-amount">{i18n_stored.get_value().t("common.points")}</label>
                             <input
                                 type="number"
                                 id="adjust-points-amount"
                                 class="form-input"
-                                placeholder="e.g., 10 or -5"
+                                placeholder=i18n_stored.get_value().t("members.points_placeholder")
                                 prop:value=move || adjust_points_amount.get()
                                 on:input=move |ev| adjust_points_amount.set(event_target_value(&ev))
                                 required
                             />
-                            <small class="form-hint">"Enter a positive number to add points, negative to remove"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("members.adjust_points_hint")}</small>
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="adjust-points-reason">"Reason (optional)"</label>
+                            <label class="form-label" for="adjust-points-reason">{i18n_stored.get_value().t("members.points_reason")}</label>
                             <input
                                 type="text"
                                 id="adjust-points-reason"
                                 class="form-input"
-                                placeholder="e.g., Bonus for helping out"
+                                placeholder=i18n_stored.get_value().t("members.reason_placeholder")
                                 prop:value=move || adjust_points_reason.get()
                                 on:input=move |ev| adjust_points_reason.set(event_target_value(&ev))
                             />
@@ -757,14 +761,14 @@ pub fn HouseholdPage() -> impl IntoView {
                                 on:click=move |_| show_adjust_points_modal.set(false)
                                 disabled=move || adjusting_points.get()
                             >
-                                "Cancel"
+                                {i18n_stored.get_value().t("common.cancel")}
                             </button>
                             <button
                                 type="submit"
                                 class="btn btn-primary"
                                 disabled=move || adjusting_points.get()
                             >
-                                {move || if adjusting_points.get() { "Adjusting..." } else { "Adjust Points" }}
+                                {move || if adjusting_points.get() { i18n_stored.get_value().t("members.adjusting") } else { i18n_stored.get_value().t("members.adjust_points") }}
                             </button>
                         </div>
                     </form>
@@ -773,14 +777,14 @@ pub fn HouseholdPage() -> impl IntoView {
 
             // Assign Reward Modal
             <Show when=move || show_assign_reward_modal.get() fallback=|| ()>
-                <Modal title="Assign Reward" on_close=move |_| show_assign_reward_modal.set(false)>
+                <Modal title=i18n_stored.get_value().t("rewards.assign") on_close=move |_| show_assign_reward_modal.set(false)>
                     {move || assign_reward_error.get().map(|e| view! {
                         <div class="alert alert-error" style="margin-bottom: 1rem;">{e}</div>
                     })}
 
                     <form on:submit=on_assign_reward_submit>
                         <div class="form-group">
-                            <label class="form-label" for="select-reward">"Select Reward"</label>
+                            <label class="form-label" for="select-reward">{i18n_stored.get_value().t("members.select_reward")}</label>
                             <select
                                 id="select-reward"
                                 class="form-select"
@@ -788,7 +792,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                 on:change=move |ev| selected_reward_id.set(event_target_value(&ev))
                                 required
                             >
-                                <option value="">"-- Select a reward --"</option>
+                                <option value="">{i18n_stored.get_value().t("members.select_reward_placeholder")}</option>
                                 {move || rewards.get().into_iter().map(|r| {
                                     let id = r.id.to_string();
                                     let cost_text = r.point_cost.map(|c| format!(" ({} pts)", c)).unwrap_or_default();
@@ -797,7 +801,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                     }
                                 }).collect_view()}
                             </select>
-                            <small class="form-hint">"The reward will be granted to this member (points will be deducted)"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("members.reward_hint")}</small>
                         </div>
 
                         <div class="modal-footer">
@@ -807,14 +811,14 @@ pub fn HouseholdPage() -> impl IntoView {
                                 on:click=move |_| show_assign_reward_modal.set(false)
                                 disabled=move || assigning_reward.get()
                             >
-                                "Cancel"
+                                {i18n_stored.get_value().t("common.cancel")}
                             </button>
                             <button
                                 type="submit"
                                 class="btn btn-primary"
                                 disabled=move || assigning_reward.get()
                             >
-                                {move || if assigning_reward.get() { "Assigning..." } else { "Assign Reward" }}
+                                {move || if assigning_reward.get() { i18n_stored.get_value().t("members.assigning") } else { i18n_stored.get_value().t("rewards.assign") }}
                             </button>
                         </div>
                     </form>
@@ -823,14 +827,14 @@ pub fn HouseholdPage() -> impl IntoView {
 
             // Assign Punishment Modal
             <Show when=move || show_assign_punishment_modal.get() fallback=|| ()>
-                <Modal title="Assign Punishment" on_close=move |_| show_assign_punishment_modal.set(false)>
+                <Modal title=i18n_stored.get_value().t("punishments.assign") on_close=move |_| show_assign_punishment_modal.set(false)>
                     {move || assign_punishment_error.get().map(|e| view! {
                         <div class="alert alert-error" style="margin-bottom: 1rem;">{e}</div>
                     })}
 
                     <form on:submit=on_assign_punishment_submit>
                         <div class="form-group">
-                            <label class="form-label" for="select-punishment">"Select Punishment"</label>
+                            <label class="form-label" for="select-punishment">{i18n_stored.get_value().t("members.select_punishment")}</label>
                             <select
                                 id="select-punishment"
                                 class="form-select"
@@ -838,7 +842,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                 on:change=move |ev| selected_punishment_id.set(event_target_value(&ev))
                                 required
                             >
-                                <option value="">"-- Select a punishment --"</option>
+                                <option value="">{i18n_stored.get_value().t("members.select_punishment_placeholder")}</option>
                                 {move || punishments.get().into_iter().map(|p| {
                                     let id = p.id.to_string();
                                     view! {
@@ -846,7 +850,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                     }
                                 }).collect_view()}
                             </select>
-                            <small class="form-hint">"The punishment will be applied to this member (points will be deducted)"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("members.punishment_hint")}</small>
                         </div>
 
                         <div class="modal-footer">
@@ -856,14 +860,14 @@ pub fn HouseholdPage() -> impl IntoView {
                                 on:click=move |_| show_assign_punishment_modal.set(false)
                                 disabled=move || assigning_punishment.get()
                             >
-                                "Cancel"
+                                {i18n_stored.get_value().t("common.cancel")}
                             </button>
                             <button
                                 type="submit"
                                 class="btn btn-primary"
                                 disabled=move || assigning_punishment.get()
                             >
-                                {move || if assigning_punishment.get() { "Assigning..." } else { "Assign Punishment" }}
+                                {move || if assigning_punishment.get() { i18n_stored.get_value().t("members.assigning") } else { i18n_stored.get_value().t("punishments.assign") }}
                             </button>
                         </div>
                     </form>

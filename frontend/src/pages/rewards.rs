@@ -6,9 +6,13 @@ use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::reward_modal::RewardModal;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn RewardsPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let params = use_params_map();
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
@@ -86,7 +90,7 @@ pub fn RewardsPage() -> impl IntoView {
             match ApiClient::purchase_reward(&id, &reward_id).await {
                 Ok(user_reward) => {
                     my_rewards.update(|r| r.push(user_reward));
-                    success.set(Some("Reward purchased successfully!".to_string()));
+                    success.set(Some(i18n_stored.get_value().t("rewards.purchased_success")));
                 }
                 Err(e) => error.set(Some(e)),
             }
@@ -103,7 +107,7 @@ pub fn RewardsPage() -> impl IntoView {
                             r[pos] = updated;
                         }
                     });
-                    success.set(Some("Reward redeemed!".to_string()));
+                    success.set(Some(i18n_stored.get_value().t("rewards.redeemed_success")));
                 }
                 Err(e) => error.set(Some(e)),
             }
@@ -178,7 +182,7 @@ pub fn RewardsPage() -> impl IntoView {
         <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Rewards />
 
         <div class="dashboard-header">
-            <h1 class="dashboard-title">"Rewards"</h1>
+            <h1 class="dashboard-title">{i18n_stored.get_value().t("rewards.title")}</h1>
         </div>
 
         {move || error.get().map(|e| view! {
@@ -198,7 +202,7 @@ pub fn RewardsPage() -> impl IntoView {
             <Show when=move || my_rewards.get().iter().any(|ur| ur.amount > ur.redeemed_amount) fallback=|| ()>
                 <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--success-color);">
                     <div class="card-header">
-                        <h3 class="card-title">"My Rewards"</h3>
+                        <h3 class="card-title">{i18n_stored.get_value().t("rewards.my_rewards")}</h3>
                     </div>
                     {move || {
                         let all_rewards = rewards.get();
@@ -209,7 +213,7 @@ pub fn RewardsPage() -> impl IntoView {
                                 let reward_name = all_rewards.iter()
                                     .find(|r| r.id == user_reward.reward_id)
                                     .map(|r| r.name.clone())
-                                    .unwrap_or_else(|| "Unknown Reward".to_string());
+                                    .unwrap_or_else(|| i18n_stored.get_value().t("rewards.unknown_reward"));
                                 let reward_desc = all_rewards.iter()
                                     .find(|r| r.id == user_reward.reward_id)
                                     .map(|r| r.description.clone())
@@ -230,7 +234,7 @@ pub fn RewardsPage() -> impl IntoView {
                                         </div>
                                         {if pending > 0 {
                                             view! {
-                                                <span class="badge" style="background: var(--warning-color); color: white;">"Awaiting Confirmation"</span>
+                                                <span class="badge" style="background: var(--warning-color); color: white;">{i18n_stored.get_value().t("rewards.awaiting_confirmation")}</span>
                                             }.into_view()
                                         } else {
                                             view! {
@@ -239,7 +243,7 @@ pub fn RewardsPage() -> impl IntoView {
                                                     style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
                                                     on:click=move |_| on_redeem(redeem_id.clone())
                                                 >
-                                                    "Redeem"
+                                                    {i18n_stored.get_value().t("rewards.redeem")}
                                                 </button>
                                             }.into_view()
                                         }}
@@ -252,11 +256,11 @@ pub fn RewardsPage() -> impl IntoView {
 
             <div style="margin-bottom: 1rem;">
                 <button class="btn btn-primary" on:click=move |_| modal_reward.set(Some(None))>
-                    "+ Create Reward"
+                    "+ " {i18n_stored.get_value().t("rewards.create")}
                 </button>
             </div>
 
-            <h3 style="margin-bottom: 1rem; color: var(--text-muted);">"Available Rewards"</h3>
+            <h3 style="margin-bottom: 1rem; color: var(--text-muted);">{i18n_stored.get_value().t("rewards.available")}</h3>
 
             {move || {
                 let r = rewards.get();
@@ -267,8 +271,8 @@ pub fn RewardsPage() -> impl IntoView {
                 if r.is_empty() {
                     view! {
                         <div class="card empty-state">
-                            <p>"No rewards yet."</p>
-                            <p>"Create rewards that members can earn!"</p>
+                            <p>{i18n_stored.get_value().t("rewards.no_rewards")}</p>
+                            <p>{i18n_stored.get_value().t("rewards.add_first")}</p>
                         </div>
                     }.into_view()
                 } else {
@@ -316,7 +320,7 @@ pub fn RewardsPage() -> impl IntoView {
                                                         style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
                                                         on:click=move |_| on_purchase(purchase_id.clone())
                                                     >
-                                                        "Purchase"
+                                                        {i18n_stored.get_value().t("rewards.purchase")}
                                                     </button>
                                                 </div>
                                             }.into_view()
@@ -324,7 +328,7 @@ pub fn RewardsPage() -> impl IntoView {
                                             view! {
                                                 <div style="margin-bottom: 0.5rem;">
                                                     <span style="color: var(--text-muted); font-size: 0.75rem;">
-                                                        "Assigned only"
+                                                        {i18n_stored.get_value().t("rewards.assigned_only")}
                                                     </span>
                                                 </div>
                                             }.into_view()
@@ -332,10 +336,10 @@ pub fn RewardsPage() -> impl IntoView {
 
                                         // Assignments section
                                         <div style="border-top: 1px solid var(--border-color); padding-top: 0.5rem; margin-top: 0.5rem;">
-                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">"Assignments:"</div>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">{i18n_stored.get_value().t("rewards.assignments")} ":"</div>
                                             {if user_assignments.is_empty() {
                                                 view! {
-                                                    <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">"None"</div>
+                                                    <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">{i18n_stored.get_value().t("common.none")}</div>
                                                 }.into_view()
                                             } else {
                                                 user_assignments.into_iter().map(|(user_id, username, amount)| {
@@ -417,14 +421,14 @@ pub fn RewardsPage() -> impl IntoView {
                                                     move |_| modal_reward.set(Some(Some(reward_for_edit.clone())))
                                                 }
                                             >
-                                                "Edit"
+                                                {i18n_stored.get_value().t("common.edit")}
                                             </button>
                                             <button
                                                 class="btn btn-danger"
                                                 style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;"
                                                 on:click=move |_| on_delete(delete_id.clone())
                                             >
-                                                "Delete"
+                                                {i18n_stored.get_value().t("common.delete")}
                                             </button>
                                         </div>
                                     </div>

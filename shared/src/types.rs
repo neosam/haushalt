@@ -159,6 +159,32 @@ pub struct UpdateHouseholdSettingsRequest {
 }
 
 // ============================================================================
+// User Settings Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserSettings {
+    pub user_id: Uuid,
+    pub language: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl Default for UserSettings {
+    fn default() -> Self {
+        Self {
+            user_id: Uuid::nil(),
+            language: "en".to_string(),
+            updated_at: Utc::now(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateUserSettingsRequest {
+    pub language: Option<String>,
+}
+
+// ============================================================================
 // Membership Types
 // ============================================================================
 

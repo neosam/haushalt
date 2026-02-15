@@ -1,5 +1,7 @@
 use leptos::*;
 
+use crate::i18n::use_i18n;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HouseholdTab {
     Overview,
@@ -13,16 +15,16 @@ pub enum HouseholdTab {
 }
 
 impl HouseholdTab {
-    fn label(&self) -> &'static str {
+    fn translation_key(&self) -> &'static str {
         match self {
-            HouseholdTab::Overview => "Overview",
-            HouseholdTab::Tasks => "Tasks",
-            HouseholdTab::Notes => "Notes",
-            HouseholdTab::Rewards => "Rewards",
-            HouseholdTab::Punishments => "Punishments",
-            HouseholdTab::Chat => "Chat",
-            HouseholdTab::Activity => "Activity",
-            HouseholdTab::Settings => "Settings",
+            HouseholdTab::Overview => "tabs.overview",
+            HouseholdTab::Tasks => "tabs.tasks",
+            HouseholdTab::Notes => "tabs.notes",
+            HouseholdTab::Rewards => "tabs.rewards",
+            HouseholdTab::Punishments => "tabs.punishments",
+            HouseholdTab::Chat => "tabs.chat",
+            HouseholdTab::Activity => "tabs.activity",
+            HouseholdTab::Settings => "tabs.settings",
         }
     }
 
@@ -45,6 +47,9 @@ pub fn HouseholdTabs(
     household_id: String,
     active_tab: HouseholdTab,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let tabs = [
         HouseholdTab::Overview,
         HouseholdTab::Tasks,
@@ -62,9 +67,10 @@ pub fn HouseholdTabs(
                 let href = tab.path(&household_id);
                 let is_active = tab == active_tab;
                 let class = if is_active { "tab-link active" } else { "tab-link" };
+                let label = i18n_stored.get_value().t(tab.translation_key());
                 view! {
                     <a href=href class=class>
-                        {tab.label()}
+                        {label}
                     </a>
                 }
             }).collect_view()}

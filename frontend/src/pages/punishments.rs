@@ -6,9 +6,13 @@ use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::punishment_modal::PunishmentModal;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn PunishmentsPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let params = use_params_map();
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
@@ -154,7 +158,7 @@ pub fn PunishmentsPage() -> impl IntoView {
                             p[pos] = updated;
                         }
                     });
-                    success.set(Some("Punishment marked as completed!".to_string()));
+                    success.set(Some(i18n_stored.get_value().t("punishments.completed_success")));
                 }
                 Err(e) => error.set(Some(e)),
             }
@@ -165,7 +169,7 @@ pub fn PunishmentsPage() -> impl IntoView {
         <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Punishments />
 
         <div class="dashboard-header">
-            <h1 class="dashboard-title">"Punishments"</h1>
+            <h1 class="dashboard-title">{i18n_stored.get_value().t("punishments.title")}</h1>
         </div>
 
         {move || error.get().map(|e| view! {
@@ -185,7 +189,7 @@ pub fn PunishmentsPage() -> impl IntoView {
             <Show when=move || my_punishments.get().iter().any(|up| up.amount > up.completed_amount) fallback=|| ()>
                 <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--error-color);">
                     <div class="card-header">
-                        <h3 class="card-title">"My Punishments"</h3>
+                        <h3 class="card-title">{i18n_stored.get_value().t("punishments.my_punishments")}</h3>
                     </div>
                     {move || {
                         let all_punishments = punishments.get();
@@ -196,7 +200,7 @@ pub fn PunishmentsPage() -> impl IntoView {
                                 let punishment_name = all_punishments.iter()
                                     .find(|p| p.id == user_punishment.punishment_id)
                                     .map(|p| p.name.clone())
-                                    .unwrap_or_else(|| "Unknown Punishment".to_string());
+                                    .unwrap_or_else(|| i18n_stored.get_value().t("punishments.unknown_punishment"));
                                 let punishment_desc = all_punishments.iter()
                                     .find(|p| p.id == user_punishment.punishment_id)
                                     .map(|p| p.description.clone())
@@ -217,7 +221,7 @@ pub fn PunishmentsPage() -> impl IntoView {
                                         </div>
                                         {if pending_conf > 0 {
                                             view! {
-                                                <span class="badge" style="background: var(--warning-color); color: white;">"Awaiting Confirmation"</span>
+                                                <span class="badge" style="background: var(--warning-color); color: white;">{i18n_stored.get_value().t("punishments.awaiting_confirmation")}</span>
                                             }.into_view()
                                         } else {
                                             view! {
@@ -226,7 +230,7 @@ pub fn PunishmentsPage() -> impl IntoView {
                                                     style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
                                                     on:click=move |_| on_complete(complete_id.clone())
                                                 >
-                                                    "Mark Complete"
+                                                    {i18n_stored.get_value().t("punishments.mark_complete")}
                                                 </button>
                                             }.into_view()
                                         }}
@@ -239,11 +243,11 @@ pub fn PunishmentsPage() -> impl IntoView {
 
             <div style="margin-bottom: 1rem;">
                 <button class="btn btn-primary" on:click=move |_| modal_punishment.set(Some(None))>
-                    "+ Create Punishment"
+                    "+ " {i18n_stored.get_value().t("punishments.create")}
                 </button>
             </div>
 
-            <h3 style="margin-bottom: 1rem; color: var(--text-muted);">"Punishment Definitions"</h3>
+            <h3 style="margin-bottom: 1rem; color: var(--text-muted);">{i18n_stored.get_value().t("punishments.definitions")}</h3>
 
             {move || {
                 let p = punishments.get();
@@ -254,8 +258,8 @@ pub fn PunishmentsPage() -> impl IntoView {
                 if p.is_empty() {
                     view! {
                         <div class="card empty-state">
-                            <p>"No punishments yet."</p>
-                            <p>"Create punishments for missed tasks!"</p>
+                            <p>{i18n_stored.get_value().t("punishments.no_punishments")}</p>
+                            <p>{i18n_stored.get_value().t("punishments.add_first")}</p>
                         </div>
                     }.into_view()
                 } else {
@@ -294,10 +298,10 @@ pub fn PunishmentsPage() -> impl IntoView {
 
                                         // Assignments section
                                         <div style="border-top: 1px solid var(--border-color); padding-top: 0.5rem; margin-top: 0.5rem;">
-                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">"Assignments:"</div>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">{i18n_stored.get_value().t("punishments.assignments")} ":"</div>
                                             {if user_assignments.is_empty() {
                                                 view! {
-                                                    <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">"None"</div>
+                                                    <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">{i18n_stored.get_value().t("common.none")}</div>
                                                 }.into_view()
                                             } else {
                                                 user_assignments.into_iter().map(|(user_id, username, amount)| {
@@ -379,14 +383,14 @@ pub fn PunishmentsPage() -> impl IntoView {
                                                     move |_| modal_punishment.set(Some(Some(punishment_for_edit.clone())))
                                                 }
                                             >
-                                                "Edit"
+                                                {i18n_stored.get_value().t("common.edit")}
                                             </button>
                                             <button
                                                 class="btn btn-danger"
                                                 style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;"
                                                 on:click=move |_| on_delete(delete_id.clone())
                                             >
-                                                "Delete"
+                                                {i18n_stored.get_value().t("common.delete")}
                                             </button>
                                         </div>
                                     </div>

@@ -10,3 +10,4 @@ pub mod activity;
 pub mod chat;
 pub mod notes;
 pub mod settings;
+pub mod user_settings;

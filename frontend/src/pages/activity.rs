@@ -5,10 +5,14 @@ use shared::{ActivityLogWithUsers, ActivityType, HouseholdSettings};
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::i18n::use_i18n;
 use crate::utils::format_datetime;
 
 #[component]
 pub fn ActivityPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let params = use_params_map();
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
@@ -54,7 +58,7 @@ pub fn ActivityPage() -> impl IntoView {
         <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Activity />
 
         <div class="dashboard-header">
-            <h1 class="dashboard-title">"Activity Log"</h1>
+            <h1 class="dashboard-title">{i18n_stored.get_value().t("activity.title")}</h1>
         </div>
 
         {move || error.get().map(|e| view! {
@@ -71,8 +75,8 @@ pub fn ActivityPage() -> impl IntoView {
                 if a.is_empty() {
                     view! {
                         <div class="card empty-state">
-                            <p>"No activity yet."</p>
-                            <p>"Activity will appear here as actions are taken in the household."</p>
+                            <p>{i18n_stored.get_value().t("activity.no_activity")}</p>
+                            <p>{i18n_stored.get_value().t("activity.will_appear")}</p>
                         </div>
                     }.into_view()
                 } else {
