@@ -12,8 +12,10 @@ pub enum PunishmentError {
     NotFound,
     #[error("User punishment not found")]
     UserPunishmentNotFound,
-    #[error("Punishment already completed")]
-    AlreadyCompleted,
+    #[error("No punishments to complete")]
+    NothingToComplete,
+    #[error("Cannot complete another user's punishment")]
+    NotOwner,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 }
@@ -126,47 +128,107 @@ pub async fn delete_punishment(pool: &SqlitePool, punishment_id: &Uuid) -> Resul
     Ok(())
 }
 
+/// Assign a punishment to a user (or increment amount if already assigned)
 pub async fn assign_punishment(
     pool: &SqlitePool,
     punishment_id: &Uuid,
     user_id: &Uuid,
     household_id: &Uuid,
-    assigned_by: &Uuid,
-    task_completion_id: Option<Uuid>,
 ) -> Result<UserPunishment, PunishmentError> {
     let _punishment = get_punishment(pool, punishment_id)
         .await?
         .ok_or(PunishmentError::NotFound)?;
-
-    let id = Uuid::new_v4();
     let now = Utc::now();
 
-    sqlx::query(
+    // Try to update existing record first
+    let result = sqlx::query(
         r#"
-        INSERT INTO user_punishments (id, user_id, punishment_id, household_id, assigned_by, task_completion_id, completed, assigned_at)
-        VALUES (?, ?, ?, ?, ?, ?, FALSE, ?)
+        UPDATE user_punishments
+        SET amount = amount + 1, updated_at = ?
+        WHERE user_id = ? AND punishment_id = ? AND household_id = ?
         "#,
     )
-    .bind(id.to_string())
+    .bind(now)
     .bind(user_id.to_string())
     .bind(punishment_id.to_string())
     .bind(household_id.to_string())
-    .bind(assigned_by.to_string())
-    .bind(task_completion_id.map(|id| id.to_string()))
-    .bind(now)
     .execute(pool)
     .await?;
 
-    Ok(UserPunishment {
-        id,
-        user_id: *user_id,
-        punishment_id: *punishment_id,
-        household_id: *household_id,
-        assigned_by: *assigned_by,
-        task_completion_id,
-        completed: false,
-        assigned_at: now,
-    })
+    if result.rows_affected() == 0 {
+        // Insert new record
+        let id = Uuid::new_v4();
+        sqlx::query(
+            r#"
+            INSERT INTO user_punishments (id, user_id, punishment_id, household_id, amount, completed_amount, updated_at)
+            VALUES (?, ?, ?, ?, 1, 0, ?)
+            "#,
+        )
+        .bind(id.to_string())
+        .bind(user_id.to_string())
+        .bind(punishment_id.to_string())
+        .bind(household_id.to_string())
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    // Fetch and return the updated record
+    let user_punishment: UserPunishmentRow = sqlx::query_as(
+        "SELECT * FROM user_punishments WHERE user_id = ? AND punishment_id = ? AND household_id = ?",
+    )
+    .bind(user_id.to_string())
+    .bind(punishment_id.to_string())
+    .bind(household_id.to_string())
+    .fetch_one(pool)
+    .await?;
+
+    Ok(user_punishment.to_shared())
+}
+
+/// Remove one punishment assignment (decrement amount, delete if zero)
+pub async fn unassign_punishment(
+    pool: &SqlitePool,
+    punishment_id: &Uuid,
+    user_id: &Uuid,
+    household_id: &Uuid,
+) -> Result<(), PunishmentError> {
+    let now = Utc::now();
+
+    // Get current record
+    let user_punishment: Option<UserPunishmentRow> = sqlx::query_as(
+        "SELECT * FROM user_punishments WHERE user_id = ? AND punishment_id = ? AND household_id = ?",
+    )
+    .bind(user_id.to_string())
+    .bind(punishment_id.to_string())
+    .bind(household_id.to_string())
+    .fetch_optional(pool)
+    .await?;
+
+    let user_punishment = user_punishment.ok_or(PunishmentError::UserPunishmentNotFound)?;
+
+    if user_punishment.amount <= 1 {
+        // Delete the record
+        sqlx::query("DELETE FROM user_punishments WHERE user_id = ? AND punishment_id = ? AND household_id = ?")
+            .bind(user_id.to_string())
+            .bind(punishment_id.to_string())
+            .bind(household_id.to_string())
+            .execute(pool)
+            .await?;
+    } else {
+        // Decrement amount
+        sqlx::query(
+            "UPDATE user_punishments SET amount = amount - 1, updated_at = ? WHERE user_id = ? AND punishment_id = ? AND household_id = ?",
+        )
+        .bind(now)
+        .bind(user_id.to_string())
+        .bind(punishment_id.to_string())
+        .bind(household_id.to_string())
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
 }
 
 pub async fn list_user_punishments(
@@ -175,7 +237,7 @@ pub async fn list_user_punishments(
     household_id: &Uuid,
 ) -> Result<Vec<UserPunishment>, PunishmentError> {
     let punishments: Vec<UserPunishmentRow> = sqlx::query_as(
-        "SELECT * FROM user_punishments WHERE user_id = ? AND household_id = ? ORDER BY assigned_at DESC",
+        "SELECT * FROM user_punishments WHERE user_id = ? AND household_id = ? ORDER BY updated_at DESC",
     )
     .bind(user_id.to_string())
     .bind(household_id.to_string())
@@ -196,10 +258,9 @@ pub async fn list_all_user_punishments_in_household(
         user_id: String,
         punishment_id: String,
         household_id: String,
-        assigned_by: String,
-        task_completion_id: Option<String>,
-        completed: bool,
-        assigned_at: chrono::DateTime<chrono::Utc>,
+        amount: i32,
+        completed_amount: i32,
+        updated_at: chrono::DateTime<chrono::Utc>,
         // users fields (aliased)
         u_id: String,
         u_username: String,
@@ -211,14 +272,14 @@ pub async fn list_all_user_punishments_in_household(
     let rows: Vec<JoinedRow> = sqlx::query_as(
         r#"
         SELECT
-            up.id, up.user_id, up.punishment_id, up.household_id, up.assigned_by,
-            up.task_completion_id, up.completed, up.assigned_at,
+            up.id, up.user_id, up.punishment_id, up.household_id,
+            up.amount, up.completed_amount, up.updated_at,
             u.id as u_id, u.username as u_username, u.email as u_email,
             u.created_at as u_created_at, u.updated_at as u_updated_at
         FROM user_punishments up
         JOIN users u ON up.user_id = u.id
         WHERE up.household_id = ?
-        ORDER BY up.assigned_at DESC
+        ORDER BY up.updated_at DESC
         "#,
     )
     .bind(household_id.to_string())
@@ -233,10 +294,9 @@ pub async fn list_all_user_punishments_in_household(
                 user_id: Uuid::parse_str(&row.user_id).unwrap(),
                 punishment_id: Uuid::parse_str(&row.punishment_id).unwrap(),
                 household_id: Uuid::parse_str(&row.household_id).unwrap(),
-                assigned_by: Uuid::parse_str(&row.assigned_by).unwrap(),
-                task_completion_id: row.task_completion_id.map(|s| Uuid::parse_str(&s).unwrap()),
-                completed: row.completed,
-                assigned_at: row.assigned_at,
+                amount: row.amount,
+                completed_amount: row.completed_amount,
+                updated_at: row.updated_at,
             },
             user: User {
                 id: Uuid::parse_str(&row.u_id).unwrap(),
@@ -249,9 +309,27 @@ pub async fn list_all_user_punishments_in_household(
         .collect())
 }
 
+pub async fn delete_user_punishment(
+    pool: &SqlitePool,
+    user_punishment_id: &Uuid,
+) -> Result<(), PunishmentError> {
+    let result = sqlx::query("DELETE FROM user_punishments WHERE id = ?")
+        .bind(user_punishment_id.to_string())
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(PunishmentError::UserPunishmentNotFound);
+    }
+
+    Ok(())
+}
+
+/// Complete one punishment (increment completed_amount)
 pub async fn complete_punishment(
     pool: &SqlitePool,
     user_punishment_id: &Uuid,
+    user_id: &Uuid,
 ) -> Result<UserPunishment, PunishmentError> {
     let user_punishment: UserPunishmentRow =
         sqlx::query_as("SELECT * FROM user_punishments WHERE id = ?")
@@ -260,17 +338,26 @@ pub async fn complete_punishment(
             .await?
             .ok_or(PunishmentError::UserPunishmentNotFound)?;
 
-    if user_punishment.completed {
-        return Err(PunishmentError::AlreadyCompleted);
+    if Uuid::parse_str(&user_punishment.user_id).unwrap() != *user_id {
+        return Err(PunishmentError::NotOwner);
     }
 
-    sqlx::query("UPDATE user_punishments SET completed = TRUE WHERE id = ?")
+    // Check if there are uncompleted punishments
+    let available = user_punishment.amount - user_punishment.completed_amount;
+    if available <= 0 {
+        return Err(PunishmentError::NothingToComplete);
+    }
+
+    let now = Utc::now();
+    sqlx::query("UPDATE user_punishments SET completed_amount = completed_amount + 1, updated_at = ? WHERE id = ?")
+        .bind(now)
         .bind(user_punishment_id.to_string())
         .execute(pool)
         .await?;
 
     let mut result = user_punishment.to_shared();
-    result.completed = true;
+    result.completed_amount += 1;
+    result.updated_at = now;
 
     Ok(result)
 }
@@ -283,8 +370,8 @@ mod tests {
     fn test_punishment_error_display() {
         assert_eq!(PunishmentError::NotFound.to_string(), "Punishment not found");
         assert_eq!(
-            PunishmentError::AlreadyCompleted.to_string(),
-            "Punishment already completed"
+            PunishmentError::NothingToComplete.to_string(),
+            "No punishments to complete"
         );
     }
 }

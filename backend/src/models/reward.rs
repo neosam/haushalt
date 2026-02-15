@@ -29,17 +29,16 @@ impl RewardRow {
     }
 }
 
-/// Database model for user rewards (assigned or purchased)
+/// Database model for user rewards (amount-based)
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct UserRewardRow {
     pub id: String,
     pub user_id: String,
     pub reward_id: String,
     pub household_id: String,
-    pub assigned_by: Option<String>,
-    pub is_purchased: bool,
-    pub redeemed: bool,
-    pub assigned_at: DateTime<Utc>,
+    pub amount: i32,
+    pub redeemed_amount: i32,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl UserRewardRow {
@@ -49,10 +48,9 @@ impl UserRewardRow {
             user_id: Uuid::parse_str(&self.user_id).unwrap(),
             reward_id: Uuid::parse_str(&self.reward_id).unwrap(),
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
-            assigned_by: self.assigned_by.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
-            is_purchased: self.is_purchased,
-            redeemed: self.redeemed,
-            assigned_at: self.assigned_at,
+            amount: self.amount,
+            redeemed_amount: self.redeemed_amount,
+            updated_at: self.updated_at,
         }
     }
 }
@@ -109,17 +107,15 @@ mod tests {
         let user_id = Uuid::new_v4();
         let reward_id = Uuid::new_v4();
         let household_id = Uuid::new_v4();
-        let assigned_by = Uuid::new_v4();
 
         let row = UserRewardRow {
             id: id.to_string(),
             user_id: user_id.to_string(),
             reward_id: reward_id.to_string(),
             household_id: household_id.to_string(),
-            assigned_by: Some(assigned_by.to_string()),
-            is_purchased: false,
-            redeemed: false,
-            assigned_at: now,
+            amount: 3,
+            redeemed_amount: 1,
+            updated_at: now,
         };
 
         let shared = row.to_shared();
@@ -127,29 +123,7 @@ mod tests {
         assert_eq!(shared.id, id);
         assert_eq!(shared.user_id, user_id);
         assert_eq!(shared.reward_id, reward_id);
-        assert_eq!(shared.assigned_by, Some(assigned_by));
-        assert!(!shared.is_purchased);
-        assert!(!shared.redeemed);
-    }
-
-    #[test]
-    fn test_user_reward_purchased() {
-        let now = Utc::now();
-
-        let row = UserRewardRow {
-            id: Uuid::new_v4().to_string(),
-            user_id: Uuid::new_v4().to_string(),
-            reward_id: Uuid::new_v4().to_string(),
-            household_id: Uuid::new_v4().to_string(),
-            assigned_by: None,
-            is_purchased: true,
-            redeemed: false,
-            assigned_at: now,
-        };
-
-        let shared = row.to_shared();
-
-        assert!(shared.is_purchased);
-        assert!(shared.assigned_by.is_none());
+        assert_eq!(shared.amount, 3);
+        assert_eq!(shared.redeemed_amount, 1);
     }
 }

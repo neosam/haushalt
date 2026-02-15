@@ -129,6 +129,22 @@ pub fn HouseholdPage() -> impl IntoView {
         });
     });
 
+    let on_uncomplete_task = Callback::new(move |task_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            if ApiClient::uncomplete_task(&id, &task_id).await.is_ok() {
+                // Refresh tasks
+                if let Ok(t) = ApiClient::get_due_tasks(&id).await {
+                    tasks.set(t);
+                }
+                // Refresh leaderboard
+                if let Ok(l) = ApiClient::get_leaderboard(&id).await {
+                    leaderboard.set(l);
+                }
+            }
+        });
+    });
+
     let on_invite_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
 
@@ -341,7 +357,7 @@ pub fn HouseholdPage() -> impl IntoView {
 
                     <div class="grid grid-2">
                         <div>
-                            <TaskList tasks=tasks.get() on_complete=on_complete_task />
+                            <TaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task />
                         </div>
 
                         <div>

@@ -177,15 +177,11 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
             points_deducted += points.abs();
 
             // Assign punishments linked to this task
-            // Use the household owner as the assigner for automatic punishments
-            let owner_id = get_household_owner_id(pool, &task.household_id).await?;
-
             let assigned = task_consequences::assign_missed_task_punishments(
                 pool,
                 &task.id,
                 &user_id,
                 &task.household_id,
-                &owner_id,
             )
             .await?;
 
@@ -270,14 +266,11 @@ pub async fn process_missed_tasks_for_date(
             .await?;
             points_deducted += points.abs();
 
-            let owner_id = get_household_owner_id(pool, &task.household_id).await?;
-
             let assigned = task_consequences::assign_missed_task_punishments(
                 pool,
                 &task.id,
                 &user_id,
                 &task.household_id,
-                &owner_id,
             )
             .await?;
 

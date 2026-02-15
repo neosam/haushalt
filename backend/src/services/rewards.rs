@@ -17,8 +17,8 @@ pub enum RewardError {
     InsufficientPoints,
     #[error("User reward not found")]
     UserRewardNotFound,
-    #[error("Reward already redeemed")]
-    AlreadyRedeemed,
+    #[error("No rewards to redeem")]
+    NothingToRedeem,
     #[error("Cannot redeem another user's reward")]
     NotOwner,
     #[error("Database error: {0}")]
@@ -171,73 +171,109 @@ pub async fn purchase_reward(
     // Deduct points
     households::update_member_points(pool, household_id, user_id, -point_cost).await?;
 
-    // Create user reward
-    let id = Uuid::new_v4();
-    let now = Utc::now();
-
-    sqlx::query(
-        r#"
-        INSERT INTO user_rewards (id, user_id, reward_id, household_id, assigned_by, is_purchased, redeemed, assigned_at)
-        VALUES (?, ?, ?, ?, NULL, TRUE, FALSE, ?)
-        "#,
-    )
-    .bind(id.to_string())
-    .bind(user_id.to_string())
-    .bind(reward_id.to_string())
-    .bind(household_id.to_string())
-    .bind(now)
-    .execute(pool)
-    .await?;
-
-    Ok(UserReward {
-        id,
-        user_id: *user_id,
-        reward_id: *reward_id,
-        household_id: *household_id,
-        assigned_by: None,
-        is_purchased: true,
-        redeemed: false,
-        assigned_at: now,
-    })
+    // Use UPSERT to increment amount
+    assign_reward(pool, reward_id, user_id, household_id).await
 }
 
+/// Assign a reward to a user (or increment amount if already assigned)
 pub async fn assign_reward(
     pool: &SqlitePool,
     reward_id: &Uuid,
     user_id: &Uuid,
     household_id: &Uuid,
-    assigned_by: &Uuid,
 ) -> Result<UserReward, RewardError> {
     let _reward = get_reward(pool, reward_id).await?.ok_or(RewardError::NotFound)?;
-
-    let id = Uuid::new_v4();
     let now = Utc::now();
 
-    sqlx::query(
+    // Try to update existing record first
+    let result = sqlx::query(
         r#"
-        INSERT INTO user_rewards (id, user_id, reward_id, household_id, assigned_by, is_purchased, redeemed, assigned_at)
-        VALUES (?, ?, ?, ?, ?, FALSE, FALSE, ?)
+        UPDATE user_rewards
+        SET amount = amount + 1, updated_at = ?
+        WHERE user_id = ? AND reward_id = ? AND household_id = ?
         "#,
     )
-    .bind(id.to_string())
+    .bind(now)
     .bind(user_id.to_string())
     .bind(reward_id.to_string())
     .bind(household_id.to_string())
-    .bind(assigned_by.to_string())
-    .bind(now)
     .execute(pool)
     .await?;
 
-    Ok(UserReward {
-        id,
-        user_id: *user_id,
-        reward_id: *reward_id,
-        household_id: *household_id,
-        assigned_by: Some(*assigned_by),
-        is_purchased: false,
-        redeemed: false,
-        assigned_at: now,
-    })
+    if result.rows_affected() == 0 {
+        // Insert new record
+        let id = Uuid::new_v4();
+        sqlx::query(
+            r#"
+            INSERT INTO user_rewards (id, user_id, reward_id, household_id, amount, redeemed_amount, updated_at)
+            VALUES (?, ?, ?, ?, 1, 0, ?)
+            "#,
+        )
+        .bind(id.to_string())
+        .bind(user_id.to_string())
+        .bind(reward_id.to_string())
+        .bind(household_id.to_string())
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    // Fetch and return the updated record
+    let user_reward: UserRewardRow = sqlx::query_as(
+        "SELECT * FROM user_rewards WHERE user_id = ? AND reward_id = ? AND household_id = ?",
+    )
+    .bind(user_id.to_string())
+    .bind(reward_id.to_string())
+    .bind(household_id.to_string())
+    .fetch_one(pool)
+    .await?;
+
+    Ok(user_reward.to_shared())
+}
+
+/// Remove one reward assignment (decrement amount, delete if zero)
+pub async fn unassign_reward(
+    pool: &SqlitePool,
+    reward_id: &Uuid,
+    user_id: &Uuid,
+    household_id: &Uuid,
+) -> Result<(), RewardError> {
+    let now = Utc::now();
+
+    // Get current record
+    let user_reward: Option<UserRewardRow> = sqlx::query_as(
+        "SELECT * FROM user_rewards WHERE user_id = ? AND reward_id = ? AND household_id = ?",
+    )
+    .bind(user_id.to_string())
+    .bind(reward_id.to_string())
+    .bind(household_id.to_string())
+    .fetch_optional(pool)
+    .await?;
+
+    let user_reward = user_reward.ok_or(RewardError::UserRewardNotFound)?;
+
+    if user_reward.amount <= 1 {
+        // Delete the record
+        sqlx::query("DELETE FROM user_rewards WHERE user_id = ? AND reward_id = ? AND household_id = ?")
+            .bind(user_id.to_string())
+            .bind(reward_id.to_string())
+            .bind(household_id.to_string())
+            .execute(pool)
+            .await?;
+    } else {
+        // Decrement amount
+        sqlx::query(
+            "UPDATE user_rewards SET amount = amount - 1, updated_at = ? WHERE user_id = ? AND reward_id = ? AND household_id = ?",
+        )
+        .bind(now)
+        .bind(user_id.to_string())
+        .bind(reward_id.to_string())
+        .bind(household_id.to_string())
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
 }
 
 pub async fn list_user_rewards(
@@ -246,7 +282,7 @@ pub async fn list_user_rewards(
     household_id: &Uuid,
 ) -> Result<Vec<UserReward>, RewardError> {
     let rewards: Vec<UserRewardRow> = sqlx::query_as(
-        "SELECT * FROM user_rewards WHERE user_id = ? AND household_id = ? ORDER BY assigned_at DESC",
+        "SELECT * FROM user_rewards WHERE user_id = ? AND household_id = ? ORDER BY updated_at DESC",
     )
     .bind(user_id.to_string())
     .bind(household_id.to_string())
@@ -267,10 +303,9 @@ pub async fn list_all_user_rewards_in_household(
         user_id: String,
         reward_id: String,
         household_id: String,
-        assigned_by: Option<String>,
-        is_purchased: bool,
-        redeemed: bool,
-        assigned_at: chrono::DateTime<chrono::Utc>,
+        amount: i32,
+        redeemed_amount: i32,
+        updated_at: chrono::DateTime<chrono::Utc>,
         // users fields (aliased)
         u_id: String,
         u_username: String,
@@ -282,14 +317,14 @@ pub async fn list_all_user_rewards_in_household(
     let rows: Vec<JoinedRow> = sqlx::query_as(
         r#"
         SELECT
-            ur.id, ur.user_id, ur.reward_id, ur.household_id, ur.assigned_by,
-            ur.is_purchased, ur.redeemed, ur.assigned_at,
+            ur.id, ur.user_id, ur.reward_id, ur.household_id,
+            ur.amount, ur.redeemed_amount, ur.updated_at,
             u.id as u_id, u.username as u_username, u.email as u_email,
             u.created_at as u_created_at, u.updated_at as u_updated_at
         FROM user_rewards ur
         JOIN users u ON ur.user_id = u.id
         WHERE ur.household_id = ?
-        ORDER BY ur.assigned_at DESC
+        ORDER BY ur.updated_at DESC
         "#,
     )
     .bind(household_id.to_string())
@@ -304,10 +339,9 @@ pub async fn list_all_user_rewards_in_household(
                 user_id: Uuid::parse_str(&row.user_id).unwrap(),
                 reward_id: Uuid::parse_str(&row.reward_id).unwrap(),
                 household_id: Uuid::parse_str(&row.household_id).unwrap(),
-                assigned_by: row.assigned_by.map(|s| Uuid::parse_str(&s).unwrap()),
-                is_purchased: row.is_purchased,
-                redeemed: row.redeemed,
-                assigned_at: row.assigned_at,
+                amount: row.amount,
+                redeemed_amount: row.redeemed_amount,
+                updated_at: row.updated_at,
             },
             user: User {
                 id: Uuid::parse_str(&row.u_id).unwrap(),
@@ -336,6 +370,7 @@ pub async fn delete_user_reward(
     Ok(())
 }
 
+/// Redeem one reward (increment redeemed_amount)
 pub async fn redeem_reward(
     pool: &SqlitePool,
     user_reward_id: &Uuid,
@@ -351,17 +386,22 @@ pub async fn redeem_reward(
         return Err(RewardError::NotOwner);
     }
 
-    if user_reward.redeemed {
-        return Err(RewardError::AlreadyRedeemed);
+    // Check if there are unredeemed rewards
+    let available = user_reward.amount - user_reward.redeemed_amount;
+    if available <= 0 {
+        return Err(RewardError::NothingToRedeem);
     }
 
-    sqlx::query("UPDATE user_rewards SET redeemed = TRUE WHERE id = ?")
+    let now = Utc::now();
+    sqlx::query("UPDATE user_rewards SET redeemed_amount = redeemed_amount + 1, updated_at = ? WHERE id = ?")
+        .bind(now)
         .bind(user_reward_id.to_string())
         .execute(pool)
         .await?;
 
     let mut result = user_reward.to_shared();
-    result.redeemed = true;
+    result.redeemed_amount += 1;
+    result.updated_at = now;
 
     Ok(result)
 }

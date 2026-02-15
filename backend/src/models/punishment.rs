@@ -25,17 +25,16 @@ impl PunishmentRow {
     }
 }
 
-/// Database model for user punishments (assigned)
+/// Database model for user punishments (amount-based)
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct UserPunishmentRow {
     pub id: String,
     pub user_id: String,
     pub punishment_id: String,
     pub household_id: String,
-    pub assigned_by: String,
-    pub task_completion_id: Option<String>,
-    pub completed: bool,
-    pub assigned_at: DateTime<Utc>,
+    pub amount: i32,
+    pub completed_amount: i32,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl UserPunishmentRow {
@@ -45,10 +44,9 @@ impl UserPunishmentRow {
             user_id: Uuid::parse_str(&self.user_id).unwrap(),
             punishment_id: Uuid::parse_str(&self.punishment_id).unwrap(),
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
-            assigned_by: Uuid::parse_str(&self.assigned_by).unwrap(),
-            task_completion_id: self.task_completion_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
-            completed: self.completed,
-            assigned_at: self.assigned_at,
+            amount: self.amount,
+            completed_amount: self.completed_amount,
+            updated_at: self.updated_at,
         }
     }
 }
@@ -102,17 +100,15 @@ mod tests {
         let user_id = Uuid::new_v4();
         let punishment_id = Uuid::new_v4();
         let household_id = Uuid::new_v4();
-        let assigned_by = Uuid::new_v4();
 
         let row = UserPunishmentRow {
             id: id.to_string(),
             user_id: user_id.to_string(),
             punishment_id: punishment_id.to_string(),
             household_id: household_id.to_string(),
-            assigned_by: assigned_by.to_string(),
-            task_completion_id: None,
-            completed: false,
-            assigned_at: now,
+            amount: 2,
+            completed_amount: 0,
+            updated_at: now,
         };
 
         let shared = row.to_shared();
@@ -120,29 +116,7 @@ mod tests {
         assert_eq!(shared.id, id);
         assert_eq!(shared.user_id, user_id);
         assert_eq!(shared.punishment_id, punishment_id);
-        assert_eq!(shared.assigned_by, assigned_by);
-        assert!(!shared.completed);
-        assert!(shared.task_completion_id.is_none());
-    }
-
-    #[test]
-    fn test_user_punishment_from_task() {
-        let now = Utc::now();
-        let task_completion_id = Uuid::new_v4();
-
-        let row = UserPunishmentRow {
-            id: Uuid::new_v4().to_string(),
-            user_id: Uuid::new_v4().to_string(),
-            punishment_id: Uuid::new_v4().to_string(),
-            household_id: Uuid::new_v4().to_string(),
-            assigned_by: Uuid::new_v4().to_string(),
-            task_completion_id: Some(task_completion_id.to_string()),
-            completed: false,
-            assigned_at: now,
-        };
-
-        let shared = row.to_shared();
-
-        assert_eq!(shared.task_completion_id, Some(task_completion_id));
+        assert_eq!(shared.amount, 2);
+        assert_eq!(shared.completed_amount, 0);
     }
 }

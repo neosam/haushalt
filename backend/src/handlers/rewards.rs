@@ -15,8 +15,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{reward_id}", web::delete().to(delete_reward))
             .route("/{reward_id}/purchase", web::post().to(purchase_reward))
             .route("/{reward_id}/assign/{user_id}", web::post().to(assign_reward))
+            .route("/{reward_id}/unassign/{user_id}", web::post().to(unassign_reward))
             .route("/user-rewards", web::get().to(list_user_rewards))
             .route("/user-rewards/all", web::get().to(list_all_user_rewards))
+            .route("/user-rewards/{id}", web::delete().to(delete_user_reward))
             .route("/user-rewards/{id}/redeem", web::post().to(redeem_reward))
     );
 }
@@ -413,13 +415,80 @@ async fn assign_reward(
         }));
     }
 
-    match reward_service::assign_reward(&state.db, &reward_id, &target_user_id, &household_id, &current_user_id).await {
+    match reward_service::assign_reward(&state.db, &reward_id, &target_user_id, &household_id).await {
         Ok(user_reward) => Ok(HttpResponse::Created().json(ApiSuccess::new(user_reward))),
         Err(e) => {
             log::error!("Error assigning reward: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to assign reward".to_string(),
+            }))
+        }
+    }
+}
+
+async fn unassign_reward(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String, String)>,
+) -> Result<HttpResponse> {
+    let current_user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, reward_id_str, target_user_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let reward_id = match Uuid::parse_str(&reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid reward ID format".to_string(),
+            }));
+        }
+    };
+
+    let target_user_id = match Uuid::parse_str(&target_user_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user ID format".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &current_user_id).await;
+    if !role.map(|r| r.can_manage_rewards()).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners and admins can unassign rewards".to_string(),
+        }));
+    }
+
+    match reward_service::unassign_reward(&state.db, &reward_id, &target_user_id, &household_id).await {
+        Ok(_) => Ok(HttpResponse::Ok().json(ApiSuccess::new(()))),
+        Err(e) => {
+            log::error!("Error unassigning reward: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "unassign_error".to_string(),
+                message: e.to_string(),
             }))
         }
     }
@@ -508,6 +577,64 @@ async fn list_all_user_rewards(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to list all user rewards".to_string(),
+            }))
+        }
+    }
+}
+
+async fn delete_user_reward(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, user_reward_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let user_reward_id = match Uuid::parse_str(&user_reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user reward ID format".to_string(),
+            }));
+        }
+    };
+
+    // Only owners/admins can delete user rewards
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r.can_manage_rewards()).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners and admins can remove reward assignments".to_string(),
+        }));
+    }
+
+    match reward_service::delete_user_reward(&state.db, &user_reward_id).await {
+        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Err(e) => {
+            log::error!("Error deleting user reward: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "delete_error".to_string(),
+                message: e.to_string(),
             }))
         }
     }

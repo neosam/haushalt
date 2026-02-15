@@ -173,8 +173,7 @@ pub async fn assign_task_completion_rewards(
     let mut assigned_rewards = Vec::new();
 
     for reward in task_rewards {
-        // Use system user (same as user_id) as assigner for automatic rewards
-        let user_reward = rewards::assign_reward(pool, &reward.id, user_id, household_id, user_id)
+        let user_reward = rewards::assign_reward(pool, &reward.id, user_id, household_id)
             .await?;
         assigned_rewards.push(user_reward);
     }
@@ -188,7 +187,6 @@ pub async fn assign_missed_task_punishments(
     task_id: &Uuid,
     user_id: &Uuid,
     household_id: &Uuid,
-    assigned_by: &Uuid,
 ) -> Result<Vec<UserPunishment>, TaskConsequenceError> {
     let task_punishments = get_task_punishments(pool, task_id).await?;
 
@@ -200,8 +198,6 @@ pub async fn assign_missed_task_punishments(
             &punishment.id,
             user_id,
             household_id,
-            assigned_by,
-            None, // No task_completion_id for missed tasks
         )
         .await?;
         assigned_punishments.push(user_punishment);

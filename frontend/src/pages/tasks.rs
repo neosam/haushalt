@@ -30,6 +30,7 @@ pub fn TasksPage() -> impl IntoView {
     let title = create_rw_signal(String::new());
     let description = create_rw_signal(String::new());
     let recurrence_type = create_rw_signal("daily".to_string());
+    let target_count = create_rw_signal("1".to_string());
 
     // Load tasks and supporting data
     create_effect(move |_| {
@@ -99,12 +100,14 @@ pub fn TasksPage() -> impl IntoView {
             _ => RecurrenceType::Daily,
         };
 
+        let target = target_count.get().parse::<i32>().unwrap_or(1).max(1);
         let request = CreateTaskRequest {
             title: title.get(),
             description: Some(description.get()),
             recurrence_type: rec_type,
             recurrence_value: None,
             assigned_user_id: None,
+            target_count: Some(target),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -114,6 +117,7 @@ pub fn TasksPage() -> impl IntoView {
                     show_create_modal.set(false);
                     title.set(String::new());
                     description.set(String::new());
+                    target_count.set("1".to_string());
                 }
                 Err(e) => error.set(Some(e)),
             }
@@ -322,6 +326,19 @@ pub fn TasksPage() -> impl IntoView {
                             <option value="monthly">"Monthly"</option>
                             <option value="weekdays">"Weekdays (Mon-Fri)"</option>
                         </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="target-count">"Target Count"</label>
+                        <input
+                            type="number"
+                            id="target-count"
+                            class="form-input"
+                            min="1"
+                            prop:value=move || target_count.get()
+                            on:input=move |ev| target_count.set(event_target_value(&ev))
+                        />
+                        <small class="form-hint">"How many times per period (1 for regular tasks, more for habits)"</small>
                     </div>
 
                     <div class="modal-footer">

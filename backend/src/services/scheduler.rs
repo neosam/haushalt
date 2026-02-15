@@ -105,6 +105,41 @@ pub fn get_previous_due_date(task: &Task, current_date: NaiveDate) -> NaiveDate 
     }
 }
 
+/// Get the period bounds (start, end) for counting completions based on task recurrence
+/// This is used for habits that can be completed multiple times per period
+pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate) {
+    match task.recurrence_type {
+        RecurrenceType::Daily => (date, date),
+
+        RecurrenceType::Weekly => {
+            // Get start of week (Monday)
+            let days_from_monday = date.weekday().num_days_from_monday();
+            let week_start = date - chrono::Duration::days(days_from_monday as i64);
+            let week_end = week_start + chrono::Duration::days(6);
+            (week_start, week_end)
+        }
+
+        RecurrenceType::Monthly => {
+            let month_start = NaiveDate::from_ymd_opt(date.year(), date.month(), 1)
+                .unwrap_or(date);
+            let month_end = get_last_day_of_month(date);
+            let month_end_date = NaiveDate::from_ymd_opt(date.year(), date.month(), month_end)
+                .unwrap_or(date);
+            (month_start, month_end_date)
+        }
+
+        RecurrenceType::Weekdays => {
+            // For weekdays, treat each day as its own period
+            (date, date)
+        }
+
+        RecurrenceType::Custom => {
+            // For custom dates, treat each date as its own period
+            (date, date)
+        }
+    }
+}
+
 /// Get the next due date for a task after the given date
 pub fn get_next_due_date(task: &Task, current_date: NaiveDate) -> Option<NaiveDate> {
     match task.recurrence_type {
@@ -211,6 +246,7 @@ mod tests {
             recurrence_type,
             recurrence_value,
             assigned_user_id: None,
+            target_count: 1,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

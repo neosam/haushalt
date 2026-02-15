@@ -15,6 +15,8 @@ pub enum TaskError {
     AlreadyCompleted,
     #[error("Task not due today")]
     NotDueToday,
+    #[error("No completion to undo")]
+    NotCompleted,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 }
@@ -26,6 +28,7 @@ pub async fn create_task(
 ) -> Result<Task, TaskError> {
     let id = Uuid::new_v4();
     let now = Utc::now();
+    let target_count = request.target_count.unwrap_or(1);
 
     let recurrence_value = request
         .recurrence_value
@@ -34,8 +37,8 @@ pub async fn create_task(
 
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -45,6 +48,7 @@ pub async fn create_task(
     .bind(request.recurrence_type.as_str())
     .bind(&recurrence_value)
     .bind(request.assigned_user_id.map(|u| u.to_string()))
+    .bind(target_count)
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -58,6 +62,7 @@ pub async fn create_task(
         recurrence_type: request.recurrence_type.clone(),
         recurrence_value: request.recurrence_value.clone(),
         assigned_user_id: request.assigned_user_id,
+        target_count,
         created_at: now,
         updated_at: now,
     })
@@ -84,16 +89,17 @@ pub async fn get_task_with_status(
 
     let today = Utc::now().date_naive();
 
-    // Check if completed today
-    let is_completed_today = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date = ?",
+    // Get completion count for today (or current period for weekly/monthly tasks)
+    let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
+    let completions_today = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
     )
     .bind(task_id.to_string())
     .bind(user_id.to_string())
-    .bind(today)
+    .bind(period_start)
+    .bind(period_end)
     .fetch_one(pool)
-    .await?
-        > 0;
+    .await? as i32;
 
     // Get last completion
     let last_completion: Option<TaskCompletionRow> = sqlx::query_as(
@@ -105,11 +111,11 @@ pub async fn get_task_with_status(
     .await?;
 
     // Calculate streak
-    let current_streak = calculate_streak(pool, task_id, user_id).await?;
+    let current_streak = calculate_streak(pool, &task, user_id).await?;
 
     Ok(Some(TaskWithStatus {
         task,
-        is_completed_today,
+        completions_today,
         current_streak,
         last_completion: last_completion.map(|c| c.completed_at),
     }))
@@ -168,13 +174,16 @@ pub async fn update_task(
     if let Some(assigned_user_id) = request.assigned_user_id {
         task.assigned_user_id = Some(assigned_user_id.to_string());
     }
+    if let Some(target_count) = request.target_count {
+        task.target_count = target_count;
+    }
 
     let now = Utc::now();
     task.updated_at = now;
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -183,6 +192,7 @@ pub async fn update_task(
     .bind(&task.recurrence_type)
     .bind(&task.recurrence_value)
     .bind(&task.assigned_user_id)
+    .bind(task.target_count)
     .bind(now)
     .bind(task_id.to_string())
     .execute(pool)
@@ -237,17 +247,19 @@ pub async fn complete_task(
         return Err(TaskError::NotDueToday);
     }
 
-    // Check if already completed today
+    // Check if target completions already reached for this period
+    let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
     let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date = ?",
+        "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
     )
     .bind(task_id.to_string())
     .bind(user_id.to_string())
-    .bind(today)
+    .bind(period_start)
+    .bind(period_end)
     .fetch_one(pool)
     .await?;
 
-    if existing > 0 {
+    if existing >= task.target_count as i64 {
         return Err(TaskError::AlreadyCompleted);
     }
 
@@ -269,7 +281,7 @@ pub async fn complete_task(
     .await?;
 
     // Award points
-    let streak = calculate_streak(pool, task_id, user_id).await?;
+    let streak = calculate_streak(pool, &task, user_id).await?;
     points_service::award_task_completion_points(pool, household_id, user_id, task_id, streak)
         .await
         .ok();
@@ -286,6 +298,43 @@ pub async fn complete_task(
         completed_at: now,
         due_date: today,
     })
+}
+
+pub async fn uncomplete_task(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<(), TaskError> {
+    let task = get_task(pool, task_id).await?.ok_or(TaskError::NotFound)?;
+    let today = Utc::now().date_naive();
+
+    // Get the period bounds for this task
+    let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
+
+    // Delete the most recent completion for this task/user in the current period
+    let result = sqlx::query(
+        r#"
+        DELETE FROM task_completions
+        WHERE id = (
+            SELECT id FROM task_completions
+            WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?
+            ORDER BY completed_at DESC
+            LIMIT 1
+        )
+        "#,
+    )
+    .bind(task_id.to_string())
+    .bind(user_id.to_string())
+    .bind(period_start)
+    .bind(period_end)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(TaskError::NotCompleted);
+    }
+
+    Ok(())
 }
 
 pub async fn get_due_tasks(
@@ -310,12 +359,12 @@ pub async fn get_due_tasks(
     Ok(due_tasks)
 }
 
-async fn calculate_streak(pool: &SqlitePool, task_id: &Uuid, user_id: &Uuid) -> Result<i32, TaskError> {
+async fn calculate_streak(pool: &SqlitePool, task: &Task, user_id: &Uuid) -> Result<i32, TaskError> {
     // Get all completions ordered by due date descending
     let completions: Vec<TaskCompletionRow> = sqlx::query_as(
         "SELECT * FROM task_completions WHERE task_id = ? AND user_id = ? ORDER BY due_date DESC",
     )
-    .bind(task_id.to_string())
+    .bind(task.id.to_string())
     .bind(user_id.to_string())
     .fetch_all(pool)
     .await?;
@@ -323,9 +372,6 @@ async fn calculate_streak(pool: &SqlitePool, task_id: &Uuid, user_id: &Uuid) -> 
     if completions.is_empty() {
         return Ok(0);
     }
-
-    // Get the task to check recurrence
-    let task = get_task(pool, task_id).await?.ok_or(TaskError::NotFound)?;
 
     let today = Utc::now().date_naive();
     let mut streak = 0;
@@ -338,7 +384,7 @@ async fn calculate_streak(pool: &SqlitePool, task_id: &Uuid, user_id: &Uuid) -> 
             || (completion.due_date == expected_date - chrono::Duration::days(1) && streak == 0)
         {
             streak += 1;
-            expected_date = scheduler::get_previous_due_date(&task, completion.due_date);
+            expected_date = scheduler::get_previous_due_date(task, completion.due_date);
         } else {
             break;
         }

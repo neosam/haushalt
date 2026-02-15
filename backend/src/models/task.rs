@@ -13,6 +13,7 @@ pub struct TaskRow {
     pub recurrence_type: String,
     pub recurrence_value: Option<String>,
     pub assigned_user_id: Option<String>,
+    pub target_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -32,6 +33,7 @@ impl TaskRow {
                 .unwrap_or(shared::RecurrenceType::Daily),
             recurrence_value,
             assigned_user_id: self.assigned_user_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
+            target_count: self.target_count,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -57,6 +59,7 @@ mod tests {
             recurrence_type: "daily".to_string(),
             recurrence_value: None,
             assigned_user_id: None,
+            target_count: 1,
             created_at: now,
             updated_at: now,
         };
@@ -68,6 +71,7 @@ mod tests {
         assert_eq!(shared.title, "Test Task");
         assert_eq!(shared.recurrence_type, RecurrenceType::Daily);
         assert!(shared.assigned_user_id.is_none());
+        assert_eq!(shared.target_count, 1);
     }
 
     #[test]
@@ -83,6 +87,7 @@ mod tests {
             recurrence_type: "weekly".to_string(),
             recurrence_value: Some("1".to_string()),
             assigned_user_id: Some(user_id.to_string()),
+            target_count: 3,
             created_at: now,
             updated_at: now,
         };
@@ -91,5 +96,6 @@ mod tests {
 
         assert_eq!(shared.assigned_user_id, Some(user_id));
         assert_eq!(shared.recurrence_type, RecurrenceType::Weekly);
+        assert_eq!(shared.target_count, 3);
     }
 }

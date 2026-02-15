@@ -222,6 +222,16 @@ impl ApiClient {
         .await
     }
 
+    pub async fn uncomplete_task(household_id: &str, task_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "POST",
+            &format!("/households/{}/tasks/{}/uncomplete", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     pub async fn delete_task(household_id: &str, task_id: &str) -> Result<(), String> {
         Self::request::<()>(
             "DELETE",
@@ -433,6 +443,16 @@ impl ApiClient {
         .await
     }
 
+    pub async fn delete_user_reward(household_id: &str, user_reward_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/households/{}/rewards/user-rewards/{}", household_id, user_reward_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     pub async fn redeem_reward(household_id: &str, user_reward_id: &str) -> Result<UserReward, String> {
         Self::request::<UserReward>(
             "POST",
@@ -491,6 +511,16 @@ impl ApiClient {
         Self::request::<Vec<UserPunishmentWithUser>>(
             "GET",
             &format!("/households/{}/punishments/user-punishments/all", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_user_punishment(household_id: &str, user_punishment_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/households/{}/punishments/user-punishments/{}", household_id, user_punishment_id),
             None::<()>,
             true,
         )
@@ -602,6 +632,47 @@ impl ApiClient {
         Self::request::<UserPunishment>(
             "POST",
             &format!("/households/{}/punishments/{}/assign/{}", household_id, punishment_id, user_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn unassign_reward(
+        household_id: &str,
+        reward_id: &str,
+        user_id: &str,
+    ) -> Result<(), String> {
+        Self::request::<()>(
+            "POST",
+            &format!("/households/{}/rewards/{}/unassign/{}", household_id, reward_id, user_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn unassign_punishment(
+        household_id: &str,
+        punishment_id: &str,
+        user_id: &str,
+    ) -> Result<(), String> {
+        Self::request::<()>(
+            "POST",
+            &format!("/households/{}/punishments/{}/unassign/{}", household_id, punishment_id, user_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn complete_punishment(
+        household_id: &str,
+        user_punishment_id: &str,
+    ) -> Result<UserPunishment, String> {
+        Self::request::<UserPunishment>(
+            "POST",
+            &format!("/households/{}/punishments/user-punishments/{}/complete", household_id, user_punishment_id),
             None::<()>,
             true,
         )

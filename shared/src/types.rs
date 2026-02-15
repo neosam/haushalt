@@ -213,6 +213,7 @@ pub struct Task {
     pub recurrence_type: RecurrenceType,
     pub recurrence_value: Option<RecurrenceValue>,
     pub assigned_user_id: Option<Uuid>,
+    pub target_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -224,6 +225,7 @@ pub struct CreateTaskRequest {
     pub recurrence_type: RecurrenceType,
     pub recurrence_value: Option<RecurrenceValue>,
     pub assigned_user_id: Option<Uuid>,
+    pub target_count: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,6 +235,7 @@ pub struct UpdateTaskRequest {
     pub recurrence_type: Option<RecurrenceType>,
     pub recurrence_value: Option<RecurrenceValue>,
     pub assigned_user_id: Option<Uuid>,
+    pub target_count: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,9 +250,21 @@ pub struct TaskCompletion {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskWithStatus {
     pub task: Task,
-    pub is_completed_today: bool,
+    pub completions_today: i32,
     pub current_streak: i32,
     pub last_completion: Option<DateTime<Utc>>,
+}
+
+impl TaskWithStatus {
+    /// Returns true if the target for the current period is met
+    pub fn is_target_met(&self) -> bool {
+        self.completions_today >= self.task.target_count
+    }
+
+    /// Returns remaining completions needed to meet the target
+    pub fn remaining(&self) -> i32 {
+        (self.task.target_count - self.completions_today).max(0)
+    }
 }
 
 // ============================================================================
@@ -356,17 +371,15 @@ pub struct UserReward {
     pub user_id: Uuid,
     pub reward_id: Uuid,
     pub household_id: Uuid,
-    pub assigned_by: Option<Uuid>,
-    pub is_purchased: bool,
-    pub redeemed: bool,
-    pub assigned_at: DateTime<Utc>,
+    pub amount: i32,
+    pub redeemed_amount: i32,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserRewardWithDetails {
     pub user_reward: UserReward,
     pub reward: Reward,
-    pub assigned_by_user: Option<User>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -406,17 +419,15 @@ pub struct UserPunishment {
     pub user_id: Uuid,
     pub punishment_id: Uuid,
     pub household_id: Uuid,
-    pub assigned_by: Uuid,
-    pub task_completion_id: Option<Uuid>,
-    pub completed: bool,
-    pub assigned_at: DateTime<Utc>,
+    pub amount: i32,
+    pub completed_amount: i32,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPunishmentWithDetails {
     pub user_punishment: UserPunishment,
     pub punishment: Punishment,
-    pub assigned_by_user: User,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

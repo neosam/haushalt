@@ -23,7 +23,9 @@ pub fn TaskEditModal(
     let title = create_rw_signal(task.title.clone());
     let description = create_rw_signal(task.description.clone());
     let recurrence_type = create_rw_signal(task.recurrence_type.as_str().to_string());
-    let assigned_user = create_rw_signal(task.assigned_user_id.map(|id| id.to_string()).unwrap_or_default());
+    let initial_assigned_user_id = task.assigned_user_id.map(|id| id.to_string());
+    let assigned_user = create_rw_signal(initial_assigned_user_id.clone().unwrap_or_default());
+    let target_count = create_rw_signal(task.target_count.to_string());
 
     // Track linked rewards/punishments
     let selected_rewards = create_rw_signal(
@@ -69,12 +71,14 @@ pub fn TaskEditModal(
                 Uuid::parse_str(&assigned).ok()
             };
 
+            let target = target_count.get().parse::<i32>().unwrap_or(1).max(1);
             let request = UpdateTaskRequest {
                 title: Some(title.get()),
                 description: Some(description.get()),
                 recurrence_type: Some(rec_type),
                 recurrence_value: None,
                 assigned_user_id,
+                target_count: Some(target),
             };
 
             let new_rewards = selected_rewards.get();
@@ -175,6 +179,19 @@ pub fn TaskEditModal(
                             </select>
                         </div>
 
+                        <div class="form-group">
+                            <label class="form-label" for="edit-target-count">"Target Count"</label>
+                            <input
+                                type="number"
+                                id="edit-target-count"
+                                class="form-input"
+                                min="1"
+                                prop:value=move || target_count.get()
+                                on:input=move |ev| target_count.set(event_target_value(&ev))
+                            />
+                            <small class="form-hint">"How many times per period (1 for regular tasks, more for habits)"</small>
+                        </div>
+
                         // Assignment Section
                         <div class="form-group">
                             <label class="form-label" for="edit-assigned">"Assigned To"</label>
@@ -184,12 +201,13 @@ pub fn TaskEditModal(
                                 prop:value=move || assigned_user.get()
                                 on:change=move |ev| assigned_user.set(event_target_value(&ev))
                             >
-                                <option value="">"Not assigned (all members)"</option>
+                                <option value="" selected=initial_assigned_user_id.is_none()>"Not assigned (all members)"</option>
                                 {members.clone().into_iter().map(|m| {
                                     let user_id = m.user.id.to_string();
+                                    let is_selected = initial_assigned_user_id.as_ref() == Some(&user_id);
                                     let name = m.user.username.clone();
                                     view! {
-                                        <option value=user_id>{name}</option>
+                                        <option value=user_id selected=is_selected>{name}</option>
                                     }
                                 }).collect_view()}
                             </select>
