@@ -10,3 +10,5 @@ pub mod task_consequences;
 pub mod background_jobs;
 pub mod invitations;
 pub mod activity_logs;
+pub mod chat;
+pub mod websocket;

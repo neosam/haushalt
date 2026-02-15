@@ -10,3 +10,4 @@ pub mod pending_reviews;
 pub mod pending_confirmations;
 pub mod reward_modal;
 pub mod punishment_modal;
+pub mod chat_message;

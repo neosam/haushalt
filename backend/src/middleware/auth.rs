@@ -3,6 +3,19 @@ use uuid::Uuid;
 
 use crate::services::auth as auth_service;
 
+/// JWT Claims structure
+#[derive(Debug)]
+pub struct TokenClaims {
+    pub sub: Uuid,
+}
+
+/// Validate a JWT token and return claims
+pub fn validate_token(token: &str, jwt_secret: &str) -> Result<TokenClaims, AuthMiddlewareError> {
+    auth_service::verify_jwt(token, jwt_secret)
+        .map(|sub| TokenClaims { sub })
+        .map_err(|_| AuthMiddlewareError::InvalidToken)
+}
+
 /// Extract user ID from the Authorization header
 pub fn extract_user_id(req: &HttpRequest, jwt_secret: &str) -> Result<Uuid, AuthMiddlewareError> {
     let auth_header = req

@@ -981,6 +981,89 @@ impl<T> ApiSuccess<T> {
 }
 
 // ============================================================================
+// Chat Message Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub id: Uuid,
+    pub household_id: Uuid,
+    pub user_id: Uuid,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub is_deleted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessageWithUser {
+    pub message: ChatMessage,
+    pub user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateChatMessageRequest {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateChatMessageRequest {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListChatMessagesRequest {
+    pub limit: Option<i64>,
+    pub before: Option<Uuid>,
+}
+
+// ============================================================================
+// WebSocket Message Types
+// ============================================================================
+
+/// Messages sent from client to server via WebSocket
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum WsClientMessage {
+    /// Authenticate with JWT token
+    Authenticate { token: String },
+    /// Join a household chat room
+    JoinRoom { household_id: Uuid },
+    /// Leave the current chat room
+    LeaveRoom,
+    /// Send a new chat message
+    SendMessage { content: String },
+    /// Edit an existing message
+    EditMessage { message_id: Uuid, content: String },
+    /// Delete a message
+    DeleteMessage { message_id: Uuid },
+    /// Ping to keep connection alive
+    Ping,
+}
+
+/// Messages sent from server to client via WebSocket
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum WsServerMessage {
+    /// Authentication successful
+    Authenticated { user_id: Uuid, username: String },
+    /// Error occurred
+    Error { code: String, message: String },
+    /// Successfully joined a chat room
+    JoinedRoom { household_id: Uuid },
+    /// Successfully left the chat room
+    LeftRoom,
+    /// New message received
+    NewMessage { message: ChatMessageWithUser },
+    /// Message was edited
+    MessageEdited { message: ChatMessageWithUser },
+    /// Message was deleted
+    MessageDeleted { message_id: Uuid, household_id: Uuid },
+    /// Pong response to ping
+    Pong,
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

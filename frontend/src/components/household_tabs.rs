@@ -6,6 +6,7 @@ pub enum HouseholdTab {
     Tasks,
     Rewards,
     Punishments,
+    Chat,
     Activity,
     Settings,
 }
@@ -17,6 +18,7 @@ impl HouseholdTab {
             HouseholdTab::Tasks => "Tasks",
             HouseholdTab::Rewards => "Rewards",
             HouseholdTab::Punishments => "Punishments",
+            HouseholdTab::Chat => "Chat",
             HouseholdTab::Activity => "Activity",
             HouseholdTab::Settings => "Settings",
         }
@@ -28,6 +30,7 @@ impl HouseholdTab {
             HouseholdTab::Tasks => format!("/households/{}/tasks", household_id),
             HouseholdTab::Rewards => format!("/households/{}/rewards", household_id),
             HouseholdTab::Punishments => format!("/households/{}/punishments", household_id),
+            HouseholdTab::Chat => format!("/households/{}/chat", household_id),
             HouseholdTab::Activity => format!("/households/{}/activity", household_id),
             HouseholdTab::Settings => format!("/households/{}/settings", household_id),
         }
@@ -44,6 +47,7 @@ pub fn HouseholdTabs(
         HouseholdTab::Tasks,
         HouseholdTab::Rewards,
         HouseholdTab::Punishments,
+        HouseholdTab::Chat,
         HouseholdTab::Activity,
         HouseholdTab::Settings,
     ];

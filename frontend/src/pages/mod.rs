@@ -7,4 +7,5 @@ pub mod tasks;
 pub mod rewards;
 pub mod punishments;
 pub mod activity;
+pub mod chat;
 pub mod settings;

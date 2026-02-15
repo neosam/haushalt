@@ -1,17 +1,20 @@
+pub mod websocket;
+
 use gloo_net::http::Request;
 use gloo_storage::{LocalStorage, Storage};
 use leptos::*;
 use serde::{de::DeserializeOwned, Serialize};
 use shared::{
     ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, AuthResponse,
-    CreateHouseholdRequest, CreateInvitationRequest, CreatePointConditionRequest,
-    CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
-    HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
-    LeaderboardEntry, LoginRequest, MemberWithUser, PendingPunishmentCompletion, PendingReview,
-    PendingRewardRedemption, PointCondition, Punishment, Reward, Task, TaskCompletion,
-    TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateHouseholdSettingsRequest,
-    UpdatePunishmentRequest, UpdateRewardRequest, UpdateTaskRequest, User, UserPunishment,
-    UserPunishmentWithUser, UserReward, UserRewardWithUser,
+    ChatMessageWithUser, CreateChatMessageRequest, CreateHouseholdRequest, CreateInvitationRequest,
+    CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
+    CreateUserRequest, Household, HouseholdMembership, HouseholdSettings, Invitation,
+    InvitationWithHousehold, InviteUserRequest, LeaderboardEntry, LoginRequest, MemberWithUser,
+    PendingPunishmentCompletion, PendingReview, PendingRewardRedemption, PointCondition, Punishment,
+    Reward, Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus,
+    UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdatePunishmentRequest,
+    UpdateRewardRequest, UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward,
+    UserRewardWithUser,
 };
 
 const API_BASE: &str = "/api";
@@ -857,6 +860,70 @@ impl ApiClient {
             format!("/households/{}/activities", household_id)
         };
         Self::request::<Vec<ActivityLogWithUsers>>("GET", &url, None::<()>, true).await
+    }
+
+    // Chat endpoints
+    pub async fn list_chat_messages(
+        household_id: &str,
+        limit: Option<i64>,
+        before: Option<&str>,
+    ) -> Result<Vec<ChatMessageWithUser>, String> {
+        let mut url = format!("/households/{}/chat", household_id);
+        let mut params = Vec::new();
+        if let Some(limit) = limit {
+            params.push(format!("limit={}", limit));
+        }
+        if let Some(before) = before {
+            params.push(format!("before={}", before));
+        }
+        if !params.is_empty() {
+            url = format!("{}?{}", url, params.join("&"));
+        }
+        Self::request::<Vec<ChatMessageWithUser>>("GET", &url, None::<()>, true).await
+    }
+
+    pub async fn send_chat_message(
+        household_id: &str,
+        content: &str,
+    ) -> Result<ChatMessageWithUser, String> {
+        Self::request(
+            "POST",
+            &format!("/households/{}/chat", household_id),
+            Some(CreateChatMessageRequest {
+                content: content.to_string(),
+            }),
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_chat_message(
+        household_id: &str,
+        message_id: &str,
+        content: &str,
+    ) -> Result<ChatMessageWithUser, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/chat/{}", household_id, message_id),
+            Some(UpdateChatMessageRequest {
+                content: content.to_string(),
+            }),
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_chat_message(
+        household_id: &str,
+        message_id: &str,
+    ) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/households/{}/chat/{}", household_id, message_id),
+            None::<()>,
+            true,
+        )
+        .await
     }
 }
 

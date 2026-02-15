@@ -61,16 +61,27 @@ async fn main() -> std::io::Result<()> {
     });
     log::info!("Background job scheduler started");
 
+    // Create WebSocket manager
+    let ws_manager = services::websocket::WsManager::new();
+    let ws_manager_data = web::Data::new(ws_manager);
+
     // Create app state
     let app_state = web::Data::new(models::AppState {
-        db: pool,
+        db: pool.clone(),
         config: config.clone(),
     });
+
+    // Create pool and config data for WebSocket handler
+    let pool_data = web::Data::new(pool);
+    let config_data = web::Data::new(config.clone());
 
     let static_files_path = config.static_files_path.clone();
 
     // Start HTTP server
     HttpServer::new(move || {
+        let ws_manager = ws_manager_data.clone();
+        let pool = pool_data.clone();
+        let config = config_data.clone();
         let cors = Cors::default()
             .allow_any_origin()
             .allow_any_method()
@@ -79,9 +90,13 @@ async fn main() -> std::io::Result<()> {
 
         let mut app = App::new()
             .app_data(app_state.clone())
+            .app_data(ws_manager.clone())
+            .app_data(pool.clone())
+            .app_data(config.clone())
             .wrap(Logger::default())
             .wrap(cors)
-            .configure(handlers::configure_routes);
+            .configure(handlers::configure_routes)
+            .configure(handlers::websocket::configure);
 
         // Serve static files if path is configured
         if let Some(ref path) = static_files_path {

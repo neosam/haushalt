@@ -11,6 +11,7 @@ actix-web = { workspace = true }
 actix-rt = { workspace = true }
 actix-cors = { workspace = true }
 actix-files = { workspace = true }
+actix-ws = { workspace = true }
 
 # Database
 sqlx = { workspace = true }

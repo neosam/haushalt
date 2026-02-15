@@ -24,6 +24,7 @@ actix-web = "4"
 actix-rt = "2"
 actix-cors = "0.7"
 actix-files = "0.6"
+actix-ws = "0.3"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "uuid", "chrono"] }
 tokio = { version = "1", features = ["full"] }
 argon2 = { version = "0.5", features = ["std"] }
@@ -41,7 +42,8 @@ gloo-net = "0.6"
 gloo-storage = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Window", "Document", "HtmlInputElement"] }
+web-sys = { version = "0.3", features = ["Window", "Document", "HtmlInputElement", "WebSocket", "MessageEvent", "CloseEvent", "Location", "BinaryType", "ErrorEvent"] }
+gloo-timers = "0.3"
 console_error_panic_hook = "0.1"
 
 [workspace.lints.rust]

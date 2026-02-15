@@ -11,5 +11,11 @@ port = 3000
 
 # Proxy API requests to backend during development
 [[proxy]]
+ws = true
+rewrite = "/api/ws"
+backend = "http://127.0.0.1:8080/api/ws"
+
+[[proxy]]
 rewrite = "/api/"
 backend = "http://127.0.0.1:8080/api/"
+
