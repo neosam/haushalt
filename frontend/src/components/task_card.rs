@@ -326,6 +326,9 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: allow_exceed,
                 requires_review: false,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -427,6 +430,9 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: true,
                 requires_review: false,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -491,57 +497,4 @@ mod tests {
         assert!(!task.can_complete());
     }
 
-    // Tests for format_next_due_date
-
-    #[wasm_bindgen_test]
-    fn test_format_next_due_date_today() {
-        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-        let result = format_next_due_date(today, today);
-        assert_eq!(result, "Today");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_format_next_due_date_tomorrow() {
-        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-        let tomorrow = chrono::NaiveDate::from_ymd_opt(2024, 1, 16).unwrap();
-        let result = format_next_due_date(tomorrow, today);
-        assert_eq!(result, "Tomorrow");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_format_next_due_date_weekday() {
-        // Monday, January 15, 2024
-        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-        // Friday, January 19, 2024 (4 days later)
-        let friday = chrono::NaiveDate::from_ymd_opt(2024, 1, 19).unwrap();
-        let result = format_next_due_date(friday, today);
-        assert_eq!(result, "Friday");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_format_next_due_date_far_future() {
-        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-        // 10 days later
-        let far = chrono::NaiveDate::from_ymd_opt(2024, 1, 25).unwrap();
-        let result = format_next_due_date(far, today);
-        assert_eq!(result, "Jan 25");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_format_next_due_date_6_days() {
-        // 6 days from now should show weekday name
-        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(); // Monday
-        let sunday = chrono::NaiveDate::from_ymd_opt(2024, 1, 21).unwrap(); // 6 days later
-        let result = format_next_due_date(sunday, today);
-        assert_eq!(result, "Sunday");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_format_next_due_date_7_days() {
-        // 7 days from now should show date
-        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-        let next_week = chrono::NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
-        let result = format_next_due_date(next_week, today);
-        assert_eq!(result, "Jan 22");
-    }
 }

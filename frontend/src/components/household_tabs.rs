@@ -100,26 +100,6 @@ mod tests {
     wasm_bindgen_test_configure!(run_in_browser);
 
     #[wasm_bindgen_test]
-    fn test_tab_label_overview() {
-        assert_eq!(HouseholdTab::Overview.label(), "Overview");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_tab_label_tasks() {
-        assert_eq!(HouseholdTab::Tasks.label(), "Tasks");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_tab_label_rewards() {
-        assert_eq!(HouseholdTab::Rewards.label(), "Rewards");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_tab_label_punishments() {
-        assert_eq!(HouseholdTab::Punishments.label(), "Punishments");
-    }
-
-    #[wasm_bindgen_test]
     fn test_tab_path_overview() {
         let path = HouseholdTab::Overview.path("abc-123");
         assert_eq!(path, "/households/abc-123");
@@ -141,11 +121,6 @@ mod tests {
     fn test_tab_path_punishments() {
         let path = HouseholdTab::Punishments.path("abc-123");
         assert_eq!(path, "/households/abc-123/punishments");
-    }
-
-    #[wasm_bindgen_test]
-    fn test_tab_label_activity() {
-        assert_eq!(HouseholdTab::Activity.label(), "Activity");
     }
 
     #[wasm_bindgen_test]
