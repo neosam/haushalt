@@ -11,15 +11,21 @@ use shared::{
     CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
     HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
     LeaderboardEntry, LoginRequest, MemberWithUser, Note, NoteWithUser, PendingPunishmentCompletion,
-    PendingReview, PendingRewardRedemption, PointCondition, Punishment, Reward, Task, TaskCompletion,
-    TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest, UpdateChatMessageRequest,
-    UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest, UpdateRewardRequest,
-    UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment, UserPunishmentWithUser,
-    UserReward, UserRewardWithUser, UserSettings,
+    PendingReview, PendingRewardRedemption, PointCondition, Punishment, RefreshTokenRequest, Reward,
+    Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest,
+    UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest,
+    UpdateRewardRequest, UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment,
+    UserPunishmentWithUser, UserReward, UserRewardWithUser, UserSettings,
 };
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const API_BASE: &str = "/api";
 const TOKEN_KEY: &str = "auth_token";
+const REFRESH_TOKEN_KEY: &str = "refresh_token";
+
+/// Global flag to signal that authentication has failed and user should re-login
+static AUTH_FAILED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 pub struct AuthState {
@@ -44,19 +50,46 @@ impl AuthState {
     }
 
     pub fn is_authenticated(&self) -> bool {
+        // Check if auth has failed globally (e.g., refresh token expired)
+        if AUTH_FAILED.load(Ordering::Relaxed) {
+            return false;
+        }
         self.token.get().is_some()
+    }
+
+    /// Check and clear the auth failed flag, returning true if it was set
+    pub fn check_and_clear_auth_failed(&self) -> bool {
+        if AUTH_FAILED.swap(false, Ordering::Relaxed) {
+            self.token.set(None);
+            self.user.set(None);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn set_auth(&self, response: AuthResponse) {
         LocalStorage::set(TOKEN_KEY, &response.token).ok();
+        LocalStorage::set(REFRESH_TOKEN_KEY, &response.refresh_token).ok();
         self.token.set(Some(response.token));
         self.user.set(Some(response.user));
     }
 
     pub fn logout(&self) {
+        // Try to call server-side logout (fire and forget)
+        if let Some(refresh_token) = Self::get_refresh_token() {
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = ApiClient::logout(refresh_token).await;
+            });
+        }
         LocalStorage::delete(TOKEN_KEY);
+        LocalStorage::delete(REFRESH_TOKEN_KEY);
         self.token.set(None);
         self.user.set(None);
+    }
+
+    fn get_refresh_token() -> Option<String> {
+        LocalStorage::get(REFRESH_TOKEN_KEY).ok()
     }
 
     pub fn get_token(&self) -> Option<String> {
@@ -71,12 +104,29 @@ impl ApiClient {
         LocalStorage::get(TOKEN_KEY).ok()
     }
 
-    async fn request<T: DeserializeOwned>(
+    fn get_refresh_token() -> Option<String> {
+        LocalStorage::get(REFRESH_TOKEN_KEY).ok()
+    }
+
+    fn store_tokens(token: &str, refresh_token: &str) {
+        LocalStorage::set(TOKEN_KEY, token).ok();
+        LocalStorage::set(REFRESH_TOKEN_KEY, refresh_token).ok();
+        // Clear any auth failure flag since we have valid tokens
+        AUTH_FAILED.store(false, Ordering::Relaxed);
+    }
+
+    fn clear_tokens() {
+        LocalStorage::delete(TOKEN_KEY);
+        LocalStorage::delete(REFRESH_TOKEN_KEY);
+    }
+
+    /// Execute a single HTTP request without retry logic
+    async fn execute_request<T: DeserializeOwned>(
         method: &str,
         path: &str,
-        body: Option<impl Serialize>,
+        body_json: Option<String>,
         auth: bool,
-    ) -> Result<T, String> {
+    ) -> Result<(T, u16), String> {
         let url = format!("{}{}", API_BASE, path);
 
         let mut request = match method {
@@ -93,10 +143,10 @@ impl ApiClient {
             }
         }
 
-        let response = if let Some(body) = body {
+        let response = if let Some(json) = body_json {
             request
                 .header("Content-Type", "application/json")
-                .json(&body)
+                .body(json)
                 .map_err(|e| e.to_string())?
                 .send()
                 .await
@@ -108,9 +158,10 @@ impl ApiClient {
                 .map_err(|e| e.to_string())?
         };
 
+        let status = response.status();
         if response.ok() {
             let result: ApiSuccess<T> = response.json().await.map_err(|e| e.to_string())?;
-            Ok(result.data)
+            Ok((result.data, status))
         } else {
             let error: ApiError = response
                 .json()
@@ -119,7 +170,84 @@ impl ApiClient {
                     error: "unknown".to_string(),
                     message: "An unknown error occurred".to_string(),
                 });
-            Err(error.message)
+            Err(format!("{}|{}", status, error.message))
+        }
+    }
+
+    async fn request<T: DeserializeOwned>(
+        method: &str,
+        path: &str,
+        body: Option<impl Serialize>,
+        auth: bool,
+    ) -> Result<T, String> {
+        // Serialize body once so we can retry if needed
+        let body_json = body.map(|b| serde_json::to_string(&b).ok()).flatten();
+
+        // First attempt
+        match Self::execute_request::<T>(method, path, body_json.clone(), auth).await {
+            Ok((data, _)) => return Ok(data),
+            Err(e) => {
+                // Check if it's a 401 and we should try refresh
+                if auth && e.starts_with("401|") {
+                    if let Some(refresh_token) = Self::get_refresh_token() {
+                        if let Ok(auth_response) = Self::refresh_token_request(refresh_token).await {
+                            // Store new tokens
+                            Self::store_tokens(&auth_response.token, &auth_response.refresh_token);
+                            // Retry with new token
+                            match Self::execute_request::<T>(method, path, body_json, auth).await {
+                                Ok((data, _)) => return Ok(data),
+                                Err(e2) => {
+                                    // Extract error message from "status|message" format
+                                    let msg = e2.split('|').nth(1).unwrap_or(&e2);
+                                    return Err(msg.to_string());
+                                }
+                            }
+                        }
+                    }
+                    // Refresh failed, clear tokens and signal auth failure
+                    Self::clear_tokens();
+                    AUTH_FAILED.store(true, Ordering::Relaxed);
+                    return Err("Session expired. Please log in again.".to_string());
+                }
+                // Not a 401, return the error message
+                let msg = e.split('|').nth(1).unwrap_or(&e);
+                return Err(msg.to_string());
+            }
+        }
+    }
+
+    async fn refresh_token_request(refresh_token: String) -> Result<AuthResponse, String> {
+        let url = format!("{}/auth/refresh", API_BASE);
+        let response = Request::post(&url)
+            .header("Content-Type", "application/json")
+            .json(&RefreshTokenRequest { refresh_token })
+            .map_err(|e| e.to_string())?
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if response.ok() {
+            let result: ApiSuccess<AuthResponse> = response.json().await.map_err(|e| e.to_string())?;
+            Ok(result.data)
+        } else {
+            Err("Failed to refresh token".to_string())
+        }
+    }
+
+    async fn logout(refresh_token: String) -> Result<(), String> {
+        let url = format!("{}/auth/logout", API_BASE);
+        let response = Request::post(&url)
+            .header("Content-Type", "application/json")
+            .json(&RefreshTokenRequest { refresh_token })
+            .map_err(|e| e.to_string())?
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if response.ok() {
+            Ok(())
+        } else {
+            Err("Failed to logout".to_string())
         }
     }
 

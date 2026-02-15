@@ -65,10 +65,14 @@ async fn main() -> std::io::Result<()> {
     let ws_manager = services::websocket::WsManager::new();
     let ws_manager_data = web::Data::new(ws_manager);
 
+    // Create rate limiter for login (5 attempts per 15 minutes)
+    let login_rate_limiter = Arc::new(middleware::RateLimiter::new(5, 15 * 60));
+
     // Create app state
     let app_state = web::Data::new(models::AppState {
         db: pool.clone(),
         config: config.clone(),
+        login_rate_limiter,
     });
 
     // Create pool and config data for WebSocket handler
@@ -82,10 +86,16 @@ async fn main() -> std::io::Result<()> {
         let ws_manager = ws_manager_data.clone();
         let pool = pool_data.clone();
         let config = config_data.clone();
+        let allowed_origins = config.cors_origins.clone();
         let cors = Cors::default()
-            .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header()
+            .allowed_origin_fn(move |origin, _req_head| {
+                let origin_str = origin.to_str().unwrap_or("");
+                allowed_origins.iter().any(|allowed| {
+                    origin_str.starts_with(allowed)
+                })
+            })
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+            .allowed_headers(vec!["Authorization", "Content-Type"])
             .max_age(3600);
 
         let mut app = App::new()

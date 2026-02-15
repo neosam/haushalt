@@ -1,6 +1,8 @@
+use std::sync::Arc;
 use sqlx::SqlitePool;
 
 use crate::config::Config;
+use crate::middleware::RateLimiter;
 
 pub mod user;
 pub mod household;
@@ -17,6 +19,7 @@ pub mod activity_log;
 pub mod chat_message;
 pub mod note;
 pub mod announcement;
+pub mod refresh_token;
 
 pub use user::*;
 pub use household::*;
@@ -33,9 +36,11 @@ pub use activity_log::*;
 pub use chat_message::*;
 pub use note::*;
 pub use announcement::*;
+pub use refresh_token::*;
 
 /// Application state shared across all handlers
 pub struct AppState {
     pub db: SqlitePool,
     pub config: Config,
+    pub login_rate_limiter: Arc<RateLimiter>,
 }
