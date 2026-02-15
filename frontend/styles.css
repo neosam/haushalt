@@ -1384,3 +1384,32 @@ body.dark-mode .announcement-list-item {
     background-color: #1e293b;
     border-color: var(--border-color);
 }
+
+/* ============================
+   Household List (Dashboard)
+   ============================ */
+
+.household-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.household-list li {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.household-list li:last-child {
+    border-bottom: none;
+}
+
+.household-list a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.household-list a:hover {
+    text-decoration: underline;
+}

@@ -4,6 +4,7 @@ use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, Role};
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
+use crate::components::task_card::{DashboardGroupedTaskList, TaskWithHousehold};
 use crate::i18n::use_i18n;
 
 #[component]
@@ -13,18 +14,34 @@ pub fn Dashboard() -> impl IntoView {
 
     let households = create_rw_signal(Vec::<Household>::new());
     let invitations = create_rw_signal(Vec::<InvitationWithHousehold>::new());
+    let all_tasks = create_rw_signal(Vec::<TaskWithHousehold>::new());
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
     let show_create_modal = create_rw_signal(false);
     let new_household_name = create_rw_signal(String::new());
 
-    // Load households and invitations on mount
+    // Load households, invitations, and tasks on mount
     create_effect(move |_| {
         wasm_bindgen_futures::spawn_local(async move {
             // Load households
             match ApiClient::list_households().await {
                 Ok(data) => {
-                    households.set(data);
+                    households.set(data.clone());
+
+                    // Load tasks from all households
+                    let mut tasks_with_households = Vec::new();
+                    for household in data {
+                        if let Ok(tasks) = ApiClient::get_due_tasks(&household.id.to_string()).await {
+                            for task in tasks {
+                                tasks_with_households.push(TaskWithHousehold {
+                                    task,
+                                    household_name: household.name.clone(),
+                                    household_id: household.id.to_string(),
+                                });
+                            }
+                        }
+                    }
+                    all_tasks.set(tasks_with_households);
                 }
                 Err(e) => {
                     error.set(Some(e));
@@ -86,6 +103,66 @@ pub fn Dashboard() -> impl IntoView {
             }
         });
     };
+
+    // Task completion handler
+    let on_complete_task = Callback::new(move |task_id: String| {
+        // Find the household_id for this task
+        let tasks = all_tasks.get();
+        if let Some(twh) = tasks.iter().find(|t| t.task.task.id.to_string() == task_id) {
+            let household_id = twh.household_id.clone();
+            let task_id_clone = task_id.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if ApiClient::complete_task(&household_id, &task_id_clone).await.is_ok() {
+                    // Reload tasks from all households
+                    if let Ok(hh) = ApiClient::list_households().await {
+                        let mut tasks_with_households = Vec::new();
+                        for household in hh {
+                            if let Ok(tasks) = ApiClient::get_due_tasks(&household.id.to_string()).await {
+                                for task in tasks {
+                                    tasks_with_households.push(TaskWithHousehold {
+                                        task,
+                                        household_name: household.name.clone(),
+                                        household_id: household.id.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        all_tasks.set(tasks_with_households);
+                    }
+                }
+            });
+        }
+    });
+
+    // Task uncomplete handler
+    let on_uncomplete_task = Callback::new(move |task_id: String| {
+        // Find the household_id for this task
+        let tasks = all_tasks.get();
+        if let Some(twh) = tasks.iter().find(|t| t.task.task.id.to_string() == task_id) {
+            let household_id = twh.household_id.clone();
+            let task_id_clone = task_id.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if ApiClient::uncomplete_task(&household_id, &task_id_clone).await.is_ok() {
+                    // Reload tasks from all households
+                    if let Ok(hh) = ApiClient::list_households().await {
+                        let mut tasks_with_households = Vec::new();
+                        for household in hh {
+                            if let Ok(tasks) = ApiClient::get_due_tasks(&household.id.to_string()).await {
+                                for task in tasks {
+                                    tasks_with_households.push(TaskWithHousehold {
+                                        task,
+                                        household_name: household.name.clone(),
+                                        household_id: household.id.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        all_tasks.set(tasks_with_households);
+                    }
+                }
+            });
+        }
+    });
 
     view! {
         <div class="dashboard-header">
@@ -161,6 +238,26 @@ pub fn Dashboard() -> impl IntoView {
                 </button>
             </div>
 
+            // Tasks section
+            {move || {
+                let tasks = all_tasks.get();
+                if !tasks.is_empty() {
+                    view! {
+                        <div style="margin-bottom: 1.5rem;">
+                            <DashboardGroupedTaskList
+                                tasks=tasks
+                                on_complete=on_complete_task
+                                on_uncomplete=on_uncomplete_task
+                                timezone="Europe/Berlin".to_string()
+                            />
+                        </div>
+                    }.into_view()
+                } else {
+                    ().into_view()
+                }
+            }}
+
+            // Households section
             {move || {
                 let h = households.get();
                 if h.is_empty() {
@@ -172,20 +269,20 @@ pub fn Dashboard() -> impl IntoView {
                     }.into_view()
                 } else {
                     view! {
-                        <div class="grid grid-3">
-                            {h.into_iter().map(|household| {
-                                let id = household.id.to_string();
-                                view! {
-                                    <a href=format!("/households/{}", id) style="text-decoration: none;">
-                                        <div class="card" style="cursor: pointer; transition: transform 0.2s;">
-                                            <h3 class="card-title">{household.name}</h3>
-                                            <p style="color: var(--text-muted); font-size: 0.875rem;">
-                                                {i18n_stored.get_value().t("dashboard.click_to_manage")}
-                                            </p>
-                                        </div>
-                                    </a>
-                                }
-                            }).collect_view()}
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">{i18n_stored.get_value().t("dashboard.households")}</h3>
+                            </div>
+                            <ul class="household-list">
+                                {h.into_iter().map(|household| {
+                                    let id = household.id.to_string();
+                                    view! {
+                                        <li>
+                                            <a href=format!("/households/{}", id)>{household.name}</a>
+                                        </li>
+                                    }
+                                }).collect_view()}
+                            </ul>
                         </div>
                     }.into_view()
                 }

@@ -68,6 +68,7 @@
   "dashboard.as_role": "as",
   "dashboard.accept": "Accept",
   "dashboard.decline": "Decline",
+  "dashboard.households": "Households",
 
   "household.name": "Household Name",
   "household.name_placeholder": "e.g., Smith Family",

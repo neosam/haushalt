@@ -53,6 +53,7 @@ pub fn TaskCard(
     #[prop(into)] on_complete: Callback<String>,
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
+    #[prop(optional)] household_name: Option<String>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -122,6 +123,9 @@ pub fn TaskCard(
     let is_bad_habit = task.task.habit_type.is_inverted();
     let bad_habit_label = i18n_stored.get_value().t("habit_type.bad_short");
 
+    // Household name prefix for meta line
+    let household_prefix = household_name.map(|name| format!("{} | ", name)).unwrap_or_default();
+
     view! {
         <div class=card_class>
             <div class="task-content" style="flex: 1;">
@@ -138,6 +142,7 @@ pub fn TaskCard(
                     }}
                 </div>
                 <div class="task-meta">
+                    {household_prefix}
                     {recurrence_display}
                     {due_display}
                     {streak_display}
@@ -299,6 +304,80 @@ pub fn GroupedTaskList(
                                         {group_tasks.into_iter().map(|task| {
                                             let tz_task = tz_inner.clone();
                                             view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }
+                                        }).collect_view()}
+                                    </div>
+                                </div>
+                            }
+                        }).collect_view()}
+                    </div>
+                }.into_any()
+            }}
+        </div>
+    }
+}
+
+/// Task with associated household name for dashboard display
+#[derive(Clone)]
+pub struct TaskWithHousehold {
+    pub task: TaskWithStatus,
+    pub household_name: String,
+    pub household_id: String,
+}
+
+#[component]
+pub fn DashboardGroupedTaskList(
+    tasks: Vec<TaskWithHousehold>,
+    #[prop(into)] on_complete: Callback<String>,
+    #[prop(into)] on_uncomplete: Callback<String>,
+    #[prop(default = "UTC".to_string())] timezone: String,
+) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
+    let today = today_in_tz(&timezone);
+
+    // Group tasks by their due date
+    let mut grouped: BTreeMap<DueDateGroup, Vec<TaskWithHousehold>> = BTreeMap::new();
+
+    for task in tasks {
+        let group = DueDateGroup::from_date(task.task.next_due_date, today);
+        grouped.entry(group).or_default().push(task);
+    }
+
+    let groups: Vec<(DueDateGroup, Vec<TaskWithHousehold>)> = grouped.into_iter().collect();
+
+    view! {
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">{i18n_stored.get_value().t("tasks.title")}</h3>
+            </div>
+            {if groups.is_empty() {
+                view! {
+                    <div class="empty-state">
+                        <p>{i18n_stored.get_value().t("tasks.no_tasks")}</p>
+                    </div>
+                }.into_any()
+            } else {
+                let tz = timezone.clone();
+                view! {
+                    <div>
+                        {groups.into_iter().map(|(group, group_tasks)| {
+                            let title = group.title(&i18n_stored.get_value());
+                            let is_today = matches!(group, DueDateGroup::Today);
+                            let tz_inner = tz.clone();
+                            view! {
+                                <div class="task-group" style=if is_today { "margin-bottom: 1.5rem;" } else { "margin-bottom: 1rem;" }>
+                                    <div style=if is_today {
+                                        "font-weight: 600; font-size: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border-radius: var(--border-radius);"
+                                    } else {
+                                        "font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: var(--bg-muted); color: var(--text-muted); border-radius: var(--border-radius);"
+                                    }>
+                                        {title}
+                                    </div>
+                                    <div style="margin-top: 0.5rem;">
+                                        {group_tasks.into_iter().map(|twh| {
+                                            let tz_task = tz_inner.clone();
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name /> }
                                         }).collect_view()}
                                     </div>
                                 </div>

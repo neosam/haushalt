@@ -68,6 +68,7 @@
   "dashboard.as_role": "als",
   "dashboard.accept": "Annehmen",
   "dashboard.decline": "Ablehnen",
+  "dashboard.households": "Haushalte",
 
   "household.name": "Haushaltsname",
   "household.name_placeholder": "z.B. Familie Müller",
