@@ -1,5 +1,8 @@
-const CACHE_NAME = 'household-v5';
-const PRECACHE_URLS = [
+// Dynamic cache name based on app version - extracted from index.html
+let CACHE_NAME = 'household-v1';
+
+// Assets to always try to cache
+const SHELL_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
@@ -7,12 +10,24 @@ const PRECACHE_URLS = [
   '/icons/icon-maskable.svg'
 ];
 
-// Install: precache app shell
+// Install: extract version from index.html and precache app shell
 self.addEventListener('install', event => {
+  // Force immediate activation
+  self.skipWaiting();
+
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
+    // Fetch index.html to extract the JS bundle hash as version
+    fetch('/index.html')
+      .then(response => response.text())
+      .then(html => {
+        // Extract hash from script src like: frontend-abc123_bg.js
+        const match = html.match(/frontend-([a-f0-9]+)_bg\.js/);
+        if (match) {
+          CACHE_NAME = `household-${match[1]}`;
+        }
+        return caches.open(CACHE_NAME);
+      })
+      .then(cache => cache.addAll(SHELL_URLS))
   );
 });
 
