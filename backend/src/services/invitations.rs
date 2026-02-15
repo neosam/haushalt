@@ -20,8 +20,6 @@ pub enum InvitationError {
     Expired,
     #[error("Invitation is not for this user")]
     NotForUser,
-    #[error("User not found")]
-    UserNotFound,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 }

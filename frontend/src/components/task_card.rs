@@ -108,9 +108,7 @@ pub fn TaskList(
                 view! {
                     <div>
                         {tasks.into_iter().map(|task| {
-                            let complete_callback = on_complete.clone();
-                            let uncomplete_callback = on_uncomplete.clone();
-                            view! { <TaskCard task=task on_complete=complete_callback on_uncomplete=uncomplete_callback /> }
+                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete /> }
                         }).collect_view()}
                     </div>
                 }.into_any()

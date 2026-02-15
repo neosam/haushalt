@@ -55,22 +55,6 @@ impl UserRewardRow {
     }
 }
 
-/// Database model for task-reward associations
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
-pub struct TaskRewardRow {
-    pub task_id: String,
-    pub reward_id: String,
-}
-
-impl TaskRewardRow {
-    pub fn to_shared(&self) -> shared::TaskReward {
-        shared::TaskReward {
-            task_id: Uuid::parse_str(&self.task_id).unwrap(),
-            reward_id: Uuid::parse_str(&self.reward_id).unwrap(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

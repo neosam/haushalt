@@ -217,7 +217,7 @@ pub fn TaskModal(
     ];
 
     view! {
-        <div class="modal-backdrop" on:click=close.clone()>
+        <div class="modal-backdrop" on:click=close>
             <div class="modal" style="max-width: 600px;" on:click=|e| e.stop_propagation()>
                 <div class="modal-header">
                     <h3 class="modal-title">{modal_title}</h3>

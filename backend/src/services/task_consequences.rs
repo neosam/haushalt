@@ -8,12 +8,6 @@ use shared::{Punishment, Reward, UserPunishment, UserReward};
 
 #[derive(Debug, Error)]
 pub enum TaskConsequenceError {
-    #[error("Task not found")]
-    TaskNotFound,
-    #[error("Reward not found")]
-    RewardNotFound,
-    #[error("Punishment not found")]
-    PunishmentNotFound,
     #[error("Association already exists")]
     AlreadyExists,
     #[error("Association not found")]
@@ -212,10 +206,6 @@ mod tests {
 
     #[test]
     fn test_task_consequence_error_display() {
-        assert_eq!(
-            TaskConsequenceError::TaskNotFound.to_string(),
-            "Task not found"
-        );
         assert_eq!(
             TaskConsequenceError::AlreadyExists.to_string(),
             "Association already exists"

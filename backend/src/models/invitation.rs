@@ -23,10 +23,9 @@ impl InvitationRow {
             id: Uuid::parse_str(&self.id).unwrap(),
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
             email: self.email.clone(),
-            role: shared::Role::from_str(&self.role).unwrap_or(shared::Role::Member),
+            role: self.role.parse().unwrap_or(shared::Role::Member),
             invited_by: Uuid::parse_str(&self.invited_by).unwrap(),
-            status: shared::InvitationStatus::from_str(&self.status)
-                .unwrap_or(shared::InvitationStatus::Pending),
+            status: self.status.parse().unwrap_or(shared::InvitationStatus::Pending),
             created_at: self.created_at,
             expires_at: self.expires_at,
             responded_at: self.responded_at,

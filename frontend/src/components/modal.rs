@@ -9,7 +9,7 @@ pub fn Modal(
     let close = move |_| on_close.call(());
 
     view! {
-        <div class="modal-backdrop" on:click=close.clone()>
+        <div class="modal-backdrop" on:click=close>
             <div class="modal" on:click=|e| e.stop_propagation()>
                 <div class="modal-header">
                     <h3 class="modal-title">{title}</h3>

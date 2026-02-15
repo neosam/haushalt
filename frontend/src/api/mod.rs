@@ -21,6 +21,12 @@ pub struct AuthState {
     pub user: RwSignal<Option<User>>,
 }
 
+impl Default for AuthState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuthState {
     pub fn new() -> Self {
         let stored_token: Option<String> = LocalStorage::get(TOKEN_KEY).ok();

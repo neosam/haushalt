@@ -25,17 +25,14 @@ impl TaskRow {
             serde_json::from_str(v).ok()
         });
 
-        let time_period = self.time_period.as_ref().and_then(|p| {
-            shared::TimePeriod::from_str(p)
-        });
+        let time_period = self.time_period.as_ref().and_then(|p| p.parse().ok());
 
         shared::Task {
             id: Uuid::parse_str(&self.id).unwrap(),
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
             title: self.title.clone(),
             description: self.description.clone(),
-            recurrence_type: shared::RecurrenceType::from_str(&self.recurrence_type)
-                .unwrap_or(shared::RecurrenceType::Daily),
+            recurrence_type: self.recurrence_type.parse().unwrap_or(shared::RecurrenceType::Daily),
             recurrence_value,
             assigned_user_id: self.assigned_user_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
             target_count: self.target_count,

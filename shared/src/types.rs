@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid::Uuid;
 
 // ============================================================================
@@ -84,15 +85,6 @@ impl Role {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "owner" => Some(Role::Owner),
-            "admin" => Some(Role::Admin),
-            "member" => Some(Role::Member),
-            _ => None,
-        }
-    }
-
     pub fn can_manage_members(&self) -> bool {
         matches!(self, Role::Owner | Role::Admin)
     }
@@ -111,6 +103,19 @@ impl Role {
 
     pub fn can_delete_household(&self) -> bool {
         matches!(self, Role::Owner)
+    }
+}
+
+impl FromStr for Role {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "owner" => Ok(Role::Owner),
+            "admin" => Ok(Role::Admin),
+            "member" => Ok(Role::Member),
+            _ => Err(()),
+        }
     }
 }
 
@@ -179,16 +184,20 @@ impl RecurrenceType {
             RecurrenceType::OneTime => "onetime",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for RecurrenceType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "daily" => Some(RecurrenceType::Daily),
-            "weekly" => Some(RecurrenceType::Weekly),
-            "monthly" => Some(RecurrenceType::Monthly),
-            "weekdays" => Some(RecurrenceType::Weekdays),
-            "custom" => Some(RecurrenceType::Custom),
-            "onetime" | "none" => Some(RecurrenceType::OneTime), // backward compat for "none"
-            _ => None,
+            "daily" => Ok(RecurrenceType::Daily),
+            "weekly" => Ok(RecurrenceType::Weekly),
+            "monthly" => Ok(RecurrenceType::Monthly),
+            "weekdays" => Ok(RecurrenceType::Weekdays),
+            "custom" => Ok(RecurrenceType::Custom),
+            "onetime" | "none" => Ok(RecurrenceType::OneTime), // backward compat for "none"
+            _ => Err(()),
         }
     }
 }
@@ -228,15 +237,19 @@ impl TimePeriod {
             TimePeriod::None => "none",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for TimePeriod {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "day" => Some(TimePeriod::Day),
-            "week" => Some(TimePeriod::Week),
-            "month" => Some(TimePeriod::Month),
-            "year" => Some(TimePeriod::Year),
-            "none" => Some(TimePeriod::None),
-            _ => None,
+            "day" => Ok(TimePeriod::Day),
+            "week" => Ok(TimePeriod::Week),
+            "month" => Ok(TimePeriod::Month),
+            "year" => Ok(TimePeriod::Year),
+            "none" => Ok(TimePeriod::None),
+            _ => Err(()),
         }
     }
 }
@@ -329,14 +342,18 @@ impl ConditionType {
             ConditionType::StreakBroken => "streak_broken",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for ConditionType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "task_complete" => Some(ConditionType::TaskComplete),
-            "task_missed" => Some(ConditionType::TaskMissed),
-            "streak" => Some(ConditionType::Streak),
-            "streak_broken" => Some(ConditionType::StreakBroken),
-            _ => None,
+            "task_complete" => Ok(ConditionType::TaskComplete),
+            "task_missed" => Ok(ConditionType::TaskMissed),
+            "streak" => Ok(ConditionType::Streak),
+            "streak_broken" => Ok(ConditionType::StreakBroken),
+            _ => Err(()),
         }
     }
 }
@@ -498,14 +515,18 @@ impl InvitationStatus {
             InvitationStatus::Expired => "expired",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for InvitationStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "pending" => Some(InvitationStatus::Pending),
-            "accepted" => Some(InvitationStatus::Accepted),
-            "declined" => Some(InvitationStatus::Declined),
-            "expired" => Some(InvitationStatus::Expired),
-            _ => None,
+            "pending" => Ok(InvitationStatus::Pending),
+            "accepted" => Ok(InvitationStatus::Accepted),
+            "declined" => Ok(InvitationStatus::Declined),
+            "expired" => Ok(InvitationStatus::Expired),
+            _ => Err(()),
         }
     }
 }
@@ -656,30 +677,30 @@ mod tests {
 
     #[test]
     fn test_role_from_str() {
-        assert_eq!(Role::from_str("owner"), Some(Role::Owner));
-        assert_eq!(Role::from_str("ADMIN"), Some(Role::Admin));
-        assert_eq!(Role::from_str("Member"), Some(Role::Member));
-        assert_eq!(Role::from_str("invalid"), None);
+        assert_eq!("owner".parse(), Ok(Role::Owner));
+        assert_eq!("ADMIN".parse(), Ok(Role::Admin));
+        assert_eq!("Member".parse(), Ok(Role::Member));
+        assert!("invalid".parse::<Role>().is_err());
     }
 
     #[test]
     fn test_recurrence_type_from_str() {
-        assert_eq!(RecurrenceType::from_str("daily"), Some(RecurrenceType::Daily));
-        assert_eq!(RecurrenceType::from_str("WEEKLY"), Some(RecurrenceType::Weekly));
-        assert_eq!(RecurrenceType::from_str("Monthly"), Some(RecurrenceType::Monthly));
-        assert_eq!(RecurrenceType::from_str("weekdays"), Some(RecurrenceType::Weekdays));
-        assert_eq!(RecurrenceType::from_str("custom"), Some(RecurrenceType::Custom));
-        assert_eq!(RecurrenceType::from_str("none"), Some(RecurrenceType::None));
-        assert_eq!(RecurrenceType::from_str("invalid"), None);
+        assert_eq!("daily".parse(), Ok(RecurrenceType::Daily));
+        assert_eq!("WEEKLY".parse(), Ok(RecurrenceType::Weekly));
+        assert_eq!("Monthly".parse(), Ok(RecurrenceType::Monthly));
+        assert_eq!("weekdays".parse(), Ok(RecurrenceType::Weekdays));
+        assert_eq!("custom".parse(), Ok(RecurrenceType::Custom));
+        assert_eq!("none".parse(), Ok(RecurrenceType::OneTime));
+        assert!("invalid".parse::<RecurrenceType>().is_err());
     }
 
     #[test]
     fn test_condition_type_from_str() {
-        assert_eq!(ConditionType::from_str("task_complete"), Some(ConditionType::TaskComplete));
-        assert_eq!(ConditionType::from_str("TASK_MISSED"), Some(ConditionType::TaskMissed));
-        assert_eq!(ConditionType::from_str("streak"), Some(ConditionType::Streak));
-        assert_eq!(ConditionType::from_str("streak_broken"), Some(ConditionType::StreakBroken));
-        assert_eq!(ConditionType::from_str("invalid"), None);
+        assert_eq!("task_complete".parse(), Ok(ConditionType::TaskComplete));
+        assert_eq!("TASK_MISSED".parse(), Ok(ConditionType::TaskMissed));
+        assert_eq!("streak".parse(), Ok(ConditionType::Streak));
+        assert_eq!("streak_broken".parse(), Ok(ConditionType::StreakBroken));
+        assert!("invalid".parse::<ConditionType>().is_err());
     }
 
     #[test]
@@ -690,10 +711,10 @@ mod tests {
 
     #[test]
     fn test_invitation_status_from_str() {
-        assert_eq!(InvitationStatus::from_str("pending"), Some(InvitationStatus::Pending));
-        assert_eq!(InvitationStatus::from_str("ACCEPTED"), Some(InvitationStatus::Accepted));
-        assert_eq!(InvitationStatus::from_str("Declined"), Some(InvitationStatus::Declined));
-        assert_eq!(InvitationStatus::from_str("expired"), Some(InvitationStatus::Expired));
-        assert_eq!(InvitationStatus::from_str("invalid"), None);
+        assert_eq!("pending".parse(), Ok(InvitationStatus::Pending));
+        assert_eq!("ACCEPTED".parse(), Ok(InvitationStatus::Accepted));
+        assert_eq!("Declined".parse(), Ok(InvitationStatus::Declined));
+        assert_eq!("expired".parse(), Ok(InvitationStatus::Expired));
+        assert!("invalid".parse::<InvitationStatus>().is_err());
     }
 }

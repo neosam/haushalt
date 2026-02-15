@@ -23,8 +23,7 @@ impl PointConditionRow {
             id: Uuid::parse_str(&self.id).unwrap(),
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
             name: self.name.clone(),
-            condition_type: shared::ConditionType::from_str(&self.condition_type)
-                .unwrap_or(shared::ConditionType::TaskComplete),
+            condition_type: self.condition_type.parse().unwrap_or(shared::ConditionType::TaskComplete),
             points_value: self.points_value,
             streak_threshold: self.streak_threshold,
             multiplier: self.multiplier,

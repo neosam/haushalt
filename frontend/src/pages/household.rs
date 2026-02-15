@@ -473,7 +473,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                                                     </div>
                                                                 }.into_view()
                                                             } else {
-                                                                view! { <></> }.into_view()
+                                                                ().into_view()
                                                             }}
                                                             <PointsBadge points=member.membership.points />
                                                         </div>

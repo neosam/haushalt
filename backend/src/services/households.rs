@@ -13,8 +13,6 @@ use shared::{
 pub enum HouseholdError {
     #[error("Household not found")]
     NotFound,
-    #[error("Not a member")]
-    NotMember,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 }
@@ -204,7 +202,7 @@ pub async fn get_member_role(pool: &SqlitePool, household_id: &Uuid, user_id: &U
     .ok()
     .flatten();
 
-    membership.map(|m| Role::from_str(&m.role).unwrap_or(Role::Member))
+    membership.map(|m| m.role.parse().unwrap_or(Role::Member))
 }
 
 pub async fn list_members(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<MemberWithUser>, HouseholdError> {
@@ -229,40 +227,6 @@ pub async fn list_members(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<
     }
 
     Ok(result)
-}
-
-pub async fn add_member(
-    pool: &SqlitePool,
-    household_id: &Uuid,
-    user_id: &Uuid,
-    role: Role,
-) -> Result<HouseholdMembership, HouseholdError> {
-    let id = Uuid::new_v4();
-    let now = Utc::now();
-
-    sqlx::query(
-        r#"
-        INSERT INTO household_memberships (id, household_id, user_id, role, points, joined_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        "#,
-    )
-    .bind(id.to_string())
-    .bind(household_id.to_string())
-    .bind(user_id.to_string())
-    .bind(role.as_str())
-    .bind(0i64)
-    .bind(now)
-    .execute(pool)
-    .await?;
-
-    Ok(HouseholdMembership {
-        id,
-        household_id: *household_id,
-        user_id: *user_id,
-        role,
-        points: 0,
-        joined_at: now,
-    })
 }
 
 pub async fn remove_member(pool: &SqlitePool, household_id: &Uuid, user_id: &Uuid) -> Result<(), HouseholdError> {
@@ -360,9 +324,9 @@ mod tests {
 
     #[test]
     fn test_role_from_str() {
-        assert_eq!(Role::from_str("owner"), Some(Role::Owner));
-        assert_eq!(Role::from_str("admin"), Some(Role::Admin));
-        assert_eq!(Role::from_str("member"), Some(Role::Member));
-        assert_eq!(Role::from_str("invalid"), None);
+        assert_eq!("owner".parse(), Ok(Role::Owner));
+        assert_eq!("admin".parse(), Ok(Role::Admin));
+        assert_eq!("member".parse(), Ok(Role::Member));
+        assert!("invalid".parse::<Role>().is_err());
     }
 }

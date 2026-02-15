@@ -51,22 +51,6 @@ impl UserPunishmentRow {
     }
 }
 
-/// Database model for task-punishment associations
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
-pub struct TaskPunishmentRow {
-    pub task_id: String,
-    pub punishment_id: String,
-}
-
-impl TaskPunishmentRow {
-    pub fn to_shared(&self) -> shared::TaskPunishment {
-        shared::TaskPunishment {
-            task_id: Uuid::parse_str(&self.task_id).unwrap(),
-            punishment_id: Uuid::parse_str(&self.punishment_id).unwrap(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

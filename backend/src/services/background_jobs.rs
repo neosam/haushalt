@@ -1,4 +1,4 @@
-use chrono::{Duration, NaiveDate, Utc};
+use chrono::{Duration, Utc};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use thiserror::Error;
@@ -11,17 +11,16 @@ use crate::services::{points as points_service, scheduler, task_consequences};
 #[derive(Debug, Error)]
 pub enum BackgroundJobError {
     #[error("Database error: {0}")]
-    DatabaseError(#[from] sqlx::Error),
+    Database(#[from] sqlx::Error),
     #[error("Points error: {0}")]
-    PointsError(#[from] points_service::PointsError),
+    Points(#[from] points_service::PointsError),
     #[error("Task consequence error: {0}")]
-    TaskConsequenceError(#[from] task_consequences::TaskConsequenceError),
+    TaskConsequence(#[from] task_consequences::TaskConsequenceError),
 }
 
 /// Report from processing missed tasks
 #[derive(Debug, Clone)]
 pub struct MissedTaskReport {
-    pub processed_at: chrono::DateTime<Utc>,
     pub tasks_checked: i64,
     pub missed_tasks: i64,
     pub punishments_assigned: i64,
@@ -106,7 +105,6 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>, config: JobConfig) {
 /// 3. For missed tasks, deducts points and assigns punishments
 pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport, BackgroundJobError> {
     let yesterday = Utc::now().date_naive() - Duration::days(1);
-    let now = Utc::now();
 
     let mut tasks_checked: i64 = 0;
     let mut missed_tasks: i64 = 0;
@@ -195,101 +193,6 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
     }
 
     Ok(MissedTaskReport {
-        processed_at: now,
-        tasks_checked,
-        missed_tasks,
-        punishments_assigned,
-        points_deducted,
-    })
-}
-
-/// Process missed tasks for a specific date (useful for testing or manual runs)
-pub async fn process_missed_tasks_for_date(
-    pool: &SqlitePool,
-    date: NaiveDate,
-) -> Result<MissedTaskReport, BackgroundJobError> {
-    let now = Utc::now();
-
-    let mut tasks_checked: i64 = 0;
-    let mut missed_tasks: i64 = 0;
-    let mut punishments_assigned: i64 = 0;
-    let mut points_deducted: i64 = 0;
-
-    // Get all tasks
-    let tasks: Vec<TaskRow> = sqlx::query_as("SELECT * FROM tasks")
-        .fetch_all(pool)
-        .await?;
-
-    for task_row in tasks {
-        let task = task_row.to_shared();
-
-        // Skip free-form and one-time tasks (they can't be "missed")
-        if task.recurrence_type == shared::RecurrenceType::OneTime {
-            continue;
-        }
-
-        // Check if task was due on the given date
-        if !scheduler::is_task_due_on_date(&task, date) {
-            continue;
-        }
-
-        tasks_checked += 1;
-
-        // Check if task was completed on that date
-        let completion_count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date = ?",
-        )
-        .bind(task.id.to_string())
-        .bind(date)
-        .fetch_one(pool)
-        .await?;
-
-        if completion_count > 0 {
-            continue;
-        }
-
-        // Task was missed
-        missed_tasks += 1;
-
-        let users_to_penalize: Vec<Uuid> = if let Some(assigned_user_id) = task.assigned_user_id {
-            vec![assigned_user_id]
-        } else {
-            get_household_member_ids(pool, &task.household_id).await?
-        };
-
-        let had_previous_completion = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM task_completions WHERE task_id = ?",
-        )
-        .bind(task.id.to_string())
-        .fetch_one(pool)
-        .await?
-            > 0;
-
-        for user_id in users_to_penalize {
-            let points = points_service::deduct_missed_task_points(
-                pool,
-                &task.household_id,
-                &user_id,
-                &task.id,
-                had_previous_completion,
-            )
-            .await?;
-            points_deducted += points.abs();
-
-            let assigned = task_consequences::assign_missed_task_punishments(
-                pool,
-                &task.id,
-                &user_id,
-                &task.household_id,
-            )
-            .await?;
-
-            punishments_assigned += assigned.len() as i64;
-        }
-    }
-
-    Ok(MissedTaskReport {
-        processed_at: now,
         tasks_checked,
         missed_tasks,
         punishments_assigned,
@@ -313,21 +216,6 @@ async fn get_household_member_ids(
         .into_iter()
         .filter_map(|m| Uuid::parse_str(&m.user_id).ok())
         .collect())
-}
-
-/// Get the owner ID for a household
-async fn get_household_owner_id(
-    pool: &SqlitePool,
-    household_id: &Uuid,
-) -> Result<Uuid, BackgroundJobError> {
-    let owner_id: String = sqlx::query_scalar("SELECT owner_id FROM households WHERE id = ?")
-        .bind(household_id.to_string())
-        .fetch_one(pool)
-        .await?;
-
-    Uuid::parse_str(&owner_id).map_err(|_| {
-        BackgroundJobError::DatabaseError(sqlx::Error::RowNotFound)
-    })
 }
 
 #[cfg(test)]

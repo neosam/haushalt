@@ -119,7 +119,7 @@ pub fn get_previous_due_date(task: &Task, current_date: NaiveDate) -> NaiveDate 
 /// This is used for habits that can be completed multiple times per period
 pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate) {
     // Determine period: explicit or inferred from recurrence_type
-    let period = task.time_period.unwrap_or_else(|| match task.recurrence_type {
+    let period = task.time_period.unwrap_or(match task.recurrence_type {
         RecurrenceType::Daily => TimePeriod::Day,
         RecurrenceType::Weekly | RecurrenceType::Weekdays => TimePeriod::Week,
         RecurrenceType::Monthly => TimePeriod::Month,
@@ -159,65 +159,6 @@ pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate)
             // All-time for free-form/one-time tasks
             // Use the full date range supported by NaiveDate
             (NaiveDate::MIN, NaiveDate::MAX)
-        }
-    }
-}
-
-/// Get the next due date for a task after the given date
-pub fn get_next_due_date(task: &Task, current_date: NaiveDate) -> Option<NaiveDate> {
-    match task.recurrence_type {
-        RecurrenceType::OneTime => {
-            // Free-form/one-time tasks don't have a schedule, return None
-            None
-        }
-
-        RecurrenceType::Daily => Some(current_date + chrono::Duration::days(1)),
-
-        RecurrenceType::Weekly => Some(current_date + chrono::Duration::days(7)),
-
-        RecurrenceType::Monthly => {
-            let target_day = match &task.recurrence_value {
-                Some(RecurrenceValue::MonthDay(day)) => *day as u32,
-                _ => task.created_at.day(),
-            };
-
-            // Go to next month
-            let next_month = if current_date.month() == 12 {
-                NaiveDate::from_ymd_opt(current_date.year() + 1, 1, 1)?
-            } else {
-                NaiveDate::from_ymd_opt(current_date.year(), current_date.month() + 1, 1)?
-            };
-
-            let last_day = get_last_day_of_month(next_month);
-            let effective_day = target_day.min(last_day);
-
-            NaiveDate::from_ymd_opt(next_month.year(), next_month.month(), effective_day)
-        }
-
-        RecurrenceType::Weekdays => {
-            let weekdays = match &task.recurrence_value {
-                Some(RecurrenceValue::Weekdays(days)) => days.clone(),
-                _ => vec![1, 2, 3, 4, 5],
-            };
-
-            let mut check_date = current_date + chrono::Duration::days(1);
-            for _ in 0..7 {
-                let weekday = weekday_to_u8(check_date.weekday());
-                if weekdays.contains(&weekday) {
-                    return Some(check_date);
-                }
-                check_date += chrono::Duration::days(1);
-            }
-            None
-        }
-
-        RecurrenceType::Custom => {
-            match &task.recurrence_value {
-                Some(RecurrenceValue::CustomDates(dates)) => {
-                    dates.iter().filter(|d| **d > current_date).min().copied()
-                }
-                _ => None,
-            }
         }
     }
 }
@@ -376,15 +317,6 @@ mod tests {
 
         let prev = get_previous_due_date(&task, date);
         assert_eq!(prev, NaiveDate::from_ymd_opt(2024, 1, 14).unwrap());
-    }
-
-    #[test]
-    fn test_get_next_due_date_weekly() {
-        let task = create_test_task(RecurrenceType::Weekly, Some(RecurrenceValue::WeekDay(1)));
-        let monday = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-
-        let next = get_next_due_date(&task, monday);
-        assert_eq!(next, Some(NaiveDate::from_ymd_opt(2024, 1, 22).unwrap()));
     }
 
     #[test]

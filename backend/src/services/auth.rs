@@ -117,17 +117,6 @@ pub async fn get_user_by_id(pool: &SqlitePool, user_id: &Uuid) -> Result<Option<
     Ok(user.map(|u| u.to_shared()))
 }
 
-pub async fn get_user_by_email(pool: &SqlitePool, email: &str) -> Result<Option<User>, AuthError> {
-    let user: Option<UserRow> = sqlx::query_as(
-        "SELECT * FROM users WHERE email = ?"
-    )
-    .bind(email)
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(user.map(|u| u.to_shared()))
-}
-
 pub async fn update_user(pool: &SqlitePool, user_id: &Uuid, request: &UpdateUserRequest) -> Result<User, AuthError> {
     let mut user: UserRow = sqlx::query_as(
         "SELECT * FROM users WHERE id = ?"

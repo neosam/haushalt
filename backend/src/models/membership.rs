@@ -20,7 +20,7 @@ impl MembershipRow {
             id: Uuid::parse_str(&self.id).unwrap(),
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
             user_id: Uuid::parse_str(&self.user_id).unwrap(),
-            role: shared::Role::from_str(&self.role).unwrap_or(shared::Role::Member),
+            role: self.role.parse().unwrap_or(shared::Role::Member),
             points: self.points,
             joined_at: self.joined_at,
         }

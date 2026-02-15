@@ -42,3 +42,6 @@ log = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true, features = ["macros"] }
+
+[lints]
+workspace = true
