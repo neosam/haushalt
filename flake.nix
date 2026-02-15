@@ -24,6 +24,10 @@
         };
       in
       {
+        packages.default = pkgs.callPackage ./default.nix {
+          pkgs = pkgs;
+        };
+
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             # Rust toolchain with WASM target
