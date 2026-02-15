@@ -1,7 +1,7 @@
 use chrono::{Datelike, NaiveDate, Weekday};
 use leptos::*;
 use shared::{RecurrenceType, TaskWithStatus};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
 use crate::i18n::{use_i18n, I18nContext};
@@ -54,6 +54,8 @@ pub fn TaskCard(
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
     #[prop(optional)] household_name: Option<String>,
+    #[prop(optional)] on_dashboard: Option<bool>,
+    #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -62,9 +64,13 @@ pub fn TaskCard(
     let can_complete = task.can_complete();
     let task_id = task.task.id.to_string();
     let task_id_for_minus = task_id.clone();
+    let task_id_for_dashboard = task_id.clone();
     let completions = task.completions_today;
     let target = task.task.target_count;
     let has_completions = completions > 0;
+
+    // Dashboard toggle state (reactive for immediate UI feedback)
+    let is_on_dashboard = create_rw_signal(on_dashboard.unwrap_or(false));
 
     // Debounce state
     let is_debouncing = create_rw_signal(false);
@@ -131,6 +137,19 @@ pub fn TaskCard(
     // Household name prefix for meta line
     let household_prefix = household_name.map(|name| format!("{} | ", name)).unwrap_or_default();
 
+    // Dashboard toggle handler
+    let show_dashboard_toggle = on_toggle_dashboard.is_some();
+    let on_dashboard_click = move |_| {
+        if let Some(callback) = on_toggle_dashboard {
+            let new_state = !is_on_dashboard.get();
+            is_on_dashboard.set(new_state);
+            callback.call((task_id_for_dashboard.clone(), new_state));
+        }
+    };
+
+    let dashboard_toggle_title_on = i18n_stored.get_value().t("task_card.remove_from_dashboard");
+    let dashboard_toggle_title_off = i18n_stored.get_value().t("task_card.add_to_dashboard");
+
     view! {
         <div class=card_class>
             <div class="task-content" style="flex: 1;">
@@ -154,6 +173,23 @@ pub fn TaskCard(
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
+                // Dashboard toggle button (star icon)
+                {if show_dashboard_toggle {
+                    let title_on = dashboard_toggle_title_on.clone();
+                    let title_off = dashboard_toggle_title_off.clone();
+                    view! {
+                        <button
+                            class="btn btn-outline"
+                            style="padding: 0.25rem 0.5rem; font-size: 1rem; min-width: 32px;"
+                            title=move || if is_on_dashboard.get() { title_on.clone() } else { title_off.clone() }
+                            on:click=on_dashboard_click.clone()
+                        >
+                            {move || if is_on_dashboard.get() { "★" } else { "☆" }}
+                        </button>
+                    }.into_view()
+                } else {
+                    ().into_view()
+                }}
                 <button
                     class="btn btn-outline"
                     style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
@@ -261,6 +297,8 @@ pub fn GroupedTaskList(
     #[prop(into)] on_complete: Callback<String>,
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
+    #[prop(optional)] dashboard_task_ids: Option<HashSet<String>>,
+    #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -290,12 +328,14 @@ pub fn GroupedTaskList(
                 }.into_any()
             } else {
                 let tz = timezone.clone();
+                let dashboard_ids = dashboard_task_ids.clone();
                 view! {
                     <div>
                         {groups.into_iter().map(|(group, group_tasks)| {
                             let title = group.title(&i18n_stored.get_value());
                             let is_today = matches!(group, DueDateGroup::Today);
                             let tz_inner = tz.clone();
+                            let dashboard_ids_inner = dashboard_ids.clone();
                             view! {
                                 <div class="task-group" style=if is_today { "margin-bottom: 1.5rem;" } else { "margin-bottom: 1rem;" }>
                                     <div style=if is_today {
@@ -308,7 +348,14 @@ pub fn GroupedTaskList(
                                     <div style="margin-top: 0.5rem;">
                                         {group_tasks.into_iter().map(|task| {
                                             let tz_task = tz_inner.clone();
-                                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }
+                                            let task_id = task.task.id.to_string();
+                                            // Only pass dashboard props if the feature is enabled
+                                            if let (Some(ids), Some(callback)) = (&dashboard_ids_inner, on_toggle_dashboard) {
+                                                let is_on_dashboard = ids.contains(&task_id);
+                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=callback /> }.into_view()
+                                            } else {
+                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }.into_view()
+                                            }
                                         }).collect_view()}
                                     </div>
                                 </div>

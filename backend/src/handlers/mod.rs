@@ -13,6 +13,7 @@ pub mod chat;
 pub mod websocket;
 pub mod notes;
 pub mod announcements;
+pub mod dashboard;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -21,5 +22,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .configure(users::configure)
             .configure(households::configure)
             .configure(invitations::configure)
+            .configure(dashboard::configure)
     );
 }

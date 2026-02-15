@@ -326,21 +326,27 @@ async fn update_task(
 
     let request = body.into_inner();
 
-    // Validate assignment in Hierarchy mode
+    // Get the old task to check if assignment changed
+    let old_task = task_service::get_task(&state.db, &task_id).await.ok().flatten();
+
+    // Validate assignment in Hierarchy mode - only if it's actually changing
     if let Some(ref assigned_id) = request.assigned_user_id {
         if settings.hierarchy_type == HierarchyType::Hierarchy {
-            let assigned_role = household_service::get_member_role(&state.db, &household_id, assigned_id).await;
-            if !assigned_role.as_ref().map(|r| settings.hierarchy_type.can_be_assigned(r)).unwrap_or(false) {
-                return Ok(HttpResponse::BadRequest().json(ApiError {
-                    error: "validation_error".to_string(),
-                    message: "In Hierarchy mode, only Members can be assigned tasks".to_string(),
-                }));
+            // Check if assignment is actually changing
+            let old_assigned = old_task.as_ref().and_then(|t| t.assigned_user_id);
+            let is_changing = old_assigned.map(|old| &old != assigned_id).unwrap_or(true);
+
+            if is_changing {
+                let assigned_role = household_service::get_member_role(&state.db, &household_id, assigned_id).await;
+                if !assigned_role.as_ref().map(|r| settings.hierarchy_type.can_be_assigned(r)).unwrap_or(false) {
+                    return Ok(HttpResponse::BadRequest().json(ApiError {
+                        error: "validation_error".to_string(),
+                        message: "In Hierarchy mode, only Members can be assigned tasks".to_string(),
+                    }));
+                }
             }
         }
     }
-
-    // Get the old task to check if assignment changed
-    let old_task = task_service::get_task(&state.db, &task_id).await.ok().flatten();
     let old_assigned = old_task.as_ref().and_then(|t| t.assigned_user_id);
 
     match task_service::update_task(&state.db, &task_id, &request).await {

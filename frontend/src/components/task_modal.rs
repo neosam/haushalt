@@ -142,7 +142,27 @@ pub fn TaskModal(
     let selected_new_punishment = create_rw_signal(String::new());
     let new_punishment_amount = create_rw_signal(1i32);
 
+    // Dashboard visibility signal
+    let on_dashboard = create_rw_signal(false);
+    let initial_on_dashboard = create_rw_signal(false);
+
     let task_id = task.as_ref().map(|t| t.id.to_string());
+
+    // Load initial dashboard status for existing tasks
+    {
+        let task_id_for_effect = task_id.clone();
+        create_effect(move |_| {
+            if let Some(ref task_id) = task_id_for_effect {
+                let task_id = task_id.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(is_on_dashboard) = ApiClient::is_task_on_dashboard(&task_id).await {
+                        on_dashboard.set(is_on_dashboard);
+                        initial_on_dashboard.set(is_on_dashboard);
+                    }
+                });
+            }
+        });
+    }
 
     let on_submit = {
         let task_id = task_id.clone();
@@ -255,6 +275,17 @@ pub fn TaskModal(
                                 }
                             }
 
+                            // Update dashboard status if changed
+                            let current_on_dashboard = on_dashboard.get();
+                            let was_on_dashboard = initial_on_dashboard.get();
+                            if current_on_dashboard != was_on_dashboard {
+                                if current_on_dashboard {
+                                    let _ = ApiClient::add_task_to_dashboard(&task_id).await;
+                                } else {
+                                    let _ = ApiClient::remove_task_from_dashboard(&task_id).await;
+                                }
+                            }
+
                             saving.set(false);
                             on_save.call(updated_task);
                         }
@@ -303,6 +334,11 @@ pub fn TaskModal(
                             // Add punishment links with amounts
                             for (punishment_id, amount) in &new_punishments {
                                 let _ = ApiClient::add_task_punishment(&household_id, &task_id, punishment_id, *amount).await;
+                            }
+
+                            // Add to dashboard if enabled
+                            if on_dashboard.get() {
+                                let _ = ApiClient::add_task_to_dashboard(&task_id).await;
                             }
 
                             saving.set(false);
@@ -573,6 +609,18 @@ pub fn TaskModal(
                                 <span>{i18n_stored.get_value().t("task_modal.require_review")}</span>
                             </label>
                             <small class="form-hint">{i18n_stored.get_value().t("task_modal.require_review_hint")}</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input
+                                    type="checkbox"
+                                    prop:checked=move || on_dashboard.get()
+                                    on:change=move |ev| on_dashboard.set(event_target_checked(&ev))
+                                />
+                                <span>{i18n_stored.get_value().t("task_modal.show_on_dashboard")}</span>
+                            </label>
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.show_on_dashboard_hint")}</small>
                         </div>
 
                         // Habit Type Section

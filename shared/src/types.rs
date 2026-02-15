@@ -1241,6 +1241,22 @@ pub struct UpdateAnnouncementRequest {
 }
 
 // ============================================================================
+// Dashboard Tasks
+// ============================================================================
+
+/// Response containing the list of task IDs that should appear on the user's dashboard
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardTasksResponse {
+    pub task_ids: Vec<Uuid>,
+}
+
+/// Check if a specific task is on the user's dashboard
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsTaskOnDashboardResponse {
+    pub on_dashboard: bool,
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

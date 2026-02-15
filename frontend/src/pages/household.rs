@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use leptos::*;
 use leptos_router::*;
 use shared::{AdjustPointsRequest, Announcement, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus, UpdateRoleRequest};
@@ -51,6 +53,9 @@ pub fn HouseholdPage() -> impl IntoView {
     // Announcements
     let active_announcements = create_rw_signal(Vec::<Announcement>::new());
     let show_announcement_modal = create_rw_signal(false);
+
+    // Dashboard task whitelist
+    let dashboard_task_ids = create_rw_signal(HashSet::<String>::new());
 
     // Adjust points modal state
     let show_adjust_points_modal = create_rw_signal(false);
@@ -135,6 +140,11 @@ pub fn HouseholdPage() -> impl IntoView {
             // Load active announcements
             if let Ok(anns) = ApiClient::list_active_announcements(&id).await {
                 active_announcements.set(anns);
+            }
+
+            // Load dashboard task IDs (user's whitelist)
+            if let Ok(ids) = ApiClient::get_dashboard_task_ids().await {
+                dashboard_task_ids.set(ids.into_iter().map(|id| id.to_string()).collect());
             }
 
             // Load settings and apply dark mode
@@ -381,6 +391,23 @@ pub fn HouseholdPage() -> impl IntoView {
         });
     };
 
+    // Dashboard toggle callback
+    let on_toggle_dashboard = Callback::new(move |(task_id, add_to_dashboard): (String, bool)| {
+        wasm_bindgen_futures::spawn_local(async move {
+            if add_to_dashboard {
+                if ApiClient::add_task_to_dashboard(&task_id).await.is_ok() {
+                    dashboard_task_ids.update(|ids| {
+                        ids.insert(task_id);
+                    });
+                }
+            } else if ApiClient::remove_task_from_dashboard(&task_id).await.is_ok() {
+                dashboard_task_ids.update(|ids| {
+                    ids.remove(&task_id);
+                });
+            }
+        });
+    });
+
     view! {
         <Show when=move || loading.get() fallback=|| ()>
             <Loading />
@@ -438,7 +465,8 @@ pub fn HouseholdPage() -> impl IntoView {
                         <div>
                             {
                                 let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
-                                view! { <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz /> }
+                                let dashboard_ids = dashboard_task_ids.get();
+                                view! { <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard /> }
                             }
 
                             // Pending Reviews Section (only for managers/owners)

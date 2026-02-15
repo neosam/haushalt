@@ -729,6 +729,76 @@ async fn calculate_streak(pool: &SqlitePool, task: &Task, _user_id: &Uuid) -> Re
     Ok(streak)
 }
 
+// ============================================================================
+// Dashboard Task Whitelist
+// ============================================================================
+
+/// Get all task IDs that the user has added to their dashboard
+pub async fn get_dashboard_task_ids(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<String>, TaskError> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT task_id FROM user_dashboard_tasks WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Check if a task is on the user's dashboard
+pub async fn is_task_on_dashboard(
+    pool: &SqlitePool,
+    user_id: &str,
+    task_id: &str,
+) -> Result<bool, TaskError> {
+    let result: Option<(i32,)> = sqlx::query_as(
+        "SELECT 1 FROM user_dashboard_tasks WHERE user_id = ? AND task_id = ?",
+    )
+    .bind(user_id)
+    .bind(task_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.is_some())
+}
+
+/// Add a task to the user's dashboard
+pub async fn add_task_to_dashboard(
+    pool: &SqlitePool,
+    user_id: &str,
+    task_id: &str,
+) -> Result<(), TaskError> {
+    sqlx::query(
+        "INSERT OR IGNORE INTO user_dashboard_tasks (user_id, task_id) VALUES (?, ?)",
+    )
+    .bind(user_id)
+    .bind(task_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Remove a task from the user's dashboard
+pub async fn remove_task_from_dashboard(
+    pool: &SqlitePool,
+    user_id: &str,
+    task_id: &str,
+) -> Result<(), TaskError> {
+    sqlx::query(
+        "DELETE FROM user_dashboard_tasks WHERE user_id = ? AND task_id = ?",
+    )
+    .bind(user_id)
+    .bind(task_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

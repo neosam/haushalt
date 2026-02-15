@@ -116,6 +116,9 @@
   "tasks.approve": "Approve",
   "tasks.reject": "Reject",
 
+  "task_card.add_to_dashboard": "Add to dashboard",
+  "task_card.remove_from_dashboard": "Remove from dashboard",
+
   "recurrence.daily": "Daily",
   "recurrence.weekly": "Weekly",
   "recurrence.monthly": "Monthly",
@@ -172,6 +175,8 @@
   "task_modal.due_time_hint": "Leave empty for end of day (23:59)",
   "task_modal.habit_type_label": "Habit Type",
   "task_modal.habit_type_hint": "Bad habits give rewards when avoided and punishments when completed",
+  "task_modal.show_on_dashboard": "Show on Dashboard",
+  "task_modal.show_on_dashboard_hint": "When enabled, this task will appear on your personal dashboard overview",
 
   "habit_type.good": "Good Habit",
   "habit_type.bad": "Bad Habit",

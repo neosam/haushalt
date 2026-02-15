@@ -1195,6 +1195,27 @@ impl ApiClient {
     ) -> Result<UserSettings, String> {
         Self::request("PUT", "/users/me/settings", Some(request), true).await
     }
+
+    // Dashboard task whitelist endpoints
+    pub async fn get_dashboard_task_ids() -> Result<Vec<uuid::Uuid>, String> {
+        let response: shared::DashboardTasksResponse =
+            Self::request("GET", "/dashboard/tasks", None::<()>, true).await?;
+        Ok(response.task_ids)
+    }
+
+    pub async fn is_task_on_dashboard(task_id: &str) -> Result<bool, String> {
+        let response: shared::IsTaskOnDashboardResponse =
+            Self::request("GET", &format!("/dashboard/tasks/{}", task_id), None::<()>, true).await?;
+        Ok(response.on_dashboard)
+    }
+
+    pub async fn add_task_to_dashboard(task_id: &str) -> Result<(), String> {
+        Self::request::<()>("POST", &format!("/dashboard/tasks/{}", task_id), None::<()>, true).await
+    }
+
+    pub async fn remove_task_from_dashboard(task_id: &str) -> Result<(), String> {
+        Self::request::<()>("DELETE", &format!("/dashboard/tasks/{}", task_id), None::<()>, true).await
+    }
 }
 
 #[cfg(test)]

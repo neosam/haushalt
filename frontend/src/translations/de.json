@@ -116,6 +116,9 @@
   "tasks.approve": "Genehmigen",
   "tasks.reject": "Ablehnen",
 
+  "task_card.add_to_dashboard": "Zum Dashboard hinzufügen",
+  "task_card.remove_from_dashboard": "Vom Dashboard entfernen",
+
   "recurrence.daily": "Täglich",
   "recurrence.weekly": "Wöchentlich",
   "recurrence.monthly": "Monatlich",
@@ -172,6 +175,8 @@
   "task_modal.due_time_hint": "Leer lassen für Ende des Tages (23:59)",
   "task_modal.habit_type_label": "Gewohnheitstyp",
   "task_modal.habit_type_hint": "Schlechte Gewohnheiten geben Belohnungen wenn vermieden und Strafen wenn gemacht",
+  "task_modal.show_on_dashboard": "Auf Dashboard anzeigen",
+  "task_modal.show_on_dashboard_hint": "Wenn aktiviert, erscheint diese Aufgabe in deiner persönlichen Dashboard-Übersicht",
 
   "habit_type.good": "Gute Gewohnheit",
   "habit_type.bad": "Schlechte Gewohnheit",
