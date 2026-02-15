@@ -1,0 +1,87 @@
+use actix_cors::Cors;
+use actix_files::{Files, NamedFile};
+use actix_web::{middleware::Logger, web, App, HttpServer};
+use sqlx::sqlite::SqlitePoolOptions;
+
+mod config;
+mod db;
+mod handlers;
+mod middleware;
+mod models;
+mod services;
+
+use config::Config;
+
+async fn index(config: web::Data<models::AppState>) -> actix_web::Result<NamedFile> {
+    let static_path = config.config.static_files_path.as_deref().unwrap_or("./static");
+    Ok(NamedFile::open(format!("{}/index.html", static_path))?)
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    // Load .env file if present
+    dotenvy::dotenv().ok();
+
+    // Initialize logger
+    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
+
+    // Load configuration
+    let config = Config::from_env().expect("Failed to load configuration");
+
+    log::info!("Starting server at {}:{}", config.host, config.port);
+
+    if let Some(ref path) = config.static_files_path {
+        log::info!("Serving static files from: {}", path);
+    }
+
+    // Create database pool
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect(&config.database_url)
+        .await
+        .expect("Failed to create database pool");
+
+    // Run migrations
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run migrations");
+
+    log::info!("Database migrations completed");
+
+    // Create app state
+    let app_state = web::Data::new(models::AppState {
+        db: pool,
+        config: config.clone(),
+    });
+
+    let static_files_path = config.static_files_path.clone();
+
+    // Start HTTP server
+    HttpServer::new(move || {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .max_age(3600);
+
+        let mut app = App::new()
+            .app_data(app_state.clone())
+            .wrap(Logger::default())
+            .wrap(cors)
+            .configure(handlers::configure_routes);
+
+        // Serve static files if path is configured
+        if let Some(ref path) = static_files_path {
+            app = app
+                .service(Files::new("/pkg", format!("{}/pkg", path)))
+                .service(Files::new("/assets", format!("{}/assets", path)).show_files_listing())
+                .default_service(web::route().to(index));
+        }
+
+        app
+    })
+    .bind((config.host.as_str(), config.port))?
+    .run()
+    .await
+}

@@ -1,0 +1,34 @@
+[package]
+name = "frontend"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+
+# Leptos framework
+leptos = { workspace = true }
+leptos_router = { workspace = true }
+
+# HTTP client
+gloo-net = { workspace = true }
+gloo-storage = { workspace = true }
+
+# WASM bindings
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Types
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Error handling
+console_error_panic_hook = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
