@@ -1,6 +1,7 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{AdjustPointsRequest, Announcement, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus};
+use shared::{AdjustPointsRequest, Announcement, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus, UpdateRoleRequest};
+use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::announcement_banner::AnnouncementBanner;
@@ -41,6 +42,7 @@ pub fn HouseholdPage() -> impl IntoView {
     // Check if current user can manage members
     let current_user_can_manage = create_rw_signal(false);
     let current_user_role = create_rw_signal(Option::<Role>::None);
+    let current_user_id = create_rw_signal(Option::<Uuid>::None);
 
     // Rewards and punishments for assignment
     let rewards = create_rw_signal(Vec::<Reward>::new());
@@ -75,6 +77,12 @@ pub fn HouseholdPage() -> impl IntoView {
     let assign_punishment_error = create_rw_signal(Option::<String>::None);
     let assigning_punishment = create_rw_signal(false);
 
+    // Owner transfer confirmation modal state
+    let show_owner_transfer_modal = create_rw_signal(false);
+    let owner_transfer_user_id = create_rw_signal(String::new());
+    let owner_transfer_username = create_rw_signal(String::new());
+    let transferring_ownership = create_rw_signal(false);
+
     // Load data on mount
     create_effect(move |_| {
         let id = household_id();
@@ -93,6 +101,7 @@ pub fn HouseholdPage() -> impl IntoView {
             if let Ok(m) = ApiClient::list_members(&id).await {
                 // Find current user's role
                 if let Ok(current_user) = ApiClient::get_current_user().await {
+                    current_user_id.set(Some(current_user.id));
                     if let Some(member) = m.iter().find(|member| member.user.id == current_user.id) {
                         current_user_role.set(Some(member.membership.role));
                     }
@@ -533,6 +542,8 @@ pub fn HouseholdPage() -> impl IntoView {
                                     let m = members.get();
                                     let can_manage = current_user_can_manage.get();
                                     let current_settings = settings.get();
+                                    let is_current_user_owner = current_user_role.get() == Some(Role::Owner);
+                                    let curr_user_id = current_user_id.get();
                                     let adjust_points_title = i18n_stored.get_value().t("buttons.adjust_points");
                                     let assign_reward_title = i18n_stored.get_value().t("buttons.assign_reward");
                                     let assign_punishment_title = i18n_stored.get_value().t("buttons.assign_punishment");
@@ -542,10 +553,18 @@ pub fn HouseholdPage() -> impl IntoView {
                                     view! {
                                         <div>
                                             {m.into_iter().map(|member| {
+                                                let is_member_owner = member.membership.role == Role::Owner;
+                                                let is_self = curr_user_id == Some(member.user.id);
+                                                let can_change_role = is_current_user_owner && !is_member_owner && !is_self;
                                                 let badge_class = match member.membership.role {
                                                     shared::Role::Owner => "badge badge-owner",
                                                     shared::Role::Admin => "badge badge-admin",
                                                     shared::Role::Member => "badge badge-member",
+                                                };
+                                                let select_class = match member.membership.role {
+                                                    shared::Role::Owner => "role-select role-select-owner",
+                                                    shared::Role::Admin => "role-select role-select-admin",
+                                                    shared::Role::Member => "role-select role-select-member",
                                                 };
                                                 let role_text = current_settings.as_ref()
                                                     .and_then(|s| {
@@ -561,7 +580,13 @@ pub fn HouseholdPage() -> impl IntoView {
                                                         shared::Role::Admin => role_admin_default.clone(),
                                                         shared::Role::Member => role_member_default.clone(),
                                                     });
+                                                let current_role_value = match member.membership.role {
+                                                    shared::Role::Owner => "owner",
+                                                    shared::Role::Admin => "admin",
+                                                    shared::Role::Member => "member",
+                                                };
                                                 let user_id = member.user.id.to_string();
+                                                let user_id_role = user_id.clone();
                                                 let username = member.user.username.clone();
                                                 let user_id_points = user_id.clone();
                                                 let username_points = username.clone();
@@ -572,11 +597,77 @@ pub fn HouseholdPage() -> impl IntoView {
                                                 let adjust_points_title = adjust_points_title.clone();
                                                 let assign_reward_title = assign_reward_title.clone();
                                                 let assign_punishment_title = assign_punishment_title.clone();
+                                                // Use custom role labels from settings if available
+                                                let role_admin_label = current_settings.as_ref()
+                                                    .and_then(|s| if s.role_label_admin.is_empty() { None } else { Some(s.role_label_admin.clone()) })
+                                                    .unwrap_or_else(|| role_admin_default.clone());
+                                                let role_member_label = current_settings.as_ref()
+                                                    .and_then(|s| if s.role_label_member.is_empty() { None } else { Some(s.role_label_member.clone()) })
+                                                    .unwrap_or_else(|| role_member_default.clone());
+                                                let role_owner_label = current_settings.as_ref()
+                                                    .and_then(|s| if s.role_label_owner.is_empty() { None } else { Some(s.role_label_owner.clone()) })
+                                                    .unwrap_or_else(|| role_owner_default.clone());
+                                                let member_username = username.clone();
+                                                let member_user_id_for_transfer = user_id.clone();
                                                 view! {
                                                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
                                                         <div>
                                                             <span style="font-weight: 500;">{member.user.username}</span>
-                                                            <span class=badge_class style="margin-left: 0.5rem;">{role_text}</span>
+                                                            {if can_change_role {
+                                                                let hh_id = household_id();
+                                                                view! {
+                                                                    <select
+                                                                        class=select_class
+                                                                        style="margin-left: 0.5rem;"
+                                                                        on:change=move |ev| {
+                                                                            let new_role_str = event_target_value(&ev);
+                                                                            let hh_id = hh_id.clone();
+                                                                            let user_id_role = user_id_role.clone();
+                                                                            // Handle owner transfer with confirmation
+                                                                            if new_role_str == "owner" {
+                                                                                owner_transfer_user_id.set(member_user_id_for_transfer.clone());
+                                                                                owner_transfer_username.set(member_username.clone());
+                                                                                show_owner_transfer_modal.set(true);
+                                                                                // Reset dropdown to current value by reloading members
+                                                                                wasm_bindgen_futures::spawn_local(async move {
+                                                                                    if let Ok(m) = ApiClient::list_members(&hh_id).await {
+                                                                                        members.set(m);
+                                                                                    }
+                                                                                });
+                                                                                return;
+                                                                            }
+                                                                            let new_role = match new_role_str.as_str() {
+                                                                                "admin" => Role::Admin,
+                                                                                _ => Role::Member,
+                                                                            };
+                                                                            wasm_bindgen_futures::spawn_local(async move {
+                                                                                match ApiClient::update_member_role(&hh_id, &user_id_role, UpdateRoleRequest { role: new_role }).await {
+                                                                                    Ok(_) => {
+                                                                                        // Reload members
+                                                                                        if let Ok(m) = ApiClient::list_members(&hh_id).await {
+                                                                                            members.set(m);
+                                                                                        }
+                                                                                    }
+                                                                                    Err(_) => {
+                                                                                        // Error handling - reload members to restore UI state
+                                                                                        if let Ok(m) = ApiClient::list_members(&hh_id).await {
+                                                                                            members.set(m);
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            });
+                                                                        }
+                                                                    >
+                                                                        <option value="owner">{role_owner_label.clone()}</option>
+                                                                        <option value="admin" selected=move || current_role_value == "admin">{role_admin_label.clone()}</option>
+                                                                        <option value="member" selected=move || current_role_value == "member">{role_member_label.clone()}</option>
+                                                                    </select>
+                                                                }.into_view()
+                                                            } else {
+                                                                view! {
+                                                                    <span class=badge_class style="margin-left: 0.5rem;">{role_text}</span>
+                                                                }.into_view()
+                                                            }}
                                                         </div>
                                                         <div style="display: flex; align-items: center; gap: 0.5rem;">
                                                             {if can_manage {
@@ -888,6 +979,70 @@ pub fn HouseholdPage() -> impl IntoView {
                             </button>
                         </div>
                     </form>
+                </Modal>
+            </Show>
+
+            // Owner Transfer Confirmation Modal
+            <Show when=move || show_owner_transfer_modal.get() fallback=|| ()>
+                <Modal title=i18n_stored.get_value().t("members.transfer_ownership") on_close=move |_| show_owner_transfer_modal.set(false)>
+                    <div style="margin-bottom: 1rem;">
+                        <p style="margin-bottom: 0.5rem;">
+                            {move || {
+                                let username = owner_transfer_username.get();
+                                i18n_stored.get_value().t("members.transfer_ownership_confirm").replace("{username}", &username)
+                            }}
+                        </p>
+                        <p style="color: var(--warning-color); font-weight: 500;">
+                            {i18n_stored.get_value().t("members.transfer_ownership_warning")}
+                        </p>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button
+                            type="button"
+                            class="btn btn-outline"
+                            on:click=move |_| show_owner_transfer_modal.set(false)
+                            disabled=move || transferring_ownership.get()
+                        >
+                            {i18n_stored.get_value().t("common.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            class="btn btn-danger"
+                            disabled=move || transferring_ownership.get()
+                            on:click=move |_| {
+                                let hh_id = household_id();
+                                let target_user_id = owner_transfer_user_id.get();
+                                transferring_ownership.set(true);
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    match ApiClient::update_member_role(&hh_id, &target_user_id, UpdateRoleRequest { role: Role::Owner }).await {
+                                        Ok(_) => {
+                                            // Reload members and update current user role
+                                            if let Ok(m) = ApiClient::list_members(&hh_id).await {
+                                                // Find current user's new role
+                                                if let Ok(current_user) = ApiClient::get_current_user().await {
+                                                    if let Some(member) = m.iter().find(|member| member.user.id == current_user.id) {
+                                                        current_user_role.set(Some(member.membership.role));
+                                                    }
+                                                }
+                                                members.set(m);
+                                            }
+                                            show_owner_transfer_modal.set(false);
+                                        }
+                                        Err(_) => {
+                                            // Error - reload members to restore UI state
+                                            if let Ok(m) = ApiClient::list_members(&hh_id).await {
+                                                members.set(m);
+                                            }
+                                        }
+                                    }
+                                    transferring_ownership.set(false);
+                                });
+                            }
+                        >
+                            {move || if transferring_ownership.get() { i18n_stored.get_value().t("common.processing") } else { i18n_stored.get_value().t("members.confirm_transfer") }}
+                        </button>
+                    </div>
                 </Modal>
             </Show>
 

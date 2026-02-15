@@ -263,6 +263,48 @@ pub async fn update_member_role(
     Ok(membership.to_shared())
 }
 
+/// Transfer ownership from current owner to new owner.
+/// The current owner becomes an admin.
+pub async fn transfer_ownership(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    current_owner_id: &Uuid,
+    new_owner_id: &Uuid,
+) -> Result<HouseholdMembership, HouseholdError> {
+    // Use a transaction to ensure atomicity
+    let mut tx = pool.begin().await?;
+
+    // Demote current owner to admin
+    sqlx::query("UPDATE household_memberships SET role = ? WHERE household_id = ? AND user_id = ?")
+        .bind(Role::Admin.as_str())
+        .bind(household_id.to_string())
+        .bind(current_owner_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+    // Promote new owner
+    sqlx::query("UPDATE household_memberships SET role = ? WHERE household_id = ? AND user_id = ?")
+        .bind(Role::Owner.as_str())
+        .bind(household_id.to_string())
+        .bind(new_owner_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+    // Commit the transaction
+    tx.commit().await?;
+
+    // Return the new owner's membership
+    let membership: MembershipRow = sqlx::query_as(
+        "SELECT * FROM household_memberships WHERE household_id = ? AND user_id = ?",
+    )
+    .bind(household_id.to_string())
+    .bind(new_owner_id.to_string())
+    .fetch_one(pool)
+    .await?;
+
+    Ok(membership.to_shared())
+}
+
 pub async fn update_member_points(
     pool: &SqlitePool,
     household_id: &Uuid,

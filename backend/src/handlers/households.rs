@@ -651,23 +651,48 @@ async fn update_member_role(
 
     let new_role = body.into_inner().role;
 
-    // Cannot change to or from owner
-    if new_role == shared::Role::Owner {
-        return Ok(HttpResponse::BadRequest().json(ApiError {
-            error: "invalid_role".to_string(),
-            message: "Cannot change role to owner".to_string(),
-        }));
-    }
-
+    // Get target's current role
     let target_role = household_service::get_member_role(&state.db, &household_id, &target_user_id).await;
-    if target_role == Some(shared::Role::Owner) {
+
+    // Cannot change owner's role (except via ownership transfer)
+    if target_role == Some(shared::Role::Owner) && new_role != shared::Role::Owner {
         return Ok(HttpResponse::BadRequest().json(ApiError {
             error: "invalid_role".to_string(),
             message: "Cannot change owner's role".to_string(),
         }));
     }
 
-    match household_service::update_member_role(&state.db, &household_id, &target_user_id, new_role.clone()).await {
+    // Handle owner transfer
+    if new_role == shared::Role::Owner {
+        // Transfer ownership from current user to target user
+        match household_service::transfer_ownership(&state.db, &household_id, &current_user_id, &target_user_id).await {
+            Ok(membership) => {
+                // Log activity
+                let details = serde_json::json!({ "new_owner": target_user_id.to_string() }).to_string();
+                let _ = activity_log_service::log_activity(
+                    &state.db,
+                    &household_id,
+                    &current_user_id,
+                    Some(&target_user_id),
+                    ActivityType::MemberRoleChanged,
+                    Some("member"),
+                    None,
+                    Some(&details),
+                ).await;
+
+                return Ok(HttpResponse::Ok().json(ApiSuccess::new(membership)));
+            }
+            Err(e) => {
+                log::error!("Error transferring ownership: {:?}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiError {
+                    error: "internal_error".to_string(),
+                    message: "Failed to transfer ownership".to_string(),
+                }));
+            }
+        }
+    }
+
+    match household_service::update_member_role(&state.db, &household_id, &target_user_id, new_role).await {
         Ok(membership) => {
             // Log activity
             let details = serde_json::json!({ "new_role": format!("{:?}", new_role) }).to_string();

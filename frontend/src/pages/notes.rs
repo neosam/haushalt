@@ -200,13 +200,12 @@ pub fn NotesPage() -> impl IntoView {
                         }.into_view()
                     } else {
                         notes_vec.into_iter().map(|note| {
-                            let on_edit = on_edit.clone();
                             view! {
                                 <NoteCard
                                     note=note
                                     current_user_id=user_id
-                                    on_edit=Callback::new(move |n| on_edit(n))
-                                    on_delete=Callback::new(move |id| on_delete(id))
+                                    on_edit=Callback::new(on_edit)
+                                    on_delete=Callback::new(on_delete)
                                 />
                             }
                         }).collect_view()

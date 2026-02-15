@@ -7,6 +7,7 @@
   "common.close": "Close",
   "common.loading": "Loading...",
   "common.saving": "Saving...",
+  "common.processing": "Processing...",
   "common.confirm": "Confirm",
   "common.yes": "Yes",
   "common.no": "No",
@@ -437,6 +438,10 @@
   "members.punishment_hint": "The punishment will be applied to this member (points will be deducted)",
   "members.select_reward_error": "Please select a reward",
   "members.select_punishment_error": "Please select a punishment",
+  "members.transfer_ownership": "Transfer Ownership",
+  "members.transfer_ownership_confirm": "Are you sure you want to transfer ownership to {username}?",
+  "members.transfer_ownership_warning": "Warning: You will lose your owner privileges and become an admin.",
+  "members.confirm_transfer": "Transfer Ownership",
 
   "pending_reviews.title": "Pending Reviews",
   "pending_reviews.empty": "No pending reviews",

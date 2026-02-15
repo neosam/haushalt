@@ -14,7 +14,7 @@ use shared::{
     PendingReview, PendingRewardRedemption, PointCondition, Punishment, RefreshTokenRequest, Reward,
     Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest,
     UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest,
-    UpdateRewardRequest, UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment,
+    UpdateRewardRequest, UpdateRoleRequest, UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment,
     UserPunishmentWithUser, UserReward, UserRewardWithUser, UserSettings,
 };
 
@@ -181,11 +181,11 @@ impl ApiClient {
         auth: bool,
     ) -> Result<T, String> {
         // Serialize body once so we can retry if needed
-        let body_json = body.map(|b| serde_json::to_string(&b).ok()).flatten();
+        let body_json = body.and_then(|b| serde_json::to_string(&b).ok());
 
         // First attempt
         match Self::execute_request::<T>(method, path, body_json.clone(), auth).await {
-            Ok((data, _)) => return Ok(data),
+            Ok((data, _)) => Ok(data),
             Err(e) => {
                 // Check if it's a 401 and we should try refresh
                 if auth && e.starts_with("401|") {
@@ -194,12 +194,12 @@ impl ApiClient {
                             // Store new tokens
                             Self::store_tokens(&auth_response.token, &auth_response.refresh_token);
                             // Retry with new token
-                            match Self::execute_request::<T>(method, path, body_json, auth).await {
-                                Ok((data, _)) => return Ok(data),
+                            return match Self::execute_request::<T>(method, path, body_json, auth).await {
+                                Ok((data, _)) => Ok(data),
                                 Err(e2) => {
                                     // Extract error message from "status|message" format
                                     let msg = e2.split('|').nth(1).unwrap_or(&e2);
-                                    return Err(msg.to_string());
+                                    Err(msg.to_string())
                                 }
                             }
                         }
@@ -211,7 +211,7 @@ impl ApiClient {
                 }
                 // Not a 401, return the error message
                 let msg = e.split('|').nth(1).unwrap_or(&e);
-                return Err(msg.to_string());
+                Err(msg.to_string())
             }
         }
     }
@@ -872,6 +872,20 @@ impl ApiClient {
         Self::request(
             "POST",
             &format!("/households/{}/members/{}/points", household_id, user_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_member_role(
+        household_id: &str,
+        user_id: &str,
+        request: UpdateRoleRequest,
+    ) -> Result<HouseholdMembership, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/members/{}/role", household_id, user_id),
             Some(request),
             true,
         )

@@ -32,7 +32,7 @@ impl RateLimiter {
         let now = Instant::now();
 
         // Get or create entry for this key
-        let entry = attempts.entry(key.to_string()).or_insert_with(Vec::new);
+        let entry = attempts.entry(key.to_string()).or_default();
 
         // Remove old attempts outside the window
         entry.retain(|&time| now.duration_since(time) < self.window);
@@ -46,7 +46,7 @@ impl RateLimiter {
         let mut attempts = self.attempts.lock().unwrap();
         let now = Instant::now();
 
-        let entry = attempts.entry(key.to_string()).or_insert_with(Vec::new);
+        let entry = attempts.entry(key.to_string()).or_default();
 
         // Clean up old entries while we're at it
         entry.retain(|&time| now.duration_since(time) < self.window);

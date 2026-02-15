@@ -16,6 +16,7 @@ pub enum ActivityLogError {
 }
 
 /// Log an activity event
+#[allow(clippy::too_many_arguments)]
 pub async fn log_activity(
     pool: &SqlitePool,
     household_id: &Uuid,
@@ -83,7 +84,7 @@ struct JoinedActivityRow {
 }
 
 impl JoinedActivityRow {
-    fn to_activity_log_with_users(self) -> ActivityLogWithUsers {
+    fn into_activity_log_with_users(self) -> ActivityLogWithUsers {
         let log = ActivityLog {
             id: Uuid::parse_str(&self.id).unwrap(),
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
@@ -159,7 +160,7 @@ pub async fn list_household_activities(
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|row| row.to_activity_log_with_users()).collect())
+    Ok(rows.into_iter().map(|row| row.into_activity_log_with_users()).collect())
 }
 
 /// List activities affecting a specific user (for non-owners)
@@ -195,7 +196,7 @@ pub async fn list_user_activities(
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|row| row.to_activity_log_with_users()).collect())
+    Ok(rows.into_iter().map(|row| row.into_activity_log_with_users()).collect())
 }
 
 /// Get a single activity log by ID

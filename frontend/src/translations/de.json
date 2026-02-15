@@ -7,6 +7,7 @@
   "common.close": "Schließen",
   "common.loading": "Laden...",
   "common.saving": "Speichern...",
+  "common.processing": "Verarbeite...",
   "common.confirm": "Bestätigen",
   "common.yes": "Ja",
   "common.no": "Nein",
@@ -437,6 +438,10 @@
   "members.punishment_hint": "Die Strafe wird auf dieses Mitglied angewendet (Punkte werden abgezogen)",
   "members.select_reward_error": "Bitte wählen Sie eine Belohnung",
   "members.select_punishment_error": "Bitte wählen Sie eine Strafe",
+  "members.transfer_ownership": "Eigentümerschaft übertragen",
+  "members.transfer_ownership_confirm": "Möchtest du die Eigentümerschaft wirklich an {username} übertragen?",
+  "members.transfer_ownership_warning": "Achtung: Du verlierst deine Eigentümer-Rechte und wirst zum Admin.",
+  "members.confirm_transfer": "Eigentümerschaft übertragen",
 
   "pending_reviews.title": "Ausstehende Überprüfungen",
   "pending_reviews.empty": "Keine ausstehenden Überprüfungen",
