@@ -120,11 +120,15 @@ pub async fn get_task_with_status(
     // Calculate streak
     let current_streak = calculate_streak(pool, &task, user_id).await?;
 
+    // Calculate next due date
+    let next_due_date = scheduler::get_next_due_date(&task, today);
+
     Ok(Some(TaskWithStatus {
         task,
         completions_today,
         current_streak,
         last_completion: last_completion.map(|c| c.completed_at),
+        next_due_date,
     }))
 }
 

@@ -52,6 +52,26 @@ pub fn TaskModal(
             .unwrap_or_else(|| vec![1, 2, 3, 4, 5]) // Default Mon-Fri
     );
 
+    // Single weekday for Weekly recurrence (0=Sun, 1=Mon, ..., 6=Sat)
+    let selected_weekday = create_rw_signal(
+        task.as_ref()
+            .and_then(|t| match &t.recurrence_value {
+                Some(RecurrenceValue::WeekDay(day)) => Some(*day),
+                _ => None,
+            })
+            .unwrap_or(1) // Default to Monday
+    );
+
+    // Day of month for Monthly recurrence (1-31)
+    let selected_month_day = create_rw_signal(
+        task.as_ref()
+            .and_then(|t| match &t.recurrence_value {
+                Some(RecurrenceValue::MonthDay(day)) => Some(*day),
+                _ => None,
+            })
+            .unwrap_or(1) // Default to 1st of month
+    );
+
     let selected_custom_dates = create_rw_signal(
         task.as_ref()
             .and_then(|t| match &t.recurrence_value {
@@ -102,6 +122,8 @@ pub fn TaskModal(
 
             // Build recurrence value based on type
             let rec_value = match recurrence_type.get().as_str() {
+                "weekly" => Some(RecurrenceValue::WeekDay(selected_weekday.get())),
+                "monthly" => Some(RecurrenceValue::MonthDay(selected_month_day.get())),
                 "weekdays" => Some(RecurrenceValue::Weekdays(selected_weekdays.get())),
                 "custom" => Some(RecurrenceValue::CustomDates(selected_custom_dates.get())),
                 _ => None,
@@ -286,7 +308,54 @@ pub fn TaskModal(
                             }
                         </div>
 
-                        // Weekday selection (shown when recurrence_type == "weekdays")
+                        // Single weekday selection (shown when recurrence_type == "weekly")
+                        <Show when=move || recurrence_type.get() == "weekly" fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label" for="task-weekday">"Day of Week"</label>
+                                <select
+                                    id="task-weekday"
+                                    class="form-select"
+                                    on:change=move |ev| {
+                                        if let Ok(day) = event_target_value(&ev).parse::<u8>() {
+                                            selected_weekday.set(day);
+                                        }
+                                    }
+                                >
+                                    <option value="0" selected=move || selected_weekday.get() == 0>"Sunday"</option>
+                                    <option value="1" selected=move || selected_weekday.get() == 1>"Monday"</option>
+                                    <option value="2" selected=move || selected_weekday.get() == 2>"Tuesday"</option>
+                                    <option value="3" selected=move || selected_weekday.get() == 3>"Wednesday"</option>
+                                    <option value="4" selected=move || selected_weekday.get() == 4>"Thursday"</option>
+                                    <option value="5" selected=move || selected_weekday.get() == 5>"Friday"</option>
+                                    <option value="6" selected=move || selected_weekday.get() == 6>"Saturday"</option>
+                                </select>
+                                <small class="form-hint">"Task will be due on this day each week"</small>
+                            </div>
+                        </Show>
+
+                        // Day of month selection (shown when recurrence_type == "monthly")
+                        <Show when=move || recurrence_type.get() == "monthly" fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label" for="task-monthday">"Day of Month"</label>
+                                <input
+                                    type="number"
+                                    id="task-monthday"
+                                    class="form-input"
+                                    min="1"
+                                    max="31"
+                                    prop:value=move || selected_month_day.get().to_string()
+                                    on:input=move |ev| {
+                                        if let Ok(day) = event_target_value(&ev).parse::<u8>() {
+                                            let clamped = day.clamp(1, 31);
+                                            selected_month_day.set(clamped);
+                                        }
+                                    }
+                                />
+                                <small class="form-hint">"Task will be due on this day each month (adjusted for shorter months)"</small>
+                            </div>
+                        </Show>
+
+                        // Multiple weekday selection (shown when recurrence_type == "weekdays")
                         <Show when=move || recurrence_type.get() == "weekdays" fallback=|| ()>
                             <div class="form-group">
                                 <label class="form-label">"Select Days"</label>

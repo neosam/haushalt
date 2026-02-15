@@ -312,6 +312,8 @@ pub struct TaskWithStatus {
     pub completions_today: i32,
     pub current_streak: i32,
     pub last_completion: Option<DateTime<Utc>>,
+    /// Next date when this task is due (None for OneTime tasks)
+    pub next_due_date: Option<NaiveDate>,
 }
 
 impl TaskWithStatus {
@@ -749,6 +751,7 @@ mod tests {
             completions_today: completions,
             current_streak: 0,
             last_completion: None,
+            next_due_date: None,
         }
     }
 

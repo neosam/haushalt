@@ -1,6 +1,34 @@
+use chrono::{Datelike, NaiveDate, Weekday};
 use leptos::*;
 use shared::TaskWithStatus;
 use std::time::Duration;
+
+/// Format a next due date for display
+fn format_next_due_date(date: NaiveDate, today: NaiveDate) -> String {
+    let days_until = (date - today).num_days();
+
+    match days_until {
+        0 => "Today".to_string(),
+        1 => "Tomorrow".to_string(),
+        2..=6 => {
+            // Show weekday name
+            match date.weekday() {
+                Weekday::Mon => "Monday",
+                Weekday::Tue => "Tuesday",
+                Weekday::Wed => "Wednesday",
+                Weekday::Thu => "Thursday",
+                Weekday::Fri => "Friday",
+                Weekday::Sat => "Saturday",
+                Weekday::Sun => "Sunday",
+            }
+            .to_string()
+        }
+        _ => {
+            // Show date
+            date.format("%b %d").to_string()
+        }
+    }
+}
 
 #[component]
 pub fn TaskCard(
@@ -50,12 +78,17 @@ pub fn TaskCard(
     // Progress display as fraction (e.g., "2/3")
     let progress_display = format!("{}/{}", completions, target);
 
+    // Format next due date
+    let today = chrono::Utc::now().date_naive();
+    let next_due_display = task.next_due_date.map(|d| format_next_due_date(d, today));
+
     view! {
         <div class=card_class>
             <div class="task-content" style="flex: 1;">
                 <div class="task-title">{task.task.title.clone()}</div>
                 <div class="task-meta">
                     {format!("{:?}", task.task.recurrence_type)}
+                    {next_due_display.map(|due| format!(" | Due: {}", due)).unwrap_or_default()}
                     {if task.current_streak > 0 {
                         format!(" | Streak: {}", task.current_streak)
                     } else {
@@ -151,6 +184,7 @@ mod tests {
             completions_today: completions,
             current_streak: 0,
             last_completion: None,
+            next_due_date: None,
         }
     }
 
@@ -250,6 +284,7 @@ mod tests {
             completions_today: 0,
             current_streak: 5,
             last_completion: None,
+            next_due_date: None,
         };
         let streak_text = if task.current_streak > 0 {
             format!(" | Streak: {}", task.current_streak)
@@ -305,5 +340,59 @@ mod tests {
         // Cannot complete when already over target with allow_exceed_target false
         let task = create_test_task_with_exceed(5, 3, false);
         assert!(!task.can_complete());
+    }
+
+    // Tests for format_next_due_date
+
+    #[wasm_bindgen_test]
+    fn test_format_next_due_date_today() {
+        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let result = format_next_due_date(today, today);
+        assert_eq!(result, "Today");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_format_next_due_date_tomorrow() {
+        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let tomorrow = chrono::NaiveDate::from_ymd_opt(2024, 1, 16).unwrap();
+        let result = format_next_due_date(tomorrow, today);
+        assert_eq!(result, "Tomorrow");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_format_next_due_date_weekday() {
+        // Monday, January 15, 2024
+        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        // Friday, January 19, 2024 (4 days later)
+        let friday = chrono::NaiveDate::from_ymd_opt(2024, 1, 19).unwrap();
+        let result = format_next_due_date(friday, today);
+        assert_eq!(result, "Friday");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_format_next_due_date_far_future() {
+        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        // 10 days later
+        let far = chrono::NaiveDate::from_ymd_opt(2024, 1, 25).unwrap();
+        let result = format_next_due_date(far, today);
+        assert_eq!(result, "Jan 25");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_format_next_due_date_6_days() {
+        // 6 days from now should show weekday name
+        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(); // Monday
+        let sunday = chrono::NaiveDate::from_ymd_opt(2024, 1, 21).unwrap(); // 6 days later
+        let result = format_next_due_date(sunday, today);
+        assert_eq!(result, "Sunday");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_format_next_due_date_7_days() {
+        // 7 days from now should show date
+        let today = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let next_week = chrono::NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
+        let result = format_next_due_date(next_week, today);
+        assert_eq!(result, "Jan 22");
     }
 }

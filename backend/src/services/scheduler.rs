@@ -115,6 +115,100 @@ pub fn get_previous_due_date(task: &Task, current_date: NaiveDate) -> NaiveDate 
     }
 }
 
+/// Get the next due date for a task on or after the given date
+/// Returns None for OneTime tasks (they have no schedule)
+pub fn get_next_due_date(task: &Task, from_date: NaiveDate) -> Option<NaiveDate> {
+    match task.recurrence_type {
+        RecurrenceType::OneTime => {
+            // OneTime tasks don't have a recurring schedule
+            None
+        }
+
+        RecurrenceType::Daily => Some(from_date),
+
+        RecurrenceType::Weekly => {
+            let target_weekday = match &task.recurrence_value {
+                Some(RecurrenceValue::WeekDay(day)) => weekday_from_u8(*day),
+                _ => from_date.weekday(), // Default to current weekday
+            };
+
+            // Find next occurrence of target weekday
+            let current_weekday = from_date.weekday();
+            let days_until = (target_weekday.num_days_from_sunday() as i64
+                - current_weekday.num_days_from_sunday() as i64
+                + 7)
+                % 7;
+
+            // If today is the target day, return today
+            if days_until == 0 {
+                Some(from_date)
+            } else {
+                Some(from_date + chrono::Duration::days(days_until))
+            }
+        }
+
+        RecurrenceType::Monthly => {
+            let target_day = match &task.recurrence_value {
+                Some(RecurrenceValue::MonthDay(day)) => *day as u32,
+                _ => task.created_at.day(),
+            };
+
+            // Check if we can hit target day this month
+            let last_day_this_month = get_last_day_of_month(from_date);
+            let effective_day_this_month = target_day.min(last_day_this_month);
+
+            if from_date.day() <= effective_day_this_month {
+                // Target day is still ahead this month (or today)
+                NaiveDate::from_ymd_opt(from_date.year(), from_date.month(), effective_day_this_month)
+            } else {
+                // Target day has passed this month, go to next month
+                let next_month = if from_date.month() == 12 {
+                    NaiveDate::from_ymd_opt(from_date.year() + 1, 1, 1).unwrap()
+                } else {
+                    NaiveDate::from_ymd_opt(from_date.year(), from_date.month() + 1, 1).unwrap()
+                };
+
+                let last_day_next_month = get_last_day_of_month(next_month);
+                let effective_day_next_month = target_day.min(last_day_next_month);
+
+                NaiveDate::from_ymd_opt(next_month.year(), next_month.month(), effective_day_next_month)
+            }
+        }
+
+        RecurrenceType::Weekdays => {
+            let weekdays = match &task.recurrence_value {
+                Some(RecurrenceValue::Weekdays(days)) => days.clone(),
+                _ => vec![1, 2, 3, 4, 5], // Mon-Fri by default
+            };
+
+            // Check today and the next 7 days
+            for i in 0..7 {
+                let check_date = from_date + chrono::Duration::days(i);
+                let weekday = weekday_to_u8(check_date.weekday());
+                if weekdays.contains(&weekday) {
+                    return Some(check_date);
+                }
+            }
+            // Shouldn't happen with valid weekdays, but fallback to from_date
+            Some(from_date)
+        }
+
+        RecurrenceType::Custom => {
+            match &task.recurrence_value {
+                Some(RecurrenceValue::CustomDates(dates)) => {
+                    // Find the first date >= from_date
+                    dates
+                        .iter()
+                        .filter(|d| **d >= from_date)
+                        .min()
+                        .copied()
+                }
+                _ => None,
+            }
+        }
+    }
+}
+
 /// Get the period bounds (start, end) for counting completions based on task recurrence
 /// This is used for habits that can be completed multiple times per period
 pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate) {
@@ -330,5 +424,134 @@ mod tests {
         assert_eq!(get_last_day_of_month(jan), 31);
         assert_eq!(get_last_day_of_month(feb_leap), 29);
         assert_eq!(get_last_day_of_month(feb_normal), 28);
+    }
+
+    // Tests for get_next_due_date
+
+    #[test]
+    fn test_get_next_due_date_onetime() {
+        let task = create_test_task(RecurrenceType::OneTime, None);
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+
+        assert_eq!(get_next_due_date(&task, date), None);
+    }
+
+    #[test]
+    fn test_get_next_due_date_daily() {
+        let task = create_test_task(RecurrenceType::Daily, None);
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+
+        assert_eq!(get_next_due_date(&task, date), Some(date));
+    }
+
+    #[test]
+    fn test_get_next_due_date_weekly_same_day() {
+        // Monday task, query on Monday
+        let task = create_test_task(RecurrenceType::Weekly, Some(RecurrenceValue::WeekDay(1)));
+        let monday = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(); // Monday
+
+        assert_eq!(get_next_due_date(&task, monday), Some(monday));
+    }
+
+    #[test]
+    fn test_get_next_due_date_weekly_later_in_week() {
+        // Monday task, query on Wednesday
+        let task = create_test_task(RecurrenceType::Weekly, Some(RecurrenceValue::WeekDay(1)));
+        let wednesday = NaiveDate::from_ymd_opt(2024, 1, 17).unwrap(); // Wednesday
+        let next_monday = NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
+
+        assert_eq!(get_next_due_date(&task, wednesday), Some(next_monday));
+    }
+
+    #[test]
+    fn test_get_next_due_date_weekly_earlier_in_week() {
+        // Friday task, query on Monday
+        let task = create_test_task(RecurrenceType::Weekly, Some(RecurrenceValue::WeekDay(5)));
+        let monday = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(); // Monday
+        let friday = NaiveDate::from_ymd_opt(2024, 1, 19).unwrap();
+
+        assert_eq!(get_next_due_date(&task, monday), Some(friday));
+    }
+
+    #[test]
+    fn test_get_next_due_date_monthly_same_day() {
+        let task = create_test_task(RecurrenceType::Monthly, Some(RecurrenceValue::MonthDay(15)));
+        let jan15 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+
+        assert_eq!(get_next_due_date(&task, jan15), Some(jan15));
+    }
+
+    #[test]
+    fn test_get_next_due_date_monthly_later_this_month() {
+        let task = create_test_task(RecurrenceType::Monthly, Some(RecurrenceValue::MonthDay(20)));
+        let jan15 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let jan20 = NaiveDate::from_ymd_opt(2024, 1, 20).unwrap();
+
+        assert_eq!(get_next_due_date(&task, jan15), Some(jan20));
+    }
+
+    #[test]
+    fn test_get_next_due_date_monthly_next_month() {
+        let task = create_test_task(RecurrenceType::Monthly, Some(RecurrenceValue::MonthDay(10)));
+        let jan15 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let feb10 = NaiveDate::from_ymd_opt(2024, 2, 10).unwrap();
+
+        assert_eq!(get_next_due_date(&task, jan15), Some(feb10));
+    }
+
+    #[test]
+    fn test_get_next_due_date_monthly_short_month() {
+        // Task due on 31st, query in February
+        let task = create_test_task(RecurrenceType::Monthly, Some(RecurrenceValue::MonthDay(31)));
+        let feb1 = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
+        let feb29 = NaiveDate::from_ymd_opt(2024, 2, 29).unwrap(); // Leap year
+
+        assert_eq!(get_next_due_date(&task, feb1), Some(feb29));
+    }
+
+    #[test]
+    fn test_get_next_due_date_weekdays() {
+        // Mon, Wed, Fri
+        let task = create_test_task(
+            RecurrenceType::Weekdays,
+            Some(RecurrenceValue::Weekdays(vec![1, 3, 5])),
+        );
+
+        let monday = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let tuesday = NaiveDate::from_ymd_opt(2024, 1, 16).unwrap();
+        let wednesday = NaiveDate::from_ymd_opt(2024, 1, 17).unwrap();
+
+        assert_eq!(get_next_due_date(&task, monday), Some(monday));
+        assert_eq!(get_next_due_date(&task, tuesday), Some(wednesday));
+    }
+
+    #[test]
+    fn test_get_next_due_date_custom() {
+        let dates = vec![
+            NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 2, 20).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 3, 25).unwrap(),
+        ];
+        let task = create_test_task(RecurrenceType::Custom, Some(RecurrenceValue::CustomDates(dates)));
+
+        let jan10 = NaiveDate::from_ymd_opt(2024, 1, 10).unwrap();
+        let jan15 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let jan20 = NaiveDate::from_ymd_opt(2024, 1, 20).unwrap();
+        let feb20 = NaiveDate::from_ymd_opt(2024, 2, 20).unwrap();
+
+        assert_eq!(get_next_due_date(&task, jan10), Some(jan15));
+        assert_eq!(get_next_due_date(&task, jan15), Some(jan15));
+        assert_eq!(get_next_due_date(&task, jan20), Some(feb20));
+    }
+
+    #[test]
+    fn test_get_next_due_date_custom_all_past() {
+        let dates = vec![
+            NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+        ];
+        let task = create_test_task(RecurrenceType::Custom, Some(RecurrenceValue::CustomDates(dates)));
+
+        let jan20 = NaiveDate::from_ymd_opt(2024, 1, 20).unwrap();
+        assert_eq!(get_next_due_date(&task, jan20), None);
     }
 }
