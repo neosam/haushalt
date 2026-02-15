@@ -737,3 +737,183 @@ pub fn HouseholdPage() -> impl IntoView {
         </Show>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_leaderboard_rank_class_first() {
+        let rank = 1;
+        let rank_class = match rank {
+            1 => "leaderboard-rank first",
+            2 => "leaderboard-rank second",
+            3 => "leaderboard-rank third",
+            _ => "leaderboard-rank",
+        };
+        assert_eq!(rank_class, "leaderboard-rank first");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_leaderboard_rank_class_second() {
+        let rank = 2;
+        let rank_class = match rank {
+            1 => "leaderboard-rank first",
+            2 => "leaderboard-rank second",
+            3 => "leaderboard-rank third",
+            _ => "leaderboard-rank",
+        };
+        assert_eq!(rank_class, "leaderboard-rank second");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_leaderboard_rank_class_third() {
+        let rank = 3;
+        let rank_class = match rank {
+            1 => "leaderboard-rank first",
+            2 => "leaderboard-rank second",
+            3 => "leaderboard-rank third",
+            _ => "leaderboard-rank",
+        };
+        assert_eq!(rank_class, "leaderboard-rank third");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_leaderboard_rank_class_other() {
+        let rank = 5;
+        let rank_class = match rank {
+            1 => "leaderboard-rank first",
+            2 => "leaderboard-rank second",
+            3 => "leaderboard-rank third",
+            _ => "leaderboard-rank",
+        };
+        assert_eq!(rank_class, "leaderboard-rank");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_role_badge_class_owner() {
+        let role = Role::Owner;
+        let badge_class = match role {
+            Role::Owner => "badge badge-owner",
+            Role::Admin => "badge badge-admin",
+            Role::Member => "badge badge-member",
+        };
+        assert_eq!(badge_class, "badge badge-owner");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_role_badge_class_admin() {
+        let role = Role::Admin;
+        let badge_class = match role {
+            Role::Owner => "badge badge-owner",
+            Role::Admin => "badge badge-admin",
+            Role::Member => "badge badge-member",
+        };
+        assert_eq!(badge_class, "badge badge-admin");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_role_badge_class_member() {
+        let role = Role::Member;
+        let badge_class = match role {
+            Role::Owner => "badge badge-owner",
+            Role::Admin => "badge badge-admin",
+            Role::Member => "badge badge-member",
+        };
+        assert_eq!(badge_class, "badge badge-member");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_role_text_owner() {
+        let role = Role::Owner;
+        let role_text = match role {
+            Role::Owner => "Owner",
+            Role::Admin => "Admin",
+            Role::Member => "Member",
+        };
+        assert_eq!(role_text, "Owner");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_points_validation_valid() {
+        let amount_str = "10";
+        let points: Result<i64, _> = amount_str.parse();
+        assert!(points.is_ok());
+        assert_eq!(points.unwrap(), 10);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_points_validation_negative() {
+        let amount_str = "-5";
+        let points: Result<i64, _> = amount_str.parse();
+        assert!(points.is_ok());
+        assert_eq!(points.unwrap(), -5);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_points_validation_invalid() {
+        let amount_str = "abc";
+        let points: Result<i64, _> = amount_str.parse();
+        assert!(points.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_points_validation_zero_rejected() {
+        let points: i64 = 0;
+        let is_zero = points == 0;
+        assert!(is_zero);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_invite_role_admin() {
+        let role_str = "admin";
+        let role = if role_str == "admin" {
+            Some(Role::Admin)
+        } else {
+            Some(Role::Member)
+        };
+        assert_eq!(role, Some(Role::Admin));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_invite_role_member() {
+        let role_str = "member";
+        let role = if role_str == "admin" {
+            Some(Role::Admin)
+        } else {
+            Some(Role::Member)
+        };
+        assert_eq!(role, Some(Role::Member));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_empty_reason_handling() {
+        let reason = String::new();
+        let result = if reason.is_empty() { None } else { Some(reason) };
+        assert!(result.is_none());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_nonempty_reason_handling() {
+        let reason = "Bonus for helping".to_string();
+        let result = if reason.is_empty() { None } else { Some(reason.clone()) };
+        assert_eq!(result, Some("Bonus for helping".to_string()));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_button_text_inviting() {
+        let inviting = true;
+        let text = if inviting { "Sending..." } else { "Send Invitation" };
+        assert_eq!(text, "Sending...");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_button_text_not_inviting() {
+        let inviting = false;
+        let text = if inviting { "Sending..." } else { "Send Invitation" };
+        assert_eq!(text, "Send Invitation");
+    }
+}

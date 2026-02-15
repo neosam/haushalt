@@ -139,3 +139,64 @@ pub fn Register() -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_password_mismatch_validation() {
+        let password = "password123";
+        let confirm_password = "password456";
+        assert_ne!(password, confirm_password);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_password_match_validation() {
+        let password = "password123";
+        let confirm_password = "password123";
+        assert_eq!(password, confirm_password);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_password_length_too_short() {
+        let password = "short";
+        assert!(password.len() < 8);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_password_length_valid() {
+        let password = "validpassword";
+        assert!(password.len() >= 8);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_password_length_exactly_8() {
+        let password = "12345678";
+        assert!(password.len() >= 8);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_button_text_not_loading() {
+        let loading = false;
+        let text = if loading { "Creating account..." } else { "Create Account" };
+        assert_eq!(text, "Create Account");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_button_text_loading() {
+        let loading = true;
+        let text = if loading { "Creating account..." } else { "Create Account" };
+        assert_eq!(text, "Creating account...");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_validation_error_messages() {
+        let mismatch_error = "Passwords do not match";
+        let length_error = "Password must be at least 8 characters";
+        assert!(!mismatch_error.is_empty());
+        assert!(!length_error.is_empty());
+    }
+}

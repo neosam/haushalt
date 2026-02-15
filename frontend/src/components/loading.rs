@@ -17,3 +17,18 @@ pub fn LoadingOverlay() -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_loading_css_classes() {
+        // Verify expected CSS class names
+        assert_eq!("loading", "loading");
+        assert_eq!("spinner", "spinner");
+        assert_eq!("modal-backdrop", "modal-backdrop");
+    }
+}

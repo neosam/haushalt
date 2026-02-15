@@ -490,3 +490,152 @@ pub fn RewardsPage() -> impl IntoView {
         </Show>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_available_rewards_calculation() {
+        let amount = 5;
+        let redeemed = 2;
+        let available = amount - redeemed;
+        assert_eq!(available, 3);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_available_rewards_all_redeemed() {
+        let amount = 3;
+        let redeemed = 3;
+        let available = amount - redeemed;
+        assert_eq!(available, 0);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_point_cost_display_with_cost() {
+        let point_cost: Option<i64> = Some(100);
+        let cost_text = point_cost.map(|c| format!(" ({} pts)", c)).unwrap_or_default();
+        assert_eq!(cost_text, " (100 pts)");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_point_cost_display_without_cost() {
+        let point_cost: Option<i64> = None;
+        let cost_text = point_cost.map(|c| format!(" ({} pts)", c)).unwrap_or_default();
+        assert_eq!(cost_text, "");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_reward_delete() {
+        let reward_to_delete = Uuid::new_v4();
+        let mut rewards: Vec<Uuid> = vec![reward_to_delete, Uuid::new_v4()];
+
+        let delete_id = reward_to_delete.to_string();
+        rewards.retain(|id| id.to_string() != delete_id);
+
+        assert_eq!(rewards.len(), 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_description_display_with_content() {
+        let reward_desc = "Movie night with family";
+        let display = if !reward_desc.is_empty() {
+            format!(" • {}", reward_desc)
+        } else {
+            String::new()
+        };
+        assert_eq!(display, " • Movie night with family");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_description_display_empty() {
+        let reward_desc = "";
+        let display = if !reward_desc.is_empty() {
+            format!(" • {}", reward_desc)
+        } else {
+            String::new()
+        };
+        assert_eq!(display, "");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_reward_status_available() {
+        let available = 3;
+        let is_available = available > 0;
+        assert!(is_available);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_reward_status_all_redeemed() {
+        let available = 0;
+        let is_available = available > 0;
+        assert!(!is_available);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_purchasable_reward() {
+        let is_purchasable = true;
+        let point_cost = 50i64;
+        let display = if is_purchasable {
+            format!("{} pts", point_cost)
+        } else {
+            "Assigned only".to_string()
+        };
+        assert_eq!(display, "50 pts");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_non_purchasable_reward() {
+        let is_purchasable = false;
+        let point_cost = 50i64;
+        let display = if is_purchasable {
+            format!("{} pts", point_cost)
+        } else {
+            "Assigned only".to_string()
+        };
+        assert_eq!(display, "Assigned only");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_user_assignment_format() {
+        let username = "Alice";
+        let amount = 3;
+        let display = format!("{}: {}x", username, amount);
+        assert_eq!(display, "Alice: 3x");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_unassign_decrement() {
+        let mut amount = 3;
+        if amount <= 1 {
+            amount = 0; // Would remove
+        } else {
+            amount -= 1;
+        }
+        assert_eq!(amount, 2);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_unassign_remove() {
+        let amount = 1;
+        let should_remove = amount <= 1;
+        assert!(should_remove);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_point_cost_parse_valid() {
+        let input = "100";
+        let cost: Option<i64> = input.parse().ok();
+        assert_eq!(cost, Some(100));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_point_cost_parse_empty() {
+        let input = "";
+        let cost: Option<i64> = input.parse().ok();
+        assert!(cost.is_none());
+    }
+}

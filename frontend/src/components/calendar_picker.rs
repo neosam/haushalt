@@ -1,5 +1,5 @@
-use leptos::*;
 use chrono::NaiveDate;
+use leptos::*;
 
 #[component]
 pub fn CalendarPicker(
@@ -92,5 +92,90 @@ pub fn CalendarPicker(
                 }}
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Datelike;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_date_parse_valid() {
+        let input = "2024-06-15";
+        let result = NaiveDate::parse_from_str(input, "%Y-%m-%d");
+        assert!(result.is_ok());
+        let date = result.unwrap();
+        assert_eq!(date.year(), 2024);
+        assert_eq!(date.month(), 6);
+        assert_eq!(date.day(), 15);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_date_parse_invalid() {
+        let input = "invalid-date";
+        let result = NaiveDate::parse_from_str(input, "%Y-%m-%d");
+        assert!(result.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_date_parse_wrong_format() {
+        let input = "15/06/2024";
+        let result = NaiveDate::parse_from_str(input, "%Y-%m-%d");
+        assert!(result.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_date_format_output() {
+        let date = NaiveDate::from_ymd_opt(2024, 12, 25).unwrap();
+        let formatted = date.format("%Y-%m-%d").to_string();
+        assert_eq!(formatted, "2024-12-25");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_dates_sorting() {
+        let mut dates = vec![
+            NaiveDate::from_ymd_opt(2024, 3, 15).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 2, 28).unwrap(),
+        ];
+        dates.sort();
+        assert_eq!(dates[0], NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert_eq!(dates[1], NaiveDate::from_ymd_opt(2024, 2, 28).unwrap());
+        assert_eq!(dates[2], NaiveDate::from_ymd_opt(2024, 3, 15).unwrap());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_dates_deduplication() {
+        let mut dates: Vec<NaiveDate> = vec![
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+        ];
+        let new_date = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        if !dates.contains(&new_date) {
+            dates.push(new_date);
+        }
+        assert_eq!(dates.len(), 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_dates_remove() {
+        let mut dates = vec![
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 2, 2).unwrap(),
+        ];
+        let date_to_remove = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        dates.retain(|d| *d != date_to_remove);
+        assert_eq!(dates.len(), 1);
+        assert_eq!(dates[0], NaiveDate::from_ymd_opt(2024, 2, 2).unwrap());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_empty_input_error() {
+        let input = "";
+        let is_empty = input.is_empty();
+        assert!(is_empty);
     }
 }

@@ -685,3 +685,75 @@ impl ApiClient {
         .await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_api_base_constant() {
+        assert_eq!(API_BASE, "/api");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_token_key_constant() {
+        assert_eq!(TOKEN_KEY, "auth_token");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_url_format_households() {
+        let url = format!("{}/households", API_BASE);
+        assert_eq!(url, "/api/households");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_url_format_household_tasks() {
+        let household_id = "abc-123";
+        let url = format!("{}/households/{}/tasks", API_BASE, household_id);
+        assert_eq!(url, "/api/households/abc-123/tasks");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_url_format_task_complete() {
+        let household_id = "house-1";
+        let task_id = "task-1";
+        let url = format!(
+            "{}/households/{}/tasks/{}/complete",
+            API_BASE, household_id, task_id
+        );
+        assert_eq!(url, "/api/households/house-1/tasks/task-1/complete");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_url_format_task_rewards() {
+        let household_id = "h1";
+        let task_id = "t1";
+        let reward_id = "r1";
+        let url = format!(
+            "{}/households/{}/tasks/{}/rewards/{}",
+            API_BASE, household_id, task_id, reward_id
+        );
+        assert_eq!(url, "/api/households/h1/tasks/t1/rewards/r1");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_url_format_invitations() {
+        let invitation_id = "inv-123";
+        let url = format!("{}/invitations/{}/accept", API_BASE, invitation_id);
+        assert_eq!(url, "/api/invitations/inv-123/accept");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_url_format_member_points() {
+        let household_id = "h1";
+        let user_id = "u1";
+        let url = format!(
+            "{}/households/{}/members/{}/points",
+            API_BASE, household_id, user_id
+        );
+        assert_eq!(url, "/api/households/h1/members/u1/points");
+    }
+}

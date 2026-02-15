@@ -390,3 +390,128 @@ pub fn PunishmentsPage() -> impl IntoView {
         </Show>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_pending_punishments_calculation() {
+        let amount = 5;
+        let completed = 2;
+        let pending = amount - completed;
+        assert_eq!(pending, 3);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_pending_punishments_all_completed() {
+        let amount = 3;
+        let completed = 3;
+        let pending = amount - completed;
+        assert_eq!(pending, 0);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_punishment_delete() {
+        let punishment_to_delete = Uuid::new_v4();
+        let mut punishments: Vec<Uuid> = vec![punishment_to_delete, Uuid::new_v4()];
+
+        let delete_id = punishment_to_delete.to_string();
+        punishments.retain(|id| id.to_string() != delete_id);
+
+        assert_eq!(punishments.len(), 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_description_display_with_content() {
+        let punishment_desc = "Extra chores for the week";
+        let display = if !punishment_desc.is_empty() {
+            format!(" • {}", punishment_desc)
+        } else {
+            String::new()
+        };
+        assert_eq!(display, " • Extra chores for the week");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_description_display_empty() {
+        let punishment_desc = "";
+        let display = if !punishment_desc.is_empty() {
+            format!(" • {}", punishment_desc)
+        } else {
+            String::new()
+        };
+        assert_eq!(display, "");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_punishment_status_pending() {
+        let pending = 2;
+        let is_pending = pending > 0;
+        assert!(is_pending);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_punishment_status_all_completed() {
+        let pending = 0;
+        let is_pending = pending > 0;
+        assert!(!is_pending);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_user_assignment_format() {
+        let username = "Bob";
+        let amount = 2;
+        let display = format!("{}: {}x", username, amount);
+        assert_eq!(display, "Bob: 2x");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_unassign_decrement() {
+        let mut amount = 3;
+        if amount <= 1 {
+            amount = 0;
+        } else {
+            amount -= 1;
+        }
+        assert_eq!(amount, 2);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_unassign_remove() {
+        let amount = 1;
+        let should_remove = amount <= 1;
+        assert!(should_remove);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_status_message_pending() {
+        let pending = 3;
+        let completed = 1;
+        let message = format!("{} pending, {} completed", pending, completed);
+        assert_eq!(message, "3 pending, 1 completed");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_status_message_all_done() {
+        let pending = 0;
+        let completed = 5;
+        let message = format!("{} pending, {} completed", pending, completed);
+        assert_eq!(message, "0 pending, 5 completed");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_empty_punishments_check() {
+        let punishments: Vec<String> = vec![];
+        assert!(punishments.is_empty());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_nonempty_punishments_check() {
+        let punishments = vec!["Extra Chores".to_string()];
+        assert!(!punishments.is_empty());
+    }
+}

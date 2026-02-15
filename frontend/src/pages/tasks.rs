@@ -290,3 +290,148 @@ pub fn TasksPage() -> impl IntoView {
         })}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    fn create_test_task(id: Uuid, title: &str) -> Task {
+        Task {
+            id,
+            household_id: Uuid::new_v4(),
+            title: title.to_string(),
+            description: String::new(),
+            recurrence_type: shared::RecurrenceType::Daily,
+            recurrence_value: None,
+            target_count: 1,
+            time_period: None,
+            assigned_user_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn test_task_list_update_edit() {
+        let task_id = Uuid::new_v4();
+        let mut tasks = vec![
+            create_test_task(task_id, "Task 1"),
+            create_test_task(Uuid::new_v4(), "Task 2"),
+        ];
+
+        let updated_task = create_test_task(task_id, "Updated Task 1");
+
+        if let Some(pos) = tasks.iter().position(|t| t.id == updated_task.id) {
+            tasks[pos] = updated_task;
+        }
+
+        assert_eq!(tasks[0].title, "Updated Task 1");
+        assert_eq!(tasks.len(), 2);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_task_list_update_create() {
+        let mut tasks = vec![create_test_task(Uuid::new_v4(), "Task 1")];
+
+        let new_task = create_test_task(Uuid::new_v4(), "New Task");
+        let new_task_id = new_task.id;
+
+        if tasks.iter().position(|t| t.id == new_task.id).is_none() {
+            tasks.push(new_task);
+        }
+
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[1].id, new_task_id);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_task_delete() {
+        let task_to_delete = Uuid::new_v4();
+        let mut tasks = vec![
+            create_test_task(task_to_delete, "Task 1"),
+            create_test_task(Uuid::new_v4(), "Task 2"),
+        ];
+
+        let delete_id = task_to_delete.to_string();
+        tasks.retain(|task| task.id.to_string() != delete_id);
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "Task 2");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assigned_user_display_none() {
+        let assigned_user_id: Option<Uuid> = None;
+        let members: Vec<(Uuid, String)> = vec![];
+
+        let assigned_name = assigned_user_id.and_then(|uid| {
+            members.iter().find(|(id, _)| *id == uid).map(|(_, name)| name.clone())
+        });
+
+        assert!(assigned_name.is_none());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assigned_user_display_found() {
+        let user_id = Uuid::new_v4();
+        let assigned_user_id: Option<Uuid> = Some(user_id);
+        let members: Vec<(Uuid, String)> = vec![
+            (user_id, "Alice".to_string()),
+            (Uuid::new_v4(), "Bob".to_string()),
+        ];
+
+        let assigned_name = assigned_user_id.and_then(|uid| {
+            members.iter().find(|(id, _)| *id == uid).map(|(_, name)| name.clone())
+        });
+
+        assert_eq!(assigned_name, Some("Alice".to_string()));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_task_meta_with_assignment() {
+        let name = Some("Alice".to_string());
+        let meta = if let Some(n) = name {
+            format!(" | Assigned to: {}", n)
+        } else {
+            String::new()
+        };
+        assert_eq!(meta, " | Assigned to: Alice");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_task_meta_without_assignment() {
+        let name: Option<String> = None;
+        let meta = if let Some(n) = name {
+            format!(" | Assigned to: {}", n)
+        } else {
+            String::new()
+        };
+        assert_eq!(meta, "");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_task_description_display() {
+        let description = "Clean the dishes";
+        let meta = if !description.is_empty() {
+            format!(" | {}", description)
+        } else {
+            String::new()
+        };
+        assert_eq!(meta, " | Clean the dishes");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_empty_description_display() {
+        let description = "";
+        let meta = if !description.is_empty() {
+            format!(" | {}", description)
+        } else {
+            String::new()
+        };
+        assert_eq!(meta, "");
+    }
+}

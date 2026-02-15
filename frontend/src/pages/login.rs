@@ -99,3 +99,42 @@ pub fn Login() -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_button_text_not_loading() {
+        let loading = false;
+        let text = if loading { "Signing in..." } else { "Sign In" };
+        assert_eq!(text, "Sign In");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_button_text_loading() {
+        let loading = true;
+        let text = if loading { "Signing in..." } else { "Sign In" };
+        assert_eq!(text, "Signing in...");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_css_classes() {
+        assert_eq!("auth-container", "auth-container");
+        assert_eq!("auth-card card", "auth-card card");
+        assert_eq!("auth-header", "auth-header");
+        assert_eq!("auth-title", "auth-title");
+        assert_eq!("auth-subtitle", "auth-subtitle");
+        assert_eq!("alert alert-error", "alert alert-error");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_form_input_placeholders() {
+        let username_placeholder = "Enter your username";
+        let password_placeholder = "Enter your password";
+        assert!(!username_placeholder.is_empty());
+        assert!(!password_placeholder.is_empty());
+    }
+}

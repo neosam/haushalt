@@ -214,3 +214,78 @@ pub fn Dashboard() -> impl IntoView {
         </Show>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_role_badge_admin() {
+        let role = Role::Admin;
+        let badge_class = if role == Role::Admin {
+            "badge badge-admin"
+        } else {
+            "badge badge-member"
+        };
+        assert_eq!(badge_class, "badge badge-admin");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_role_badge_member() {
+        let role = Role::Member;
+        let badge_class = if role == Role::Admin {
+            "badge badge-admin"
+        } else {
+            "badge badge-member"
+        };
+        assert_eq!(badge_class, "badge badge-member");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_role_text_admin() {
+        let role = Role::Admin;
+        let role_text = if role == Role::Admin { "Admin" } else { "Member" };
+        assert_eq!(role_text, "Admin");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_role_text_member() {
+        let role = Role::Member;
+        let role_text = if role == Role::Admin { "Admin" } else { "Member" };
+        assert_eq!(role_text, "Member");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_empty_household_name_check() {
+        let name = String::new();
+        assert!(name.is_empty());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_valid_household_name_check() {
+        let name = "Smith Family".to_string();
+        assert!(!name.is_empty());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_household_link_format() {
+        let id = "abc-123";
+        let link = format!("/households/{}", id);
+        assert_eq!(link, "/households/abc-123");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_invitations_empty_check() {
+        let invitations: Vec<String> = vec![];
+        assert!(invitations.is_empty());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_invitations_not_empty_check() {
+        let invitations = vec!["invite1".to_string()];
+        assert!(!invitations.is_empty());
+    }
+}

@@ -456,3 +456,168 @@ pub fn TaskModal(
         </div>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_recurrence_type_to_string_daily() {
+        assert_eq!(RecurrenceType::Daily.as_str(), "daily");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_recurrence_type_to_string_weekly() {
+        assert_eq!(RecurrenceType::Weekly.as_str(), "weekly");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_recurrence_type_to_string_monthly() {
+        assert_eq!(RecurrenceType::Monthly.as_str(), "monthly");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_recurrence_type_to_string_onetime() {
+        assert_eq!(RecurrenceType::OneTime.as_str(), "onetime");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_recurrence_type_from_string_daily() {
+        assert_eq!(
+            match "daily" {
+                "daily" => RecurrenceType::Daily,
+                _ => RecurrenceType::OneTime,
+            },
+            RecurrenceType::Daily
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn test_target_count_parse_valid() {
+        let input = "5";
+        let target = input.parse::<i32>().unwrap_or(1).max(1);
+        assert_eq!(target, 5);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_target_count_parse_invalid() {
+        let input = "invalid";
+        let target = input.parse::<i32>().unwrap_or(1).max(1);
+        assert_eq!(target, 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_target_count_parse_zero() {
+        let input = "0";
+        let target = input.parse::<i32>().unwrap_or(1).max(1);
+        assert_eq!(target, 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_target_count_parse_negative() {
+        let input = "-5";
+        let target = input.parse::<i32>().unwrap_or(1).max(1);
+        assert_eq!(target, 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_modal_title_create() {
+        let is_edit = false;
+        let modal_title = if is_edit { "Edit Task" } else { "Create Task" };
+        assert_eq!(modal_title, "Create Task");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_modal_title_edit() {
+        let is_edit = true;
+        let modal_title = if is_edit { "Edit Task" } else { "Create Task" };
+        assert_eq!(modal_title, "Edit Task");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_button_text_create() {
+        let is_edit = false;
+        let submit_button_text = if is_edit { "Save Changes" } else { "Create" };
+        assert_eq!(submit_button_text, "Create");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_button_text_edit() {
+        let is_edit = true;
+        let submit_button_text = if is_edit { "Save Changes" } else { "Create" };
+        assert_eq!(submit_button_text, "Save Changes");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_uuid_parse_valid() {
+        let valid_uuid = "550e8400-e29b-41d4-a716-446655440000";
+        let result = Uuid::parse_str(valid_uuid);
+        assert!(result.is_ok());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_uuid_parse_invalid() {
+        let invalid_uuid = "not-a-uuid";
+        let result = Uuid::parse_str(invalid_uuid);
+        assert!(result.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_empty_string_to_none() {
+        let assigned = "";
+        let assigned_user_id: Option<Uuid> = if assigned.is_empty() {
+            None
+        } else {
+            Uuid::parse_str(assigned).ok()
+        };
+        assert!(assigned_user_id.is_none());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_weekday_values() {
+        let weekdays: [(u8, &str); 7] = [
+            (1, "Mon"),
+            (2, "Tue"),
+            (3, "Wed"),
+            (4, "Thu"),
+            (5, "Fri"),
+            (6, "Sat"),
+            (0, "Sun"),
+        ];
+        assert_eq!(weekdays[0], (1, "Mon"));
+        assert_eq!(weekdays[6], (0, "Sun"));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_default_weekdays() {
+        let default_weekdays: Vec<u8> = vec![1, 2, 3, 4, 5];
+        assert_eq!(default_weekdays.len(), 5);
+        assert!(default_weekdays.contains(&1)); // Monday
+        assert!(default_weekdays.contains(&5)); // Friday
+        assert!(!default_weekdays.contains(&0)); // Not Sunday
+        assert!(!default_weekdays.contains(&6)); // Not Saturday
+    }
+
+    #[wasm_bindgen_test]
+    fn test_rewards_list_change_add() {
+        let mut selected: Vec<String> = vec!["r1".to_string()];
+        let reward_id = "r2".to_string();
+        if !selected.contains(&reward_id) {
+            selected.push(reward_id);
+        }
+        assert_eq!(selected.len(), 2);
+        assert!(selected.contains(&"r2".to_string()));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_rewards_list_change_remove() {
+        let mut selected: Vec<String> = vec!["r1".to_string(), "r2".to_string()];
+        let reward_id = "r1".to_string();
+        selected.retain(|id| id != &reward_id);
+        assert_eq!(selected.len(), 1);
+        assert!(!selected.contains(&"r1".to_string()));
+    }
+}

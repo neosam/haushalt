@@ -1,0 +1,1 @@
+- Always make sure that the project builds without warning and that there are no clippy warnings.

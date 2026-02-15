@@ -1,6 +1,6 @@
 use leptos::*;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HouseholdTab {
     Overview,
     Tasks,
@@ -53,5 +53,81 @@ pub fn HouseholdTabs(
                 }
             }).collect_view()}
         </nav>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_tab_label_overview() {
+        assert_eq!(HouseholdTab::Overview.label(), "Overview");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_label_tasks() {
+        assert_eq!(HouseholdTab::Tasks.label(), "Tasks");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_label_rewards() {
+        assert_eq!(HouseholdTab::Rewards.label(), "Rewards");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_label_punishments() {
+        assert_eq!(HouseholdTab::Punishments.label(), "Punishments");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_path_overview() {
+        let path = HouseholdTab::Overview.path("abc-123");
+        assert_eq!(path, "/households/abc-123");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_path_tasks() {
+        let path = HouseholdTab::Tasks.path("abc-123");
+        assert_eq!(path, "/households/abc-123/tasks");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_path_rewards() {
+        let path = HouseholdTab::Rewards.path("abc-123");
+        assert_eq!(path, "/households/abc-123/rewards");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_path_punishments() {
+        let path = HouseholdTab::Punishments.path("abc-123");
+        assert_eq!(path, "/households/abc-123/punishments");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_equality() {
+        assert_eq!(HouseholdTab::Overview, HouseholdTab::Overview);
+        assert_ne!(HouseholdTab::Overview, HouseholdTab::Tasks);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_active_class_logic() {
+        let active_tab = HouseholdTab::Tasks;
+        let tab = HouseholdTab::Tasks;
+        let is_active = tab == active_tab;
+        let class = if is_active { "tab-link active" } else { "tab-link" };
+        assert_eq!(class, "tab-link active");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_inactive_class_logic() {
+        let active_tab = HouseholdTab::Tasks;
+        let tab = HouseholdTab::Overview;
+        let is_active = tab == active_tab;
+        let class = if is_active { "tab-link active" } else { "tab-link" };
+        assert_eq!(class, "tab-link");
     }
 }
