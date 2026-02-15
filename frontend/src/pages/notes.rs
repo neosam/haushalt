@@ -137,7 +137,10 @@ pub fn NotesPage() -> impl IntoView {
     let hid = household_id();
 
     view! {
-        <HouseholdTabs household_id=hid.clone() active_tab=HouseholdTab::Notes settings=settings.get() />
+        {
+            let hid = hid.clone();
+            move || view! { <HouseholdTabs household_id=hid.clone() active_tab=HouseholdTab::Notes settings=settings.get() /> }
+        }
 
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("notes.title")}</h1>

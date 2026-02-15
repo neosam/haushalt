@@ -167,7 +167,10 @@ pub fn ChatPage() -> impl IntoView {
     let hid = household_id.get_value();
 
     view! {
-        <HouseholdTabs household_id=hid.clone() active_tab=HouseholdTab::Chat settings=settings.get() />
+        {
+            let hid = hid.clone();
+            move || view! { <HouseholdTabs household_id=hid.clone() active_tab=HouseholdTab::Chat settings=settings.get() /> }
+        }
 
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("chat.title")}</h1>
