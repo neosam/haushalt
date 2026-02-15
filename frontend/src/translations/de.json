@@ -162,6 +162,10 @@
   "task_modal.punishments_hint": "Strafen werden automatisch zugewiesen, wenn diese Aufgabe verpasst wird",
   "task_modal.remove": "Entfernen",
   "task_modal.unknown": "Unbekannt",
+  "task_modal.points_reward": "Punkte bei Erledigung",
+  "task_modal.points_reward_hint": "Punkte, die bei Erledigung vergeben werden (leer lassen für keine)",
+  "task_modal.points_penalty": "Punkte-Abzug bei Verpassen",
+  "task_modal.points_penalty_hint": "Punkte, die bei Verpassen abgezogen werden (leer lassen für keine)",
 
   "time_period.day": "Tag",
   "time_period.week": "Woche",

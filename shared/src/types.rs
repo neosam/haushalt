@@ -398,6 +398,10 @@ pub struct Task {
     pub allow_exceed_target: bool,
     /// When true, task completions require owner/admin approval before being finalized.
     pub requires_review: bool,
+    /// Points awarded when this task is completed
+    pub points_reward: Option<i64>,
+    /// Points deducted when this task is missed
+    pub points_penalty: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -415,6 +419,10 @@ pub struct CreateTaskRequest {
     pub allow_exceed_target: Option<bool>,
     /// When true, completions require owner/admin approval.
     pub requires_review: Option<bool>,
+    /// Points awarded when this task is completed
+    pub points_reward: Option<i64>,
+    /// Points deducted when this task is missed
+    pub points_penalty: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -428,6 +436,10 @@ pub struct UpdateTaskRequest {
     pub time_period: Option<TimePeriod>,
     pub allow_exceed_target: Option<bool>,
     pub requires_review: Option<bool>,
+    /// Points awarded when this task is completed
+    pub points_reward: Option<i64>,
+    /// Points deducted when this task is missed
+    pub points_penalty: Option<i64>,
 }
 
 /// Status of a task completion

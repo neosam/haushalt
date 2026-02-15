@@ -58,6 +58,20 @@ pub fn TaskModal(
             .unwrap_or(false)  // Default to false for new tasks
     );
 
+    // Direct points signals
+    let points_reward = create_rw_signal(
+        task.as_ref()
+            .and_then(|t| t.points_reward)
+            .map(|p| p.to_string())
+            .unwrap_or_default()
+    );
+    let points_penalty = create_rw_signal(
+        task.as_ref()
+            .and_then(|t| t.points_penalty)
+            .map(|p| p.to_string())
+            .unwrap_or_default()
+    );
+
     // Recurrence value signals
     let selected_weekdays = create_rw_signal(
         task.as_ref()
@@ -165,6 +179,8 @@ pub fn TaskModal(
             wasm_bindgen_futures::spawn_local(async move {
                 if let Some(task_id) = task_id {
                     // Edit mode - update existing task
+                    let pts_reward = points_reward.get().parse::<i64>().ok();
+                    let pts_penalty = points_penalty.get().parse::<i64>().ok();
                     let request = UpdateTaskRequest {
                         title: Some(title.get()),
                         description: Some(description.get()),
@@ -175,6 +191,8 @@ pub fn TaskModal(
                         time_period: None,
                         allow_exceed_target: Some(allow_exceed_target.get()),
                         requires_review: Some(requires_review.get()),
+                        points_reward: pts_reward,
+                        points_penalty: pts_penalty,
                     };
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
@@ -223,6 +241,8 @@ pub fn TaskModal(
                     }
                 } else {
                     // Create mode - create new task
+                    let pts_reward = points_reward.get().parse::<i64>().ok();
+                    let pts_penalty = points_penalty.get().parse::<i64>().ok();
                     let request = CreateTaskRequest {
                         title: title.get(),
                         description: Some(description.get()),
@@ -233,6 +253,8 @@ pub fn TaskModal(
                         time_period: None,
                         allow_exceed_target: Some(allow_exceed_target.get()),
                         requires_review: Some(requires_review.get()),
+                        points_reward: pts_reward,
+                        points_penalty: pts_penalty,
                     };
 
                     match ApiClient::create_task(&household_id, request).await {
@@ -517,6 +539,35 @@ pub fn TaskModal(
                                 <span>{i18n_stored.get_value().t("task_modal.require_review")}</span>
                             </label>
                             <small class="form-hint">{i18n_stored.get_value().t("task_modal.require_review_hint")}</small>
+                        </div>
+
+                        // Direct Points Section
+                        <div class="form-group">
+                            <label class="form-label" for="task-points-reward">{i18n_stored.get_value().t("task_modal.points_reward")}</label>
+                            <input
+                                type="number"
+                                id="task-points-reward"
+                                class="form-input"
+                                min="0"
+                                placeholder="0"
+                                prop:value=move || points_reward.get()
+                                on:input=move |ev| points_reward.set(event_target_value(&ev))
+                            />
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.points_reward_hint")}</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="task-points-penalty">{i18n_stored.get_value().t("task_modal.points_penalty")}</label>
+                            <input
+                                type="number"
+                                id="task-points-penalty"
+                                class="form-input"
+                                min="0"
+                                placeholder="0"
+                                prop:value=move || points_penalty.get()
+                                on:input=move |ev| points_penalty.set(event_target_value(&ev))
+                            />
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.points_penalty_hint")}</small>
                         </div>
 
                         // Assignment Section

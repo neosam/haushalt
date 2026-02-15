@@ -312,6 +312,9 @@ mod tests {
             target_count: 1,
             time_period: None,
             allow_exceed_target: true,
+            requires_review: false,
+            points_reward: None,
+            points_penalty: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

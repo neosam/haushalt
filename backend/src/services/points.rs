@@ -154,6 +154,19 @@ pub async fn award_task_completion_points(
 
     let mut total_points: i64 = 0;
 
+    // Check for direct points_reward on the task
+    let task: Option<crate::models::TaskRow> =
+        sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+            .bind(task_id.to_string())
+            .fetch_optional(pool)
+            .await?;
+
+    if let Some(task) = task {
+        if let Some(reward) = task.points_reward {
+            total_points += reward;
+        }
+    }
+
     for condition in conditions {
         match condition.condition_type {
             ConditionType::TaskComplete => {
@@ -214,6 +227,19 @@ pub async fn reverse_task_completion_points(
 
     let mut total_points: i64 = 0;
 
+    // Check for direct points_reward on the task
+    let task: Option<crate::models::TaskRow> =
+        sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+            .bind(task_id.to_string())
+            .fetch_optional(pool)
+            .await?;
+
+    if let Some(task) = task {
+        if let Some(reward) = task.points_reward {
+            total_points += reward;
+        }
+    }
+
     for condition in conditions {
         if condition.condition_type == ConditionType::TaskComplete {
             // Check if this condition applies to this task or all tasks
@@ -253,6 +279,20 @@ pub async fn deduct_missed_task_points(
     let conditions = list_point_conditions(pool, household_id).await?;
 
     let mut total_points: i64 = 0;
+
+    // Check for direct points_penalty on the task
+    let task: Option<crate::models::TaskRow> =
+        sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+            .bind(task_id.to_string())
+            .fetch_optional(pool)
+            .await?;
+
+    if let Some(task) = task {
+        if let Some(penalty) = task.points_penalty {
+            // Penalty is stored as positive, deduct it
+            total_points -= penalty;
+        }
+    }
 
     for condition in conditions {
         match condition.condition_type {

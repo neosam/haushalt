@@ -17,6 +17,8 @@ pub struct TaskRow {
     pub time_period: Option<String>,
     pub allow_exceed_target: bool,
     pub requires_review: bool,
+    pub points_reward: Option<i64>,
+    pub points_penalty: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -41,6 +43,8 @@ impl TaskRow {
             time_period,
             allow_exceed_target: self.allow_exceed_target,
             requires_review: self.requires_review,
+            points_reward: self.points_reward,
+            points_penalty: self.points_penalty,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -70,6 +74,8 @@ mod tests {
             time_period: None,
             allow_exceed_target: true,
             requires_review: false,
+            points_reward: None,
+            points_penalty: None,
             created_at: now,
             updated_at: now,
         };
@@ -102,6 +108,8 @@ mod tests {
             time_period: None,
             allow_exceed_target: false,
             requires_review: false,
+            points_reward: None,
+            points_penalty: None,
             created_at: now,
             updated_at: now,
         };
@@ -131,6 +139,8 @@ mod tests {
             time_period: None,
             allow_exceed_target: true,
             requires_review: false,
+            points_reward: None,
+            points_penalty: None,
             created_at: now,
             updated_at: now,
         };
@@ -149,6 +159,8 @@ mod tests {
             time_period: None,
             allow_exceed_target: false,
             requires_review: false,
+            points_reward: None,
+            points_penalty: None,
             created_at: now,
             updated_at: now,
         };

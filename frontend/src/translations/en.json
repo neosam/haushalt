@@ -162,6 +162,10 @@
   "task_modal.punishments_hint": "Punishments will be automatically assigned when this task is missed",
   "task_modal.remove": "Remove",
   "task_modal.unknown": "Unknown",
+  "task_modal.points_reward": "Points on Completion",
+  "task_modal.points_reward_hint": "Points awarded when this task is completed (leave empty for none)",
+  "task_modal.points_penalty": "Points Deducted on Miss",
+  "task_modal.points_penalty_hint": "Points deducted when this task is missed (leave empty for none)",
 
   "time_period.day": "Day",
   "time_period.week": "Week",
