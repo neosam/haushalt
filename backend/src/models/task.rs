@@ -19,6 +19,7 @@ pub struct TaskRow {
     pub requires_review: bool,
     pub points_reward: Option<i64>,
     pub points_penalty: Option<i64>,
+    pub due_time: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -45,6 +46,7 @@ impl TaskRow {
             requires_review: self.requires_review,
             points_reward: self.points_reward,
             points_penalty: self.points_penalty,
+            due_time: self.due_time.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -76,6 +78,7 @@ mod tests {
             requires_review: false,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
             created_at: now,
             updated_at: now,
         };
@@ -110,6 +113,7 @@ mod tests {
             requires_review: false,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
             created_at: now,
             updated_at: now,
         };
@@ -141,6 +145,7 @@ mod tests {
             requires_review: false,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
             created_at: now,
             updated_at: now,
         };
@@ -161,6 +166,7 @@ mod tests {
             requires_review: false,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
             created_at: now,
             updated_at: now,
         };

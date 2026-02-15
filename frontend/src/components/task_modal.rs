@@ -72,6 +72,13 @@ pub fn TaskModal(
             .unwrap_or_default()
     );
 
+    // Due time signal (HH:MM format)
+    let due_time = create_rw_signal(
+        task.as_ref()
+            .and_then(|t| t.due_time.clone())
+            .unwrap_or_default()
+    );
+
     // Recurrence value signals
     let selected_weekdays = create_rw_signal(
         task.as_ref()
@@ -181,6 +188,10 @@ pub fn TaskModal(
                     // Edit mode - update existing task
                     let pts_reward = points_reward.get().parse::<i64>().ok();
                     let pts_penalty = points_penalty.get().parse::<i64>().ok();
+                    let due_time_val = {
+                        let val = due_time.get();
+                        if val.is_empty() { None } else { Some(val) }
+                    };
                     let request = UpdateTaskRequest {
                         title: Some(title.get()),
                         description: Some(description.get()),
@@ -193,6 +204,7 @@ pub fn TaskModal(
                         requires_review: Some(requires_review.get()),
                         points_reward: pts_reward,
                         points_penalty: pts_penalty,
+                        due_time: due_time_val,
                     };
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
@@ -243,6 +255,10 @@ pub fn TaskModal(
                     // Create mode - create new task
                     let pts_reward = points_reward.get().parse::<i64>().ok();
                     let pts_penalty = points_penalty.get().parse::<i64>().ok();
+                    let due_time_val = {
+                        let val = due_time.get();
+                        if val.is_empty() { None } else { Some(val) }
+                    };
                     let request = CreateTaskRequest {
                         title: title.get(),
                         description: Some(description.get()),
@@ -255,6 +271,7 @@ pub fn TaskModal(
                         requires_review: Some(requires_review.get()),
                         points_reward: pts_reward,
                         points_penalty: pts_penalty,
+                        due_time: due_time_val,
                     };
 
                     match ApiClient::create_task(&household_id, request).await {
@@ -568,6 +585,19 @@ pub fn TaskModal(
                                 on:input=move |ev| points_penalty.set(event_target_value(&ev))
                             />
                             <small class="form-hint">{i18n_stored.get_value().t("task_modal.points_penalty_hint")}</small>
+                        </div>
+
+                        // Due Time Section
+                        <div class="form-group">
+                            <label class="form-label" for="task-due-time">{i18n_stored.get_value().t("task_modal.due_time")}</label>
+                            <input
+                                type="time"
+                                id="task-due-time"
+                                class="form-input"
+                                prop:value=move || due_time.get()
+                                on:input=move |ev| due_time.set(event_target_value(&ev))
+                            />
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.due_time_hint")}</small>
                         </div>
 
                         // Assignment Section

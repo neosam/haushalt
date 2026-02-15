@@ -429,6 +429,7 @@ dependencies = [
  "actix-ws",
  "argon2",
  "chrono",
+ "chrono-tz",
  "dotenvy",
  "env_logger",
  "futures",

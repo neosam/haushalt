@@ -6,7 +6,7 @@ use tokio::time;
 use uuid::Uuid;
 
 use crate::models::{MembershipRow, TaskRow};
-use crate::services::{points as points_service, scheduler, task_consequences};
+use crate::services::{household_settings, points as points_service, scheduler, task_consequences};
 
 #[derive(Debug, Error)]
 pub enum BackgroundJobError {
@@ -30,66 +30,49 @@ pub struct MissedTaskReport {
 /// Configuration for the background job scheduler
 #[derive(Debug, Clone)]
 pub struct JobConfig {
-    /// Hour of day to run the missed task check (0-23)
-    pub check_hour: u32,
-    /// Minute of hour to run the check (0-59)
-    pub check_minute: u32,
+    /// Interval in minutes between missed task checks
+    /// Since we support different timezones and due times, we check more frequently
+    pub check_interval_minutes: u32,
 }
 
 impl Default for JobConfig {
     fn default() -> Self {
         Self {
-            check_hour: 2,   // Run at 2:00 AM
-            check_minute: 0,
+            check_interval_minutes: 1, // Run every minute
         }
     }
 }
 
 /// Start the background job scheduler
-/// This runs in a loop and checks for missed tasks daily
+/// This runs in a loop and checks for missed tasks at the configured interval
 pub async fn start_scheduler(pool: Arc<SqlitePool>, config: JobConfig) {
     log::info!(
-        "Background job scheduler started. Missed task check scheduled for {:02}:{:02}",
-        config.check_hour,
-        config.check_minute
+        "Background job scheduler started. Missed task check every {} minutes",
+        config.check_interval_minutes
     );
 
+    let interval = std::time::Duration::from_secs((config.check_interval_minutes * 60) as u64);
+
     loop {
-        // Calculate time until next scheduled run
-        let now = Utc::now();
-        let today_check = now
-            .date_naive()
-            .and_hms_opt(config.check_hour, config.check_minute, 0)
-            .unwrap();
-
-        let next_check = if now.naive_utc() < today_check {
-            today_check
-        } else {
-            // Schedule for tomorrow
-            today_check + Duration::days(1)
-        };
-
-        let sleep_duration = (next_check - now.naive_utc())
-            .to_std()
-            .unwrap_or(std::time::Duration::from_secs(3600));
-
-        log::debug!(
-            "Next missed task check scheduled in {} seconds",
-            sleep_duration.as_secs()
-        );
-
-        time::sleep(sleep_duration).await;
+        time::sleep(interval).await;
 
         // Process missed tasks
         match process_missed_tasks(&pool).await {
             Ok(report) => {
-                log::info!(
-                    "Missed task processing complete: checked {} tasks, found {} missed, assigned {} punishments, deducted {} points",
-                    report.tasks_checked,
-                    report.missed_tasks,
-                    report.punishments_assigned,
-                    report.points_deducted
-                );
+                if report.missed_tasks > 0 {
+                    log::info!(
+                        "Missed task processing complete: checked {} tasks, found {} missed, assigned {} punishments, deducted {} points",
+                        report.tasks_checked,
+                        report.missed_tasks,
+                        report.punishments_assigned,
+                        report.points_deducted
+                    );
+                } else {
+                    log::debug!(
+                        "Missed task check complete: checked {} tasks, no missed tasks found",
+                        report.tasks_checked
+                    );
+                }
             }
             Err(e) => {
                 log::error!("Error processing missed tasks: {}", e);
@@ -98,13 +81,14 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>, config: JobConfig) {
     }
 }
 
-/// Process all missed tasks from yesterday
+/// Process all missed tasks
 /// This function:
 /// 1. Gets all tasks from all households
-/// 2. Checks if each task was due yesterday
-/// 3. For missed tasks, deducts points and assigns punishments
+/// 2. For each household, uses the household's timezone to determine "yesterday"
+/// 3. Checks if each task was due yesterday (in the household's timezone) and is now overdue
+/// 4. For missed tasks, deducts points and assigns punishments
 pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport, BackgroundJobError> {
-    let yesterday = Utc::now().date_naive() - Duration::days(1);
+    let now_utc = Utc::now();
 
     let mut tasks_checked: i64 = 0;
     let mut missed_tasks: i64 = 0;
@@ -116,6 +100,9 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
         .fetch_all(pool)
         .await?;
 
+    // Cache household timezones to avoid repeated lookups
+    let mut timezone_cache: std::collections::HashMap<Uuid, String> = std::collections::HashMap::new();
+
     for task_row in tasks {
         let task = task_row.to_shared();
 
@@ -124,24 +111,59 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
             continue;
         }
 
+        // Get household timezone (cached)
+        let timezone = if let Some(tz) = timezone_cache.get(&task.household_id) {
+            tz.clone()
+        } else {
+            let tz = household_settings::get_household_timezone(pool, &task.household_id)
+                .await
+                .unwrap_or_else(|_| "UTC".to_string());
+            timezone_cache.insert(task.household_id, tz.clone());
+            tz
+        };
+
+        // Get "yesterday" in the household's timezone
+        let tz = scheduler::parse_timezone(&timezone);
+        let today_local = scheduler::today_in_timezone(tz);
+        let yesterday_local = today_local - Duration::days(1);
+
         // Check if task was due yesterday
-        if !scheduler::is_task_due_on_date(&task, yesterday) {
+        if !scheduler::is_task_due_on_date(&task, yesterday_local) {
+            continue;
+        }
+
+        // Check if the task is now overdue (deadline has passed)
+        if !scheduler::is_task_overdue(&task, yesterday_local, &timezone, now_utc) {
             continue;
         }
 
         tasks_checked += 1;
 
-        // Check if task was completed yesterday
+        // Check if task was completed yesterday (in local timezone)
         let completion_count = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date = ?",
         )
         .bind(task.id.to_string())
-        .bind(yesterday)
+        .bind(yesterday_local)
         .fetch_one(pool)
         .await?;
 
         if completion_count > 0 {
             // Task was completed, skip
+            continue;
+        }
+
+        // Check if we already processed this task for this due date
+        let already_processed = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM missed_task_penalties WHERE task_id = ? AND due_date = ?",
+        )
+        .bind(task.id.to_string())
+        .bind(yesterday_local)
+        .fetch_one(pool)
+        .await?;
+
+        if already_processed > 0 {
+            // Already penalized for this date, skip
             continue;
         }
 
@@ -190,6 +212,15 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
 
             punishments_assigned += assigned.len() as i64;
         }
+
+        // Record that we processed this task for this due date
+        sqlx::query(
+            "INSERT INTO missed_task_penalties (task_id, due_date) VALUES (?, ?)",
+        )
+        .bind(task.id.to_string())
+        .bind(yesterday_local)
+        .execute(pool)
+        .await?;
     }
 
     Ok(MissedTaskReport {
@@ -225,8 +256,7 @@ mod tests {
     #[test]
     fn test_job_config_default() {
         let config = JobConfig::default();
-        assert_eq!(config.check_hour, 2);
-        assert_eq!(config.check_minute, 0);
+        assert_eq!(config.check_interval_minutes, 1);
     }
 
     #[test]

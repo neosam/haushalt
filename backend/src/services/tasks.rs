@@ -41,8 +41,8 @@ pub async fn create_task(
 
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, due_time, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -58,6 +58,7 @@ pub async fn create_task(
     .bind(requires_review)
     .bind(request.points_reward)
     .bind(request.points_penalty)
+    .bind(&request.due_time)
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -77,6 +78,7 @@ pub async fn create_task(
         requires_review,
         points_reward: request.points_reward,
         points_penalty: request.points_penalty,
+        due_time: request.due_time.clone(),
         created_at: now,
         updated_at: now,
     })
@@ -210,13 +212,16 @@ pub async fn update_task(
     if request.points_penalty.is_some() {
         task.points_penalty = request.points_penalty;
     }
+    if request.due_time.is_some() {
+        task.due_time = request.due_time.clone();
+    }
 
     let now = Utc::now();
     task.updated_at = now;
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -231,6 +236,7 @@ pub async fn update_task(
     .bind(task.requires_review)
     .bind(task.points_reward)
     .bind(task.points_penalty)
+    .bind(&task.due_time)
     .bind(now)
     .bind(task_id.to_string())
     .execute(pool)
@@ -434,6 +440,7 @@ pub async fn list_pending_reviews(
         t_requires_review: bool,
         t_points_reward: Option<i64>,
         t_points_penalty: Option<i64>,
+        t_due_time: Option<String>,
         t_created_at: chrono::DateTime<chrono::Utc>,
         t_updated_at: chrono::DateTime<chrono::Utc>,
         // User fields
@@ -455,6 +462,7 @@ pub async fn list_pending_reviews(
             t.target_count as t_target_count, t.time_period as t_time_period,
             t.allow_exceed_target as t_allow_exceed_target, t.requires_review as t_requires_review,
             t.points_reward as t_points_reward, t.points_penalty as t_points_penalty,
+            t.due_time as t_due_time,
             t.created_at as t_created_at, t.updated_at as t_updated_at,
             u.id as u_id, u.username as u_username, u.email as u_email,
             u.created_at as u_created_at, u.updated_at as u_updated_at
@@ -500,6 +508,7 @@ pub async fn list_pending_reviews(
                     requires_review: row.t_requires_review,
                     points_reward: row.t_points_reward,
                     points_penalty: row.t_points_penalty,
+                    due_time: row.t_due_time,
                     created_at: row.t_created_at,
                     updated_at: row.t_updated_at,
                 },
@@ -766,6 +775,7 @@ mod tests {
                 requires_review BOOLEAN NOT NULL DEFAULT 0,
                 points_reward INTEGER,
                 points_penalty INTEGER,
+                due_time TEXT,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -953,6 +963,7 @@ mod tests {
             requires_review: None,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -988,6 +999,7 @@ mod tests {
             requires_review: None,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1019,6 +1031,7 @@ mod tests {
             requires_review: None,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1054,6 +1067,7 @@ mod tests {
             requires_review: None,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 

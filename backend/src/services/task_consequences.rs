@@ -28,7 +28,7 @@ pub async fn get_task_rewards(
     // Query rewards with their amounts from the join table
     let rows: Vec<TaskRewardRow> = sqlx::query_as(
         r#"
-        SELECT r.id, r.household_id, r.name, r.description, r.point_cost, r.is_purchasable, r.created_at, tr.amount
+        SELECT r.id, r.household_id, r.name, r.description, r.point_cost, r.is_purchasable, r.requires_confirmation, r.created_at, tr.amount
         FROM rewards r
         INNER JOIN task_rewards tr ON r.id = tr.reward_id
         WHERE tr.task_id = ?
@@ -52,7 +52,7 @@ pub async fn get_task_punishments(
 ) -> Result<Vec<TaskPunishmentLink>, TaskConsequenceError> {
     let rows: Vec<TaskPunishmentRow> = sqlx::query_as(
         r#"
-        SELECT p.id, p.household_id, p.name, p.description, p.created_at, tp.amount
+        SELECT p.id, p.household_id, p.name, p.description, p.requires_confirmation, p.created_at, tp.amount
         FROM punishments p
         INNER JOIN task_punishments tp ON p.id = tp.punishment_id
         WHERE tp.task_id = ?

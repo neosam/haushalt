@@ -402,6 +402,8 @@ pub struct Task {
     pub points_reward: Option<i64>,
     /// Points deducted when this task is missed
     pub points_penalty: Option<i64>,
+    /// Due time in "HH:MM" format. None means end of day (23:59)
+    pub due_time: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -423,6 +425,8 @@ pub struct CreateTaskRequest {
     pub points_reward: Option<i64>,
     /// Points deducted when this task is missed
     pub points_penalty: Option<i64>,
+    /// Due time in "HH:MM" format. None means end of day (23:59)
+    pub due_time: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -440,6 +444,8 @@ pub struct UpdateTaskRequest {
     pub points_reward: Option<i64>,
     /// Points deducted when this task is missed
     pub points_penalty: Option<i64>,
+    /// Due time in "HH:MM" format. None means end of day (23:59)
+    pub due_time: Option<String>,
 }
 
 /// Status of a task completion
@@ -1314,6 +1320,9 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: allow_exceed,
                 requires_review: false,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },

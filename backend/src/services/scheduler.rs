@@ -1,4 +1,5 @@
-use chrono::{Datelike, NaiveDate, Weekday};
+use chrono::{Datelike, NaiveDate, NaiveTime, Weekday, DateTime, Utc, TimeZone};
+use chrono_tz::Tz;
 use shared::{RecurrenceType, RecurrenceValue, Task, TimePeriod};
 
 /// Check if a task is due on a specific date based on its recurrence settings
@@ -295,6 +296,60 @@ fn get_last_day_of_month(date: NaiveDate) -> u32 {
         .unwrap_or(28)
 }
 
+/// Parse a timezone string, defaulting to UTC if invalid
+pub fn parse_timezone(tz_str: &str) -> Tz {
+    tz_str.parse().unwrap_or(chrono_tz::UTC)
+}
+
+/// Get the current date in a specific timezone
+pub fn today_in_timezone(tz: Tz) -> NaiveDate {
+    Utc::now().with_timezone(&tz).date_naive()
+}
+
+/// Parse due_time string "HH:MM" to NaiveTime, defaults to 23:59 if None or invalid
+pub fn parse_due_time(due_time: Option<&str>) -> NaiveTime {
+    due_time
+        .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok())
+        .unwrap_or_else(|| NaiveTime::from_hms_opt(23, 59, 0).unwrap())
+}
+
+/// Check if a task is overdue at a specific UTC time, considering the household timezone
+/// A task is overdue if:
+/// 1. The due date in the household timezone has passed
+/// 2. The due time on that date has passed
+pub fn is_task_overdue(task: &Task, due_date: NaiveDate, timezone: &str, now_utc: DateTime<Utc>) -> bool {
+    let tz = parse_timezone(timezone);
+    let now_local = now_utc.with_timezone(&tz);
+    let today_local = now_local.date_naive();
+    let current_time = now_local.time();
+
+    let due_time = parse_due_time(task.due_time.as_deref());
+
+    // If due date is before today, it's overdue
+    if due_date < today_local {
+        return true;
+    }
+
+    // If due date is today, check if due time has passed
+    if due_date == today_local && current_time > due_time {
+        return true;
+    }
+
+    false
+}
+
+/// Get the deadline DateTime in UTC for a task on a specific due date
+#[allow(dead_code)]
+pub fn get_task_deadline_utc(task: &Task, due_date: NaiveDate, timezone: &str) -> Option<DateTime<Utc>> {
+    let tz = parse_timezone(timezone);
+    let due_time = parse_due_time(task.due_time.as_deref());
+
+    let local_datetime = due_date.and_time(due_time);
+    tz.from_local_datetime(&local_datetime)
+        .single()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,6 +370,7 @@ mod tests {
             requires_review: false,
             points_reward: None,
             points_penalty: None,
+            due_time: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

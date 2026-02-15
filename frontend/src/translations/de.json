@@ -166,6 +166,8 @@
   "task_modal.points_reward_hint": "Punkte, die bei Erledigung vergeben werden (leer lassen für keine)",
   "task_modal.points_penalty": "Punkte-Abzug bei Verpassen",
   "task_modal.points_penalty_hint": "Punkte, die bei Verpassen abgezogen werden (leer lassen für keine)",
+  "task_modal.due_time": "Fällig um",
+  "task_modal.due_time_hint": "Leer lassen für Ende des Tages (23:59)",
 
   "time_period.day": "Tag",
   "time_period.week": "Woche",

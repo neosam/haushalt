@@ -61,6 +61,15 @@ pub async fn get_or_create_settings(
     })
 }
 
+/// Get timezone for a household (returns "UTC" if not set)
+pub async fn get_household_timezone(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+) -> Result<String, SettingsError> {
+    let settings = get_or_create_settings(pool, household_id).await?;
+    Ok(settings.timezone)
+}
+
 /// Update household settings
 pub async fn update_settings(
     pool: &SqlitePool,

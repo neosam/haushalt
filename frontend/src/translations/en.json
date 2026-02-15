@@ -166,6 +166,8 @@
   "task_modal.points_reward_hint": "Points awarded when this task is completed (leave empty for none)",
   "task_modal.points_penalty": "Points Deducted on Miss",
   "task_modal.points_penalty_hint": "Points deducted when this task is missed (leave empty for none)",
+  "task_modal.due_time": "Due Time",
+  "task_modal.due_time_hint": "Leave empty for end of day (23:59)",
 
   "time_period.day": "Day",
   "time_period.week": "Week",
