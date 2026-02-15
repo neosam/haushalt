@@ -388,6 +388,43 @@ impl FromStr for TimePeriod {
     }
 }
 
+/// Type of habit determining reward/punishment behavior
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum HabitType {
+    /// Normal habit: completion = reward, missed = punishment
+    #[default]
+    Good,
+    /// Bad habit: completion = punishment, missed = reward
+    Bad,
+}
+
+impl HabitType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HabitType::Good => "good",
+            HabitType::Bad => "bad",
+        }
+    }
+
+    /// Returns true if consequences should be inverted (Bad habit)
+    pub fn is_inverted(&self) -> bool {
+        matches!(self, HabitType::Bad)
+    }
+}
+
+impl FromStr for HabitType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "good" => Ok(HabitType::Good),
+            "bad" => Ok(HabitType::Bad),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: Uuid,
@@ -410,6 +447,8 @@ pub struct Task {
     pub points_penalty: Option<i64>,
     /// Due time in "HH:MM" format. None means end of day (23:59)
     pub due_time: Option<String>,
+    /// Type of habit: Good (normal) or Bad (inverted consequences)
+    pub habit_type: HabitType,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -433,6 +472,8 @@ pub struct CreateTaskRequest {
     pub points_penalty: Option<i64>,
     /// Due time in "HH:MM" format. None means end of day (23:59)
     pub due_time: Option<String>,
+    /// Type of habit: Good (normal) or Bad (inverted consequences)
+    pub habit_type: Option<HabitType>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -452,6 +493,8 @@ pub struct UpdateTaskRequest {
     pub points_penalty: Option<i64>,
     /// Due time in "HH:MM" format. None means end of day (23:59)
     pub due_time: Option<String>,
+    /// Type of habit: Good (normal) or Bad (inverted consequences)
+    pub habit_type: Option<HabitType>,
 }
 
 /// Status of a task completion
@@ -1330,6 +1373,7 @@ mod tests {
                 points_reward: None,
                 points_penalty: None,
                 due_time: None,
+                habit_type: HabitType::Good,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -1425,5 +1469,31 @@ mod tests {
         assert_eq!(ActivityType::RewardPurchased.as_str(), "reward_purchased");
         assert_eq!(ActivityType::PunishmentAssigned.as_str(), "punishment_assigned");
         assert_eq!(ActivityType::MemberRoleChanged.as_str(), "member_role_changed");
+    }
+
+    #[test]
+    fn test_habit_type_from_str() {
+        assert_eq!("good".parse(), Ok(HabitType::Good));
+        assert_eq!("GOOD".parse(), Ok(HabitType::Good));
+        assert_eq!("bad".parse(), Ok(HabitType::Bad));
+        assert_eq!("BAD".parse(), Ok(HabitType::Bad));
+        assert!("invalid".parse::<HabitType>().is_err());
+    }
+
+    #[test]
+    fn test_habit_type_as_str() {
+        assert_eq!(HabitType::Good.as_str(), "good");
+        assert_eq!(HabitType::Bad.as_str(), "bad");
+    }
+
+    #[test]
+    fn test_habit_type_is_inverted() {
+        assert!(!HabitType::Good.is_inverted());
+        assert!(HabitType::Bad.is_inverted());
+    }
+
+    #[test]
+    fn test_habit_type_default() {
+        assert_eq!(HabitType::default(), HabitType::Good);
     }
 }

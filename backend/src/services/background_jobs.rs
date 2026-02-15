@@ -25,6 +25,9 @@ pub struct MissedTaskReport {
     pub missed_tasks: i64,
     pub punishments_assigned: i64,
     pub points_deducted: i64,
+    /// For bad habits that were avoided
+    pub rewards_assigned: i64,
+    pub points_added: i64,
 }
 
 /// Configuration for the background job scheduler
@@ -61,11 +64,13 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>, config: JobConfig) {
             Ok(report) => {
                 if report.missed_tasks > 0 {
                     log::info!(
-                        "Missed task processing complete: checked {} tasks, found {} missed, assigned {} punishments, deducted {} points",
+                        "Missed task processing complete: checked {} tasks, found {} missed, assigned {} punishments/{} rewards, deducted {}/added {} points",
                         report.tasks_checked,
                         report.missed_tasks,
                         report.punishments_assigned,
-                        report.points_deducted
+                        report.rewards_assigned,
+                        report.points_deducted,
+                        report.points_added
                     );
                 } else {
                     log::debug!(
@@ -94,6 +99,8 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
     let mut missed_tasks: i64 = 0;
     let mut punishments_assigned: i64 = 0;
     let mut points_deducted: i64 = 0;
+    let mut rewards_assigned: i64 = 0;
+    let mut points_added: i64 = 0;
 
     // Get all tasks
     let tasks: Vec<TaskRow> = sqlx::query_as("SELECT * FROM tasks")
@@ -163,24 +170,21 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
         .await?;
 
         if already_processed > 0 {
-            // Already penalized for this date, skip
+            // Already processed for this date, skip
             continue;
         }
 
-        // Task was missed
+        // Task was not completed in time
         missed_tasks += 1;
 
-        // Determine who to penalize
-        let users_to_penalize: Vec<Uuid> = if let Some(assigned_user_id) = task.assigned_user_id {
-            // Penalize only the assigned user
+        // Determine who to apply consequences to
+        let affected_users: Vec<Uuid> = if let Some(assigned_user_id) = task.assigned_user_id {
             vec![assigned_user_id]
         } else {
-            // Penalize all household members
             get_household_member_ids(pool, &task.household_id).await?
         };
 
-        // Check if the user had a streak that was broken
-        // A streak is considered broken if they had at least one previous completion
+        // Check if the user had a streak that was broken (for good habits)
         let had_previous_completion = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM task_completions WHERE task_id = ?",
         )
@@ -189,28 +193,51 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
         .await?
             > 0;
 
-        for user_id in users_to_penalize {
-            // Deduct points
-            let points = points_service::deduct_missed_task_points(
-                pool,
-                &task.household_id,
-                &user_id,
-                &task.id,
-                had_previous_completion,
-            )
-            .await?;
-            points_deducted += points.abs();
+        for user_id in affected_users {
+            if task.habit_type.is_inverted() {
+                // Bad habit not completed = REWARD (successfully avoided!)
+                let points = points_service::award_bad_habit_avoided_points(
+                    pool,
+                    &task.household_id,
+                    &user_id,
+                    &task,
+                )
+                .await?;
+                points_added += points;
 
-            // Assign punishments linked to this task
-            let assigned = task_consequences::assign_missed_task_punishments(
-                pool,
-                &task.id,
-                &user_id,
-                &task.household_id,
-            )
-            .await?;
+                // Assign rewards linked to this task
+                let assigned = task_consequences::assign_bad_habit_avoided_rewards(
+                    pool,
+                    &task.id,
+                    &user_id,
+                    &task.household_id,
+                )
+                .await?;
 
-            punishments_assigned += assigned.len() as i64;
+                rewards_assigned += assigned.len() as i64;
+            } else {
+                // Good habit not completed = PUNISHMENT (missed)
+                let points = points_service::deduct_missed_task_points(
+                    pool,
+                    &task.household_id,
+                    &user_id,
+                    &task.id,
+                    had_previous_completion,
+                )
+                .await?;
+                points_deducted += points.abs();
+
+                // Assign punishments linked to this task
+                let assigned = task_consequences::assign_missed_task_punishments(
+                    pool,
+                    &task.id,
+                    &user_id,
+                    &task.household_id,
+                )
+                .await?;
+
+                punishments_assigned += assigned.len() as i64;
+            }
         }
 
         // Record that we processed this task for this due date
@@ -228,6 +255,8 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
         missed_tasks,
         punishments_assigned,
         points_deducted,
+        rewards_assigned,
+        points_added,
     })
 }
 

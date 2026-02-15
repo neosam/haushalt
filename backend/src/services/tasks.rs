@@ -31,6 +31,7 @@ pub async fn create_task(
     let target_count = request.target_count.unwrap_or(1);
     let allow_exceed_target = request.allow_exceed_target.unwrap_or(true);
     let requires_review = request.requires_review.unwrap_or(false);
+    let habit_type = request.habit_type.unwrap_or_default();
 
     let recurrence_value = request
         .recurrence_value
@@ -41,8 +42,8 @@ pub async fn create_task(
 
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, due_time, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, due_time, habit_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -59,6 +60,7 @@ pub async fn create_task(
     .bind(request.points_reward)
     .bind(request.points_penalty)
     .bind(&request.due_time)
+    .bind(habit_type.as_str())
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -79,6 +81,7 @@ pub async fn create_task(
         points_reward: request.points_reward,
         points_penalty: request.points_penalty,
         due_time: request.due_time.clone(),
+        habit_type,
         created_at: now,
         updated_at: now,
     })
@@ -215,13 +218,16 @@ pub async fn update_task(
     if request.due_time.is_some() {
         task.due_time = request.due_time.clone();
     }
+    if let Some(habit_type) = request.habit_type {
+        task.habit_type = habit_type.as_str().to_string();
+    }
 
     let now = Utc::now();
     task.updated_at = now;
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -237,6 +243,7 @@ pub async fn update_task(
     .bind(task.points_reward)
     .bind(task.points_penalty)
     .bind(&task.due_time)
+    .bind(&task.habit_type)
     .bind(now)
     .bind(task_id.to_string())
     .execute(pool)
@@ -354,16 +361,29 @@ pub async fn complete_task(
     .execute(pool)
     .await?;
 
-    // Award points immediately (will be reversed if rejected)
+    // Apply consequences based on habit type
     let streak = calculate_streak(pool, &task, user_id).await?;
-    points_service::award_task_completion_points(pool, household_id, user_id, task_id, streak)
-        .await
-        .ok();
+    if task.habit_type.is_inverted() {
+        // Bad habit completed = punishment + point deduction (the bad habit occurred)
+        points_service::deduct_bad_habit_completion_points(pool, household_id, user_id, task_id, &task)
+            .await
+            .ok();
 
-    // Assign task-specific rewards immediately (will be reversed if rejected)
-    task_consequences::assign_task_completion_rewards(pool, task_id, user_id, household_id)
-        .await
-        .ok();
+        // Assign task-specific punishments
+        task_consequences::assign_task_completion_punishments(pool, task_id, user_id, household_id)
+            .await
+            .ok();
+    } else {
+        // Good habit completed = reward + point addition (existing behavior)
+        points_service::award_task_completion_points(pool, household_id, user_id, task_id, streak)
+            .await
+            .ok();
+
+        // Assign task-specific rewards immediately (will be reversed if rejected)
+        task_consequences::assign_task_completion_rewards(pool, task_id, user_id, household_id)
+            .await
+            .ok();
+    }
 
     Ok(TaskCompletion {
         id,
@@ -441,6 +461,7 @@ pub async fn list_pending_reviews(
         t_points_reward: Option<i64>,
         t_points_penalty: Option<i64>,
         t_due_time: Option<String>,
+        t_habit_type: String,
         t_created_at: chrono::DateTime<chrono::Utc>,
         t_updated_at: chrono::DateTime<chrono::Utc>,
         // User fields
@@ -462,7 +483,7 @@ pub async fn list_pending_reviews(
             t.target_count as t_target_count, t.time_period as t_time_period,
             t.allow_exceed_target as t_allow_exceed_target, t.requires_review as t_requires_review,
             t.points_reward as t_points_reward, t.points_penalty as t_points_penalty,
-            t.due_time as t_due_time,
+            t.due_time as t_due_time, t.habit_type as t_habit_type,
             t.created_at as t_created_at, t.updated_at as t_updated_at,
             u.id as u_id, u.username as u_username, u.email as u_email,
             u.created_at as u_created_at, u.updated_at as u_updated_at
@@ -509,6 +530,7 @@ pub async fn list_pending_reviews(
                     points_reward: row.t_points_reward,
                     points_penalty: row.t_points_penalty,
                     due_time: row.t_due_time,
+                    habit_type: row.t_habit_type.parse().unwrap_or(shared::HabitType::Good),
                     created_at: row.t_created_at,
                     updated_at: row.t_updated_at,
                 },
@@ -776,6 +798,7 @@ mod tests {
                 points_reward INTEGER,
                 points_penalty INTEGER,
                 due_time TEXT,
+                habit_type TEXT NOT NULL DEFAULT 'good',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -964,6 +987,7 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1000,6 +1024,7 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1032,6 +1057,7 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1068,6 +1094,7 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1081,5 +1108,52 @@ mod tests {
         // Second completion should also succeed (default allows exceeding)
         let result2 = complete_task(&pool, &task.id, &user_id, &household_id).await;
         assert!(result2.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_task_with_habit_type() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create good habit (default)
+        let request_good = CreateTaskRequest {
+            title: "Good Habit".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None, // Default to Good
+        };
+        let task_good = create_task(&pool, &household_id, &request_good).await.unwrap();
+        assert_eq!(task_good.habit_type, shared::HabitType::Good);
+        assert!(!task_good.habit_type.is_inverted());
+
+        // Create bad habit
+        let request_bad = CreateTaskRequest {
+            title: "Bad Habit".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: Some(shared::HabitType::Bad),
+        };
+        let task_bad = create_task(&pool, &household_id, &request_bad).await.unwrap();
+        assert_eq!(task_bad.habit_type, shared::HabitType::Bad);
+        assert!(task_bad.habit_type.is_inverted());
     }
 }

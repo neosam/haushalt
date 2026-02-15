@@ -1,5 +1,5 @@
 use leptos::*;
-use shared::{CreateTaskRequest, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
+use shared::{CreateTaskRequest, HabitType, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
@@ -56,6 +56,13 @@ pub fn TaskModal(
         task.as_ref()
             .map(|t| t.requires_review)
             .unwrap_or(false)  // Default to false for new tasks
+    );
+
+    // Habit type signal (good = normal, bad = inverted consequences)
+    let habit_type = create_rw_signal(
+        task.as_ref()
+            .map(|t| t.habit_type.as_str().to_string())
+            .unwrap_or_else(|| "good".to_string())
     );
 
     // Direct points signals
@@ -192,6 +199,10 @@ pub fn TaskModal(
                         let val = due_time.get();
                         if val.is_empty() { None } else { Some(val) }
                     };
+                    let habit_type_val = match habit_type.get().as_str() {
+                        "bad" => HabitType::Bad,
+                        _ => HabitType::Good,
+                    };
                     let request = UpdateTaskRequest {
                         title: Some(title.get()),
                         description: Some(description.get()),
@@ -205,6 +216,7 @@ pub fn TaskModal(
                         points_reward: pts_reward,
                         points_penalty: pts_penalty,
                         due_time: due_time_val,
+                        habit_type: Some(habit_type_val),
                     };
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
@@ -259,6 +271,10 @@ pub fn TaskModal(
                         let val = due_time.get();
                         if val.is_empty() { None } else { Some(val) }
                     };
+                    let habit_type_val = match habit_type.get().as_str() {
+                        "bad" => HabitType::Bad,
+                        _ => HabitType::Good,
+                    };
                     let request = CreateTaskRequest {
                         title: title.get(),
                         description: Some(description.get()),
@@ -272,6 +288,7 @@ pub fn TaskModal(
                         points_reward: pts_reward,
                         points_penalty: pts_penalty,
                         due_time: due_time_val,
+                        habit_type: Some(habit_type_val),
                     };
 
                     match ApiClient::create_task(&household_id, request).await {
@@ -556,6 +573,29 @@ pub fn TaskModal(
                                 <span>{i18n_stored.get_value().t("task_modal.require_review")}</span>
                             </label>
                             <small class="form-hint">{i18n_stored.get_value().t("task_modal.require_review_hint")}</small>
+                        </div>
+
+                        // Habit Type Section
+                        <div class="form-group">
+                            <label class="form-label" for="task-habit-type">{i18n_stored.get_value().t("task_modal.habit_type_label")}</label>
+                            {
+                                let initial_habit_type = task.as_ref()
+                                    .map(|t| t.habit_type.as_str().to_string())
+                                    .unwrap_or_else(|| "good".to_string());
+                                let good_label = i18n_stored.get_value().t("habit_type.good");
+                                let bad_label = i18n_stored.get_value().t("habit_type.bad");
+                                view! {
+                                    <select
+                                        id="task-habit-type"
+                                        class="form-select"
+                                        on:change=move |ev| habit_type.set(event_target_value(&ev))
+                                    >
+                                        <option value="good" selected=initial_habit_type == "good">{good_label}</option>
+                                        <option value="bad" selected=initial_habit_type == "bad">{bad_label}</option>
+                                    </select>
+                                }
+                            }
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.habit_type_hint")}</small>
                         </div>
 
                         // Direct Points Section

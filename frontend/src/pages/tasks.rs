@@ -408,6 +408,7 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: shared::HabitType::Good,
             assigned_user_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

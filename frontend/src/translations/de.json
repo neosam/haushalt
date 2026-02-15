@@ -169,6 +169,12 @@
   "task_modal.points_penalty_hint": "Punkte, die bei Verpassen abgezogen werden (leer lassen für keine)",
   "task_modal.due_time": "Fällig um",
   "task_modal.due_time_hint": "Leer lassen für Ende des Tages (23:59)",
+  "task_modal.habit_type_label": "Gewohnheitstyp",
+  "task_modal.habit_type_hint": "Schlechte Gewohnheiten geben Belohnungen wenn vermieden und Strafen wenn gemacht",
+
+  "habit_type.good": "Gute Gewohnheit",
+  "habit_type.bad": "Schlechte Gewohnheit",
+  "habit_type.bad_short": "Schlecht",
 
   "time_period.day": "Tag",
   "time_period.week": "Woche",

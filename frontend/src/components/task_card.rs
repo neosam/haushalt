@@ -118,11 +118,24 @@ pub fn TaskCard(
     // Translate recurrence type
     let recurrence_display = i18n_stored.get_value().t(recurrence_type_translation_key(&task.task.recurrence_type));
 
+    // Bad habit indicator
+    let is_bad_habit = task.task.habit_type.is_inverted();
+    let bad_habit_label = i18n_stored.get_value().t("habit_type.bad_short");
+
     view! {
         <div class=card_class>
             <div class="task-content" style="flex: 1;">
-                <div class="task-title">
+                <div class="task-title" style="display: flex; align-items: center; gap: 0.5rem;">
                     {task.task.title.clone()}
+                    {if is_bad_habit {
+                        view! {
+                            <span style="font-size: 0.7rem; padding: 0.1rem 0.4rem; background: var(--danger-color); color: white; border-radius: var(--border-radius); font-weight: 500;">
+                                {bad_habit_label}
+                            </span>
+                        }.into_view()
+                    } else {
+                        ().into_view()
+                    }}
                 </div>
                 <div class="task-meta">
                     {recurrence_display}
@@ -302,7 +315,7 @@ pub fn GroupedTaskList(
 mod tests {
     use super::*;
     use chrono::Utc;
-    use shared::{RecurrenceType, Task};
+    use shared::{HabitType, RecurrenceType, Task};
     use uuid::Uuid;
     use wasm_bindgen_test::*;
 
@@ -329,6 +342,7 @@ mod tests {
                 points_reward: None,
                 points_penalty: None,
                 due_time: None,
+                habit_type: HabitType::Good,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -433,6 +447,7 @@ mod tests {
                 points_reward: None,
                 points_penalty: None,
                 due_time: None,
+                habit_type: HabitType::Good,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },

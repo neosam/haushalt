@@ -20,6 +20,7 @@ pub struct TaskRow {
     pub points_reward: Option<i64>,
     pub points_penalty: Option<i64>,
     pub due_time: Option<String>,
+    pub habit_type: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -47,6 +48,7 @@ impl TaskRow {
             points_reward: self.points_reward,
             points_penalty: self.points_penalty,
             due_time: self.due_time.clone(),
+            habit_type: self.habit_type.parse().unwrap_or(shared::HabitType::Good),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -79,6 +81,7 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: "good".to_string(),
             created_at: now,
             updated_at: now,
         };
@@ -114,6 +117,7 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: "good".to_string(),
             created_at: now,
             updated_at: now,
         };
@@ -146,6 +150,7 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: "good".to_string(),
             created_at: now,
             updated_at: now,
         };
@@ -167,9 +172,61 @@ mod tests {
             points_reward: None,
             points_penalty: None,
             due_time: None,
+            habit_type: "good".to_string(),
             created_at: now,
             updated_at: now,
         };
         assert!(!row_restrict.to_shared().allow_exceed_target);
+    }
+
+    #[test]
+    fn test_task_row_habit_type() {
+        let now = Utc::now();
+
+        // Test with good habit
+        let row_good = TaskRow {
+            id: Uuid::new_v4().to_string(),
+            household_id: Uuid::new_v4().to_string(),
+            title: "Good Habit".to_string(),
+            description: "".to_string(),
+            recurrence_type: "daily".to_string(),
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 1,
+            time_period: None,
+            allow_exceed_target: true,
+            requires_review: false,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: "good".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        assert_eq!(row_good.to_shared().habit_type, shared::HabitType::Good);
+        assert!(!row_good.to_shared().habit_type.is_inverted());
+
+        // Test with bad habit
+        let row_bad = TaskRow {
+            id: Uuid::new_v4().to_string(),
+            household_id: Uuid::new_v4().to_string(),
+            title: "Bad Habit".to_string(),
+            description: "".to_string(),
+            recurrence_type: "daily".to_string(),
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 1,
+            time_period: None,
+            allow_exceed_target: true,
+            requires_review: false,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: "bad".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        assert_eq!(row_bad.to_shared().habit_type, shared::HabitType::Bad);
+        assert!(row_bad.to_shared().habit_type.is_inverted());
     }
 }

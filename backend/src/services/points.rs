@@ -325,6 +325,52 @@ pub async fn deduct_missed_task_points(
     Ok(total_points)
 }
 
+/// Deduct points when a bad habit is completed (the bad habit occurred)
+/// Uses points_penalty from the task as the deduction amount
+pub async fn deduct_bad_habit_completion_points(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    user_id: &Uuid,
+    _task_id: &Uuid,
+    task: &shared::Task,
+) -> Result<i64, PointsError> {
+    let mut total_points: i64 = 0;
+
+    // For bad habits, use points_penalty when completed (the bad habit occurred)
+    if let Some(penalty) = task.points_penalty {
+        // Penalty is stored as positive, deduct it
+        total_points -= penalty;
+    }
+
+    if total_points != 0 {
+        households::update_member_points(pool, household_id, user_id, total_points).await?;
+    }
+
+    Ok(total_points)
+}
+
+/// Award points when a bad habit is avoided (not completed in time)
+/// Uses points_reward from the task as the reward amount
+pub async fn award_bad_habit_avoided_points(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    user_id: &Uuid,
+    task: &shared::Task,
+) -> Result<i64, PointsError> {
+    let mut total_points: i64 = 0;
+
+    // For bad habits, use points_reward when avoided (not completed in time = success!)
+    if let Some(reward) = task.points_reward {
+        total_points += reward;
+    }
+
+    if total_points != 0 {
+        households::update_member_points(pool, household_id, user_id, total_points).await?;
+    }
+
+    Ok(total_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

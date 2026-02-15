@@ -242,6 +242,32 @@ pub async fn reverse_task_completion_rewards(
     Ok(())
 }
 
+/// Assign all punishments linked to a task to a user (called on bad habit completion)
+/// This is used when a bad habit is "completed" (meaning the bad behavior occurred)
+/// Each punishment is assigned `amount` times based on the task-punishment link
+pub async fn assign_task_completion_punishments(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    user_id: &Uuid,
+    household_id: &Uuid,
+) -> Result<Vec<UserPunishment>, TaskConsequenceError> {
+    // Reuse the same logic as missed task punishments
+    assign_missed_task_punishments(pool, task_id, user_id, household_id).await
+}
+
+/// Assign all rewards linked to a task to a user (called when bad habit is avoided)
+/// This is used when a bad habit is NOT completed (meaning the bad behavior was avoided)
+/// Each reward is assigned `amount` times based on the task-reward link
+pub async fn assign_bad_habit_avoided_rewards(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    user_id: &Uuid,
+    household_id: &Uuid,
+) -> Result<Vec<UserReward>, TaskConsequenceError> {
+    // Reuse the same logic as task completion rewards
+    assign_task_completion_rewards(pool, task_id, user_id, household_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
