@@ -6,7 +6,29 @@
     <title>Household Manager</title>
     <link data-trunk rel="css" href="styles.css">
     <link data-trunk rel="rust" data-wasm-opt="z" />
+    <link data-trunk rel="copy-file" href="manifest.json" />
+    <link data-trunk rel="copy-file" href="sw.js" />
+    <link data-trunk rel="copy-file" href="favicon.svg" />
+    <link data-trunk rel="copy-dir" href="icons" />
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <!-- Theme color for browser chrome -->
+    <meta name="theme-color" content="#4f46e5">
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Household">
+    <link rel="apple-touch-icon" href="/icons/icon.svg">
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
 <body>
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('SW registered'))
+            .catch(err => console.error('SW registration failed:', err));
+    }
+</script>
 </body>
 </html>
