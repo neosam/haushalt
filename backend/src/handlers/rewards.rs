@@ -3,7 +3,7 @@ use shared::{ApiError, ApiSuccess, CreateRewardRequest, UpdateRewardRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{households as household_service, rewards as reward_service};
+use crate::services::{household_settings, households as household_service, rewards as reward_service};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -93,11 +93,23 @@ async fn create_reward(
         }
     };
 
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_rewards()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can create rewards".to_string(),
+            message: "You do not have permission to create rewards".to_string(),
         }));
     }
 
@@ -219,11 +231,23 @@ async fn update_reward(
         }
     };
 
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_rewards()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can update rewards".to_string(),
+            message: "You do not have permission to update rewards".to_string(),
         }));
     }
 
@@ -276,11 +300,23 @@ async fn delete_reward(
         }
     };
 
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_rewards()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can delete rewards".to_string(),
+            message: "You do not have permission to delete rewards".to_string(),
         }));
     }
 
@@ -399,11 +435,23 @@ async fn assign_reward(
         }
     };
 
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
     let role = household_service::get_member_role(&state.db, &household_id, &current_user_id).await;
-    if !role.map(|r| r.can_manage_rewards()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can assign rewards".to_string(),
+            message: "You do not have permission to assign rewards".to_string(),
         }));
     }
 
@@ -474,11 +522,23 @@ async fn unassign_reward(
         }
     };
 
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
     let role = household_service::get_member_role(&state.db, &household_id, &current_user_id).await;
-    if !role.map(|r| r.can_manage_rewards()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can unassign rewards".to_string(),
+            message: "You do not have permission to unassign rewards".to_string(),
         }));
     }
 
@@ -619,12 +679,24 @@ async fn delete_user_reward(
         }
     };
 
-    // Only owners/admins can delete user rewards
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Only users with manage permission can delete user rewards
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_rewards()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can remove reward assignments".to_string(),
+            message: "You do not have permission to remove reward assignments".to_string(),
         }));
     }
 

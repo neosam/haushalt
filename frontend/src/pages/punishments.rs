@@ -1,6 +1,6 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{CreatePunishmentRequest, MemberWithUser, Punishment, UserPunishment, UserPunishmentWithUser};
+use shared::{CreatePunishmentRequest, HouseholdSettings, MemberWithUser, Punishment, UserPunishment, UserPunishmentWithUser};
 
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
@@ -16,6 +16,7 @@ pub fn PunishmentsPage() -> impl IntoView {
     let my_punishments = create_rw_signal(Vec::<UserPunishment>::new());
     let all_user_punishments = create_rw_signal(Vec::<UserPunishmentWithUser>::new());
     let members = create_rw_signal(Vec::<MemberWithUser>::new());
+    let settings = create_rw_signal(Option::<HouseholdSettings>::None);
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
     let show_create_modal = create_rw_signal(false);
@@ -35,6 +36,7 @@ pub fn PunishmentsPage() -> impl IntoView {
         let id_for_my_punishments = id.clone();
         let id_for_all_user_punishments = id.clone();
         let id_for_members = id.clone();
+        let id_for_settings = id.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
             match ApiClient::list_punishments(&id_for_punishments).await {
@@ -67,6 +69,14 @@ pub fn PunishmentsPage() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(m) = ApiClient::list_members(&id_for_members).await {
                 members.set(m);
+            }
+        });
+
+        // Load settings for dark mode
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(s) = ApiClient::get_household_settings(&id_for_settings).await {
+                apply_dark_mode(s.dark_mode);
+                settings.set(Some(s));
             }
         });
     });
@@ -388,6 +398,21 @@ pub fn PunishmentsPage() -> impl IntoView {
                 </form>
             </Modal>
         </Show>
+    }
+}
+
+/// Apply dark mode class to document body
+fn apply_dark_mode(enabled: bool) {
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            if let Some(body) = document.body() {
+                if enabled {
+                    let _ = body.class_list().add_1("dark-mode");
+                } else {
+                    let _ = body.class_list().remove_1("dark-mode");
+                }
+            }
+        }
     }
 }
 

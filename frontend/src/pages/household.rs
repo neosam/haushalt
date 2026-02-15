@@ -32,6 +32,7 @@ pub fn HouseholdPage() -> impl IntoView {
 
     // Check if current user can manage members
     let current_user_can_manage = create_rw_signal(false);
+    let current_user_role = create_rw_signal(Option::<Role>::None);
 
     // Rewards and punishments for assignment
     let rewards = create_rw_signal(Vec::<Reward>::new());
@@ -76,14 +77,13 @@ pub fn HouseholdPage() -> impl IntoView {
                 Err(e) => error.set(Some(e)),
             }
 
-            // Load members and check current user role
+            // Load members and store current user role
             if let Ok(m) = ApiClient::list_members(&id).await {
-                // Check if current user can manage members
+                // Find current user's role
                 if let Ok(current_user) = ApiClient::get_current_user().await {
-                    let can_manage = m.iter().any(|member| {
-                        member.user.id == current_user.id && member.membership.role.can_manage_members()
-                    });
-                    current_user_can_manage.set(can_manage);
+                    if let Some(member) = m.iter().find(|member| member.user.id == current_user.id) {
+                        current_user_role.set(Some(member.membership.role));
+                    }
                 }
                 members.set(m);
             }
@@ -124,6 +124,10 @@ pub fn HouseholdPage() -> impl IntoView {
                             }
                         }
                     }
+                }
+                // Update can_manage based on hierarchy type
+                if let Some(role) = current_user_role.get() {
+                    current_user_can_manage.set(s.hierarchy_type.can_manage(&role));
                 }
                 settings.set(Some(s));
             }

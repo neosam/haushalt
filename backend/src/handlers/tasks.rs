@@ -1,10 +1,11 @@
 use actix_web::{web, HttpResponse, Result};
 use serde::Deserialize;
-use shared::{ApiError, ApiSuccess, CreateTaskRequest, UpdateTaskRequest};
+use shared::{ApiError, ApiSuccess, CreateTaskRequest, HierarchyType, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
 use crate::services::{
+    household_settings,
     households as household_service,
     task_consequences,
     tasks as task_service,
@@ -115,12 +116,24 @@ async fn create_task(
         }
     };
 
-    // Check if user can manage tasks
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can create tasks".to_string(),
+            message: "You do not have permission to create tasks".to_string(),
         }));
     }
 
@@ -130,6 +143,19 @@ async fn create_task(
             error: "validation_error".to_string(),
             message: "Task title is required".to_string(),
         }));
+    }
+
+    // Validate assignment in Hierarchy mode
+    if let Some(ref assigned_id) = request.assigned_user_id {
+        if settings.hierarchy_type == HierarchyType::Hierarchy {
+            let assigned_role = household_service::get_member_role(&state.db, &household_id, assigned_id).await;
+            if !assigned_role.as_ref().map(|r| settings.hierarchy_type.can_be_assigned(r)).unwrap_or(false) {
+                return Ok(HttpResponse::BadRequest().json(ApiError {
+                    error: "validation_error".to_string(),
+                    message: "In Hierarchy mode, only Members can be assigned tasks".to_string(),
+                }));
+            }
+        }
     }
 
     match task_service::create_task(&state.db, &household_id, &request).await {
@@ -243,16 +269,43 @@ async fn update_task(
         }
     };
 
-    // Check if user can manage tasks
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can update tasks".to_string(),
+            message: "You do not have permission to update tasks".to_string(),
         }));
     }
 
-    match task_service::update_task(&state.db, &task_id, &body.into_inner()).await {
+    let request = body.into_inner();
+
+    // Validate assignment in Hierarchy mode
+    if let Some(ref assigned_id) = request.assigned_user_id {
+        if settings.hierarchy_type == HierarchyType::Hierarchy {
+            let assigned_role = household_service::get_member_role(&state.db, &household_id, assigned_id).await;
+            if !assigned_role.as_ref().map(|r| settings.hierarchy_type.can_be_assigned(r)).unwrap_or(false) {
+                return Ok(HttpResponse::BadRequest().json(ApiError {
+                    error: "validation_error".to_string(),
+                    message: "In Hierarchy mode, only Members can be assigned tasks".to_string(),
+                }));
+            }
+        }
+    }
+
+    match task_service::update_task(&state.db, &task_id, &request).await {
         Ok(task) => Ok(HttpResponse::Ok().json(ApiSuccess::new(task))),
         Err(e) => {
             log::error!("Error updating task: {:?}", e);
@@ -301,12 +354,24 @@ async fn delete_task(
         }
     };
 
-    // Check if user can manage tasks
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can delete tasks".to_string(),
+            message: "You do not have permission to delete tasks".to_string(),
         }));
     }
 
@@ -681,12 +746,24 @@ async fn add_task_reward(
         }
     };
 
-    // Check if user can manage tasks (Owner/Admin)
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can link rewards to tasks".to_string(),
+            message: "You do not have permission to link rewards to tasks".to_string(),
         }));
     }
 
@@ -755,12 +832,24 @@ async fn remove_task_reward(
         }
     };
 
-    // Check if user can manage tasks (Owner/Admin)
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can unlink rewards from tasks".to_string(),
+            message: "You do not have permission to unlink rewards from tasks".to_string(),
         }));
     }
 
@@ -888,12 +977,24 @@ async fn add_task_punishment(
         }
     };
 
-    // Check if user can manage tasks (Owner/Admin)
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can link punishments to tasks".to_string(),
+            message: "You do not have permission to link punishments to tasks".to_string(),
         }));
     }
 
@@ -962,12 +1063,24 @@ async fn remove_task_punishment(
         }
     };
 
-    // Check if user can manage tasks (Owner/Admin)
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners and admins can unlink punishments from tasks".to_string(),
+            message: "You do not have permission to unlink punishments from tasks".to_string(),
         }));
     }
 

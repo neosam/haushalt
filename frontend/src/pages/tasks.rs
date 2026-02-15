@@ -1,6 +1,6 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{MemberWithUser, Punishment, Reward, Task, TaskPunishmentLink, TaskRewardLink};
+use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Reward, Role, Task, TaskPunishmentLink, TaskRewardLink};
 
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
@@ -17,6 +17,7 @@ pub fn TasksPage() -> impl IntoView {
     let members = create_rw_signal(Vec::<MemberWithUser>::new());
     let rewards = create_rw_signal(Vec::<Reward>::new());
     let punishments = create_rw_signal(Vec::<Punishment>::new());
+    let settings = create_rw_signal(Option::<HouseholdSettings>::None);
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
     let show_create_modal = create_rw_signal(false);
@@ -38,6 +39,7 @@ pub fn TasksPage() -> impl IntoView {
         let id_for_members = id.clone();
         let id_for_rewards = id.clone();
         let id_for_punishments = id.clone();
+        let id_for_settings = id.clone();
 
         // Load tasks
         wasm_bindgen_futures::spawn_local(async move {
@@ -78,6 +80,15 @@ pub fn TasksPage() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(p) = ApiClient::list_punishments(&id_for_punishments).await {
                 punishments.set(p);
+            }
+        });
+
+        // Load settings for hierarchy-aware member filtering and dark mode
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(s) = ApiClient::get_household_settings(&id_for_settings).await {
+                // Apply dark mode
+                apply_dark_mode(s.dark_mode);
+                settings.set(Some(s));
             }
         });
     });
@@ -251,11 +262,23 @@ pub fn TasksPage() -> impl IntoView {
         <Show when=move || show_create_modal.get() fallback=|| ()>
             {
                 let hid = household_id();
+                // Filter members based on hierarchy type
+                let assignable_members = {
+                    let all_members = members.get();
+                    match settings.get().map(|s| s.hierarchy_type) {
+                        Some(HierarchyType::Hierarchy) => {
+                            all_members.into_iter()
+                                .filter(|m| m.membership.role == Role::Member)
+                                .collect()
+                        }
+                        _ => all_members
+                    }
+                };
                 view! {
                     <TaskModal
                         task=None
                         household_id=hid
-                        members=members.get()
+                        members=assignable_members
                         household_rewards=rewards.get()
                         household_punishments=punishments.get()
                         linked_rewards=vec![]
@@ -270,11 +293,23 @@ pub fn TasksPage() -> impl IntoView {
         // Edit Modal - uses TaskModal with task=Some(task)
         {move || editing_task.get().map(|task| {
             let hid = household_id();
+            // Filter members based on hierarchy type
+            let assignable_members = {
+                let all_members = members.get();
+                match settings.get().map(|s| s.hierarchy_type) {
+                    Some(HierarchyType::Hierarchy) => {
+                        all_members.into_iter()
+                            .filter(|m| m.membership.role == Role::Member)
+                            .collect()
+                    }
+                    _ => all_members
+                }
+            };
             view! {
                 <TaskModal
                     task=Some(task)
                     household_id=hid
-                    members=members.get()
+                    members=assignable_members
                     household_rewards=rewards.get()
                     household_punishments=punishments.get()
                     linked_rewards=task_linked_rewards.get()
@@ -288,6 +323,21 @@ pub fn TasksPage() -> impl IntoView {
                 />
             }
         })}
+    }
+}
+
+/// Apply dark mode class to document body
+fn apply_dark_mode(enabled: bool) {
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            if let Some(body) = document.body() {
+                if enabled {
+                    let _ = body.class_list().add_1("dark-mode");
+                } else {
+                    let _ = body.class_list().remove_1("dark-mode");
+                }
+            }
+        }
     }
 }
 

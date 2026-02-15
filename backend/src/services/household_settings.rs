@@ -4,7 +4,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::HouseholdSettingsRow;
-use shared::{HouseholdSettings, UpdateHouseholdSettingsRequest};
+use shared::{HierarchyType, HouseholdSettings, UpdateHouseholdSettingsRequest};
 
 #[derive(Debug, Error)]
 pub enum SettingsError {
@@ -31,13 +31,15 @@ pub async fn get_or_create_settings(
 
     // Create default settings
     let now = Utc::now();
+    let default_hierarchy = HierarchyType::default();
     sqlx::query(
         r#"
-        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, updated_at)
-        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?)
+        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, updated_at)
+        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?)
         "#,
     )
     .bind(household_id.to_string())
+    .bind(default_hierarchy.as_str())
     .bind(now)
     .execute(pool)
     .await?;
@@ -48,6 +50,7 @@ pub async fn get_or_create_settings(
         role_label_owner: "Owner".to_string(),
         role_label_admin: "Admin".to_string(),
         role_label_member: "Member".to_string(),
+        hierarchy_type: default_hierarchy,
         updated_at: now,
     })
 }
@@ -74,6 +77,9 @@ pub async fn update_settings(
     if let Some(ref label) = request.role_label_member {
         settings.role_label_member = label.clone();
     }
+    if let Some(hierarchy_type) = request.hierarchy_type {
+        settings.hierarchy_type = hierarchy_type;
+    }
 
     let now = Utc::now();
     settings.updated_at = now;
@@ -81,7 +87,7 @@ pub async fn update_settings(
     sqlx::query(
         r#"
         UPDATE household_settings
-        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, updated_at = ?
+        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, updated_at = ?
         WHERE household_id = ?
         "#,
     )
@@ -89,6 +95,7 @@ pub async fn update_settings(
     .bind(&settings.role_label_owner)
     .bind(&settings.role_label_admin)
     .bind(&settings.role_label_member)
+    .bind(settings.hierarchy_type.as_str())
     .bind(now)
     .bind(household_id.to_string())
     .execute(pool)

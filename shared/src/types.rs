@@ -68,6 +68,59 @@ pub struct UpdateHouseholdRequest {
 // Household Settings Types
 // ============================================================================
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HierarchyType {
+    /// Everyone can manage tasks, rewards, and punishments
+    Equals,
+    /// Only Owner and Admin can manage (default, current behavior)
+    #[default]
+    Organized,
+    /// Owner and Admin can manage, but only Members can be assigned tasks
+    Hierarchy,
+}
+
+impl HierarchyType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HierarchyType::Equals => "equals",
+            HierarchyType::Organized => "organized",
+            HierarchyType::Hierarchy => "hierarchy",
+        }
+    }
+
+    /// Check if a role can manage tasks/rewards/punishments in this hierarchy
+    pub fn can_manage(&self, role: &Role) -> bool {
+        match self {
+            HierarchyType::Equals => true, // Everyone can manage
+            HierarchyType::Organized | HierarchyType::Hierarchy => {
+                role.can_manage_tasks() // Owner + Admin only
+            }
+        }
+    }
+
+    /// Check if a role can be assigned to tasks in this hierarchy
+    pub fn can_be_assigned(&self, role: &Role) -> bool {
+        match self {
+            HierarchyType::Equals | HierarchyType::Organized => true,
+            HierarchyType::Hierarchy => matches!(role, Role::Member),
+        }
+    }
+}
+
+impl FromStr for HierarchyType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "equals" => Ok(HierarchyType::Equals),
+            "organized" => Ok(HierarchyType::Organized),
+            "hierarchy" => Ok(HierarchyType::Hierarchy),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HouseholdSettings {
     pub household_id: Uuid,
@@ -75,6 +128,7 @@ pub struct HouseholdSettings {
     pub role_label_owner: String,
     pub role_label_admin: String,
     pub role_label_member: String,
+    pub hierarchy_type: HierarchyType,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -86,6 +140,7 @@ impl Default for HouseholdSettings {
             role_label_owner: "Owner".to_string(),
             role_label_admin: "Admin".to_string(),
             role_label_member: "Member".to_string(),
+            hierarchy_type: HierarchyType::default(),
             updated_at: Utc::now(),
         }
     }
@@ -97,6 +152,7 @@ pub struct UpdateHouseholdSettingsRequest {
     pub role_label_owner: Option<String>,
     pub role_label_admin: Option<String>,
     pub role_label_member: Option<String>,
+    pub hierarchy_type: Option<HierarchyType>,
 }
 
 // ============================================================================
@@ -743,6 +799,50 @@ mod tests {
         assert_eq!("ADMIN".parse(), Ok(Role::Admin));
         assert_eq!("Member".parse(), Ok(Role::Member));
         assert!("invalid".parse::<Role>().is_err());
+    }
+
+    #[test]
+    fn test_hierarchy_type_from_str() {
+        assert_eq!("equals".parse(), Ok(HierarchyType::Equals));
+        assert_eq!("ORGANIZED".parse(), Ok(HierarchyType::Organized));
+        assert_eq!("Hierarchy".parse(), Ok(HierarchyType::Hierarchy));
+        assert!("invalid".parse::<HierarchyType>().is_err());
+    }
+
+    #[test]
+    fn test_hierarchy_type_can_manage() {
+        // Equals: everyone can manage
+        assert!(HierarchyType::Equals.can_manage(&Role::Owner));
+        assert!(HierarchyType::Equals.can_manage(&Role::Admin));
+        assert!(HierarchyType::Equals.can_manage(&Role::Member));
+
+        // Organized: only Owner and Admin can manage
+        assert!(HierarchyType::Organized.can_manage(&Role::Owner));
+        assert!(HierarchyType::Organized.can_manage(&Role::Admin));
+        assert!(!HierarchyType::Organized.can_manage(&Role::Member));
+
+        // Hierarchy: only Owner and Admin can manage
+        assert!(HierarchyType::Hierarchy.can_manage(&Role::Owner));
+        assert!(HierarchyType::Hierarchy.can_manage(&Role::Admin));
+        assert!(!HierarchyType::Hierarchy.can_manage(&Role::Member));
+    }
+
+    #[test]
+    fn test_hierarchy_type_can_be_assigned() {
+        // Equals: everyone can be assigned
+        assert!(HierarchyType::Equals.can_be_assigned(&Role::Owner));
+        assert!(HierarchyType::Equals.can_be_assigned(&Role::Admin));
+        assert!(HierarchyType::Equals.can_be_assigned(&Role::Member));
+
+        // Organized: everyone can be assigned
+        assert!(HierarchyType::Organized.can_be_assigned(&Role::Owner));
+        assert!(HierarchyType::Organized.can_be_assigned(&Role::Admin));
+        assert!(HierarchyType::Organized.can_be_assigned(&Role::Member));
+
+        // Hierarchy: only Members can be assigned
+        assert!(!HierarchyType::Hierarchy.can_be_assigned(&Role::Owner));
+        assert!(!HierarchyType::Hierarchy.can_be_assigned(&Role::Admin));
+        assert!(HierarchyType::Hierarchy.can_be_assigned(&Role::Member));
     }
 
     #[test]

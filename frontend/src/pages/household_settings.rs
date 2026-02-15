@@ -1,6 +1,6 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{HouseholdSettings, Role, UpdateHouseholdSettingsRequest};
+use shared::{HierarchyType, HouseholdSettings, Role, UpdateHouseholdSettingsRequest};
 
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
@@ -25,6 +25,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let role_label_owner = create_rw_signal(String::new());
     let role_label_admin = create_rw_signal(String::new());
     let role_label_member = create_rw_signal(String::new());
+    let hierarchy_type = create_rw_signal(HierarchyType::Organized);
 
     // Load settings and check permissions
     create_effect(move |_| {
@@ -44,6 +45,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     role_label_owner.set(s.role_label_owner.clone());
                     role_label_admin.set(s.role_label_admin.clone());
                     role_label_member.set(s.role_label_member.clone());
+                    hierarchy_type.set(s.hierarchy_type);
                     settings.set(Some(s));
                 }
                 Err(e) => error.set(Some(e)),
@@ -77,6 +79,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             role_label_owner: Some(role_label_owner.get()),
             role_label_admin: Some(role_label_admin.get()),
             role_label_member: Some(role_label_member.get()),
+            hierarchy_type: Some(hierarchy_type.get()),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -126,6 +129,36 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     }
                 >
                     <form on:submit=on_save>
+                        <div class="form-group">
+                            <label class="form-label" for="hierarchy-type">"Household Structure"</label>
+                            <select
+                                id="hierarchy-type"
+                                class="form-select"
+                                on:change=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    let ht = match value.as_str() {
+                                        "equals" => HierarchyType::Equals,
+                                        "hierarchy" => HierarchyType::Hierarchy,
+                                        _ => HierarchyType::Organized,
+                                    };
+                                    hierarchy_type.set(ht);
+                                }
+                            >
+                                <option value="equals" selected=move || hierarchy_type.get() == HierarchyType::Equals>
+                                    "Equals - Everyone can manage tasks and rewards"
+                                </option>
+                                <option value="organized" selected=move || hierarchy_type.get() == HierarchyType::Organized>
+                                    "Organized - Only admins can manage (default)"
+                                </option>
+                                <option value="hierarchy" selected=move || hierarchy_type.get() == HierarchyType::Hierarchy>
+                                    "Hierarchy - Admins manage, only members get assigned tasks"
+                                </option>
+                            </select>
+                            <small class="form-hint">"Controls who can manage tasks, rewards, and punishments, and who can be assigned tasks"</small>
+                        </div>
+
+                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+
                         <div class="form-group">
                             <label class="form-label">"Theme"</label>
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
