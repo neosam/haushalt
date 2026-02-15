@@ -4,7 +4,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{TaskCompletionRow, TaskRow};
-use crate::services::{points as points_service, scheduler};
+use crate::services::{points as points_service, scheduler, task_consequences};
 use shared::{CreateTaskRequest, Task, TaskCompletion, TaskWithStatus, UpdateTaskRequest};
 
 #[derive(Debug, Error)]
@@ -255,6 +255,11 @@ pub async fn complete_task(
     // Award points
     let streak = calculate_streak(pool, task_id, user_id).await?;
     points_service::award_task_completion_points(pool, household_id, user_id, task_id, streak)
+        .await
+        .ok();
+
+    // Assign task-specific rewards
+    task_consequences::assign_task_completion_rewards(pool, task_id, user_id, household_id)
         .await
         .ok();
 

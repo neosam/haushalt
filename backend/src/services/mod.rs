@@ -5,3 +5,6 @@ pub mod points;
 pub mod rewards;
 pub mod punishments;
 pub mod scheduler;
+pub mod task_consequences;
+pub mod background_jobs;
+pub mod invitations;

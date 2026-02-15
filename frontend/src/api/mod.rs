@@ -2,7 +2,14 @@ use gloo_net::http::Request;
 use gloo_storage::{LocalStorage, Storage};
 use leptos::*;
 use serde::{de::DeserializeOwned, Serialize};
-use shared::*;
+use shared::{
+    ApiError, ApiSuccess, AuthResponse, CreateHouseholdRequest, CreateInvitationRequest,
+    CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
+    CreateUserRequest, Household, HouseholdMembership, Invitation, InvitationWithHousehold,
+    InviteUserRequest, LeaderboardEntry, LoginRequest, MemberWithUser, PointCondition, Punishment,
+    Reward, Task, TaskCompletion, TaskWithStatus, UpdateTaskRequest, User, UserPunishment,
+    UserReward,
+};
 
 const API_BASE: &str = "/api";
 const TOKEN_KEY: &str = "auth_token";
@@ -214,6 +221,112 @@ impl ApiClient {
         .await
     }
 
+    pub async fn update_task(
+        household_id: &str,
+        task_id: &str,
+        request: UpdateTaskRequest,
+    ) -> Result<Task, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/tasks/{}", household_id, task_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    // Task rewards/punishments endpoints
+    pub async fn get_task_rewards(household_id: &str, task_id: &str) -> Result<Vec<Reward>, String> {
+        Self::request::<Vec<Reward>>(
+            "GET",
+            &format!("/households/{}/tasks/{}/rewards", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn add_task_reward(
+        household_id: &str,
+        task_id: &str,
+        reward_id: &str,
+    ) -> Result<(), String> {
+        Self::request::<()>(
+            "POST",
+            &format!(
+                "/households/{}/tasks/{}/rewards/{}",
+                household_id, task_id, reward_id
+            ),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn remove_task_reward(
+        household_id: &str,
+        task_id: &str,
+        reward_id: &str,
+    ) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!(
+                "/households/{}/tasks/{}/rewards/{}",
+                household_id, task_id, reward_id
+            ),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_task_punishments(
+        household_id: &str,
+        task_id: &str,
+    ) -> Result<Vec<Punishment>, String> {
+        Self::request::<Vec<Punishment>>(
+            "GET",
+            &format!("/households/{}/tasks/{}/punishments", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn add_task_punishment(
+        household_id: &str,
+        task_id: &str,
+        punishment_id: &str,
+    ) -> Result<(), String> {
+        Self::request::<()>(
+            "POST",
+            &format!(
+                "/households/{}/tasks/{}/punishments/{}",
+                household_id, task_id, punishment_id
+            ),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn remove_task_punishment(
+        household_id: &str,
+        task_id: &str,
+        punishment_id: &str,
+    ) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!(
+                "/households/{}/tasks/{}/punishments/{}",
+                household_id, task_id, punishment_id
+            ),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // Point condition endpoints
     pub async fn list_point_conditions(household_id: &str) -> Result<Vec<PointCondition>, String> {
         Self::request::<Vec<PointCondition>>(
@@ -337,6 +450,74 @@ impl ApiClient {
         Self::request::<Vec<UserPunishment>>(
             "GET",
             &format!("/households/{}/punishments/user-punishments", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // Invitation endpoints (household admin)
+    pub async fn create_invitation(
+        household_id: &str,
+        request: CreateInvitationRequest,
+    ) -> Result<Invitation, String> {
+        Self::request(
+            "POST",
+            &format!("/households/{}/invite", household_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn list_household_invitations(household_id: &str) -> Result<Vec<Invitation>, String> {
+        Self::request::<Vec<Invitation>>(
+            "GET",
+            &format!("/households/{}/invitations", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn cancel_invitation(
+        household_id: &str,
+        invitation_id: &str,
+    ) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/households/{}/invitations/{}", household_id, invitation_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // User invitation endpoints
+    pub async fn get_my_invitations() -> Result<Vec<InvitationWithHousehold>, String> {
+        Self::request::<Vec<InvitationWithHousehold>>(
+            "GET",
+            "/invitations",
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn accept_invitation(invitation_id: &str) -> Result<HouseholdMembership, String> {
+        Self::request::<HouseholdMembership>(
+            "POST",
+            &format!("/invitations/{}/accept", invitation_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn decline_invitation(invitation_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "POST",
+            &format!("/invitations/{}/decline", invitation_id),
             None::<()>,
             true,
         )

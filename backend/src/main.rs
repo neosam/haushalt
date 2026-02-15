@@ -2,6 +2,7 @@ use actix_cors::Cors;
 use actix_files::{Files, NamedFile};
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use sqlx::sqlite::SqlitePoolOptions;
+use std::sync::Arc;
 
 mod config;
 mod db;
@@ -48,6 +49,17 @@ async fn main() -> std::io::Result<()> {
         .expect("Failed to run migrations");
 
     log::info!("Database migrations completed");
+
+    // Start background job scheduler
+    let pool_for_scheduler = Arc::new(pool.clone());
+    tokio::spawn(async move {
+        services::background_jobs::start_scheduler(
+            pool_for_scheduler,
+            services::background_jobs::JobConfig::default(),
+        )
+        .await;
+    });
+    log::info!("Background job scheduler started");
 
     // Create app state
     let app_state = web::Data::new(models::AppState {

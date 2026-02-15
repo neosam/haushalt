@@ -403,6 +403,66 @@ pub struct UserPunishmentWithDetails {
 }
 
 // ============================================================================
+// Invitation Types
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InvitationStatus {
+    Pending,
+    Accepted,
+    Declined,
+    Expired,
+}
+
+impl InvitationStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            InvitationStatus::Pending => "pending",
+            InvitationStatus::Accepted => "accepted",
+            InvitationStatus::Declined => "declined",
+            InvitationStatus::Expired => "expired",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "pending" => Some(InvitationStatus::Pending),
+            "accepted" => Some(InvitationStatus::Accepted),
+            "declined" => Some(InvitationStatus::Declined),
+            "expired" => Some(InvitationStatus::Expired),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Invitation {
+    pub id: Uuid,
+    pub household_id: Uuid,
+    pub email: String,
+    pub role: Role,
+    pub invited_by: Uuid,
+    pub status: InvitationStatus,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub responded_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvitationWithHousehold {
+    pub invitation: Invitation,
+    pub household: Household,
+    pub invited_by_user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateInvitationRequest {
+    pub email: String,
+    pub role: Option<Role>,
+}
+
+// ============================================================================
 // Task-Reward/Punishment Association Types
 // ============================================================================
 
@@ -416,6 +476,36 @@ pub struct TaskReward {
 pub struct TaskPunishment {
     pub task_id: Uuid,
     pub punishment_id: Uuid,
+}
+
+// ============================================================================
+// Extended Task Types
+// ============================================================================
+
+/// Task with linked rewards and punishments
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskWithConfig {
+    pub task: Task,
+    pub linked_rewards: Vec<Reward>,
+    pub linked_punishments: Vec<Punishment>,
+}
+
+/// Result of task completion including points and rewards assigned
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskCompletionResult {
+    pub completion: TaskCompletion,
+    pub points_awarded: i64,
+    pub rewards_assigned: Vec<Reward>,
+}
+
+/// Report from missed task processing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MissedTaskReport {
+    pub processed_at: DateTime<Utc>,
+    pub tasks_checked: i64,
+    pub missed_tasks: i64,
+    pub punishments_assigned: i64,
+    pub points_deducted: i64,
 }
 
 // ============================================================================
@@ -521,5 +611,14 @@ mod tests {
     fn test_api_success() {
         let success = ApiSuccess::new("test data");
         assert_eq!(success.data, "test data");
+    }
+
+    #[test]
+    fn test_invitation_status_from_str() {
+        assert_eq!(InvitationStatus::from_str("pending"), Some(InvitationStatus::Pending));
+        assert_eq!(InvitationStatus::from_str("ACCEPTED"), Some(InvitationStatus::Accepted));
+        assert_eq!(InvitationStatus::from_str("Declined"), Some(InvitationStatus::Declined));
+        assert_eq!(InvitationStatus::from_str("expired"), Some(InvitationStatus::Expired));
+        assert_eq!(InvitationStatus::from_str("invalid"), None);
     }
 }

@@ -3,7 +3,11 @@ use shared::{ApiError, ApiSuccess, CreateTaskRequest, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{households as household_service, tasks as task_service};
+use crate::services::{
+    households as household_service,
+    task_consequences,
+    tasks as task_service,
+};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -15,6 +19,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{task_id}", web::put().to(update_task))
             .route("/{task_id}", web::delete().to(delete_task))
             .route("/{task_id}/complete", web::post().to(complete_task))
+            // Task rewards endpoints
+            .route("/{task_id}/rewards", web::get().to(get_task_rewards))
+            .route("/{task_id}/rewards/{reward_id}", web::post().to(add_task_reward))
+            .route("/{task_id}/rewards/{reward_id}", web::delete().to(remove_task_reward))
+            // Task punishments endpoints
+            .route("/{task_id}/punishments", web::get().to(get_task_punishments))
+            .route("/{task_id}/punishments/{punishment_id}", web::post().to(add_task_punishment))
+            .route("/{task_id}/punishments/{punishment_id}", web::delete().to(remove_task_punishment))
     );
 }
 
@@ -393,6 +405,420 @@ async fn get_due_tasks(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to fetch due tasks".to_string(),
+            }))
+        }
+    }
+}
+
+// ============================================================================
+// Task Rewards/Punishments Endpoints
+// ============================================================================
+
+async fn get_task_rewards(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check membership
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match task_consequences::get_task_rewards(&state.db, &task_id).await {
+        Ok(rewards) => Ok(HttpResponse::Ok().json(ApiSuccess::new(rewards))),
+        Err(e) => {
+            log::error!("Error fetching task rewards: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch task rewards".to_string(),
+            }))
+        }
+    }
+}
+
+async fn add_task_reward(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str, reward_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    let reward_id = match Uuid::parse_str(&reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid reward ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks (Owner/Admin)
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners and admins can link rewards to tasks".to_string(),
+        }));
+    }
+
+    match task_consequences::add_task_reward(&state.db, &task_id, &reward_id).await {
+        Ok(_) => Ok(HttpResponse::Created().json(ApiSuccess::new(()))),
+        Err(task_consequences::TaskConsequenceError::AlreadyExists) => {
+            Ok(HttpResponse::Conflict().json(ApiError {
+                error: "already_exists".to_string(),
+                message: "Reward is already linked to this task".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error adding task reward: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to link reward to task".to_string(),
+            }))
+        }
+    }
+}
+
+async fn remove_task_reward(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str, reward_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    let reward_id = match Uuid::parse_str(&reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid reward ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks (Owner/Admin)
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners and admins can unlink rewards from tasks".to_string(),
+        }));
+    }
+
+    match task_consequences::remove_task_reward(&state.db, &task_id, &reward_id).await {
+        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Err(task_consequences::TaskConsequenceError::AssociationNotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Reward is not linked to this task".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error removing task reward: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to unlink reward from task".to_string(),
+            }))
+        }
+    }
+}
+
+async fn get_task_punishments(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check membership
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match task_consequences::get_task_punishments(&state.db, &task_id).await {
+        Ok(punishments) => Ok(HttpResponse::Ok().json(ApiSuccess::new(punishments))),
+        Err(e) => {
+            log::error!("Error fetching task punishments: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch task punishments".to_string(),
+            }))
+        }
+    }
+}
+
+async fn add_task_punishment(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str, punishment_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    let punishment_id = match Uuid::parse_str(&punishment_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid punishment ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks (Owner/Admin)
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners and admins can link punishments to tasks".to_string(),
+        }));
+    }
+
+    match task_consequences::add_task_punishment(&state.db, &task_id, &punishment_id).await {
+        Ok(_) => Ok(HttpResponse::Created().json(ApiSuccess::new(()))),
+        Err(task_consequences::TaskConsequenceError::AlreadyExists) => {
+            Ok(HttpResponse::Conflict().json(ApiError {
+                error: "already_exists".to_string(),
+                message: "Punishment is already linked to this task".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error adding task punishment: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to link punishment to task".to_string(),
+            }))
+        }
+    }
+}
+
+async fn remove_task_punishment(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str, punishment_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    let punishment_id = match Uuid::parse_str(&punishment_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid punishment ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks (Owner/Admin)
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r.can_manage_tasks()).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners and admins can unlink punishments from tasks".to_string(),
+        }));
+    }
+
+    match task_consequences::remove_task_punishment(&state.db, &task_id, &punishment_id).await {
+        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Err(task_consequences::TaskConsequenceError::AssociationNotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Punishment is not linked to this task".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error removing task punishment: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to unlink punishment from task".to_string(),
             }))
         }
     }

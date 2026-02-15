@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse, Result};
-use shared::{ApiError, ApiSuccess, CreateHouseholdRequest, UpdateHouseholdRequest, InviteUserRequest, UpdateRoleRequest};
+use shared::{ApiError, ApiSuccess, CreateHouseholdRequest, CreateInvitationRequest, UpdateHouseholdRequest, UpdateRoleRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{households as household_service, auth as auth_service};
+use crate::services::{households as household_service, invitations as invitation_service};
 use crate::handlers::{tasks, rewards, punishments, point_conditions};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -16,6 +16,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{id}", web::delete().to(delete_household))
             .route("/{id}/members", web::get().to(list_members))
             .route("/{id}/invite", web::post().to(invite_member))
+            .route("/{id}/invitations", web::get().to(list_household_invitations))
+            .route("/{id}/invitations/{inv_id}", web::delete().to(cancel_invitation))
             .route("/{id}/members/{user_id}", web::delete().to(remove_member))
             .route("/{id}/members/{user_id}/role", web::put().to(update_member_role))
             .route("/{id}/leaderboard", web::get().to(get_leaderboard))
@@ -281,7 +283,7 @@ async fn invite_member(
     state: web::Data<AppState>,
     req: actix_web::HttpRequest,
     path: web::Path<String>,
-    body: web::Json<InviteUserRequest>,
+    body: web::Json<CreateInvitationRequest>,
 ) -> Result<HttpResponse> {
     let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
         Ok(id) => id,
@@ -313,58 +315,180 @@ async fn invite_member(
     }
 
     let request = body.into_inner();
+    let member_role = request.role.unwrap_or(shared::Role::Member);
 
-    // Find user by email
-    let invited_user = match auth_service::get_user_by_email(&state.db, &request.email).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return Ok(HttpResponse::NotFound().json(ApiError {
-                error: "not_found".to_string(),
-                message: "No user found with that email".to_string(),
-            }));
+    // Only owner can invite as admins
+    if member_role == shared::Role::Admin && !role.map(|r| r == shared::Role::Owner).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners can invite as admin".to_string(),
+        }));
+    }
+
+    // Cannot invite as owner
+    if member_role == shared::Role::Owner {
+        return Ok(HttpResponse::BadRequest().json(ApiError {
+            error: "invalid_role".to_string(),
+            message: "Cannot invite as owner".to_string(),
+        }));
+    }
+
+    match invitation_service::create_invitation(&state.db, &household_id, &request.email, member_role, &user_id).await {
+        Ok(invitation) => Ok(HttpResponse::Created().json(ApiSuccess::new(invitation))),
+        Err(invitation_service::InvitationError::AlreadyExists) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "already_invited".to_string(),
+                message: "User already has a pending invitation".to_string(),
+            }))
+        }
+        Err(invitation_service::InvitationError::AlreadyMember) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "already_member".to_string(),
+                message: "User is already a member of this household".to_string(),
+            }))
         }
         Err(e) => {
-            log::error!("Error finding user: {:?}", e);
-            return Ok(HttpResponse::InternalServerError().json(ApiError {
+            log::error!("Error creating invitation: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
-                message: "Failed to find user".to_string(),
+                message: "Failed to create invitation".to_string(),
+            }))
+        }
+    }
+}
+
+/// List pending invitations for a household
+async fn list_household_invitations(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
             }));
         }
     };
 
-    // Check if already a member
-    if household_service::is_member(&state.db, &household_id, &invited_user.id).await.unwrap_or(false) {
-        return Ok(HttpResponse::BadRequest().json(ApiError {
-            error: "already_member".to_string(),
-            message: "User is already a member of this household".to_string(),
-        }));
-    }
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
 
-    let member_role = request.role.unwrap_or(shared::Role::Member);
-
-    // Only owner can add admins
-    if member_role == shared::Role::Admin && !role.map(|r| r == shared::Role::Owner).unwrap_or(false) {
+    // Check if user can manage members
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r.can_manage_members()).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
-            message: "Only owners can add admins".to_string(),
+            message: "Only owners and admins can view invitations".to_string(),
         }));
     }
 
-    // Cannot add as owner
-    if member_role == shared::Role::Owner {
-        return Ok(HttpResponse::BadRequest().json(ApiError {
-            error: "invalid_role".to_string(),
-            message: "Cannot add a member as owner".to_string(),
-        }));
-    }
-
-    match household_service::add_member(&state.db, &household_id, &invited_user.id, member_role).await {
-        Ok(membership) => Ok(HttpResponse::Created().json(ApiSuccess::new(membership))),
+    match invitation_service::get_household_invitations(&state.db, &household_id).await {
+        Ok(invitations) => Ok(HttpResponse::Ok().json(ApiSuccess::new(invitations))),
         Err(e) => {
-            log::error!("Error adding member: {:?}", e);
+            log::error!("Error listing invitations: {:?}", e);
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
-                message: "Failed to add member".to_string(),
+                message: "Failed to list invitations".to_string(),
+            }))
+        }
+    }
+}
+
+/// Cancel a pending invitation
+async fn cancel_invitation(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, invitation_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let invitation_id = match Uuid::parse_str(&invitation_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid invitation ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage members
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r.can_manage_members()).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners and admins can cancel invitations".to_string(),
+        }));
+    }
+
+    // Verify invitation belongs to this household
+    let invitation = match invitation_service::get_invitation(&state.db, &invitation_id).await {
+        Ok(inv) => inv,
+        Err(invitation_service::InvitationError::NotFound) => {
+            return Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Invitation not found".to_string(),
+            }));
+        }
+        Err(e) => {
+            log::error!("Error fetching invitation: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch invitation".to_string(),
+            }));
+        }
+    };
+
+    if invitation.household_id != household_id {
+        return Ok(HttpResponse::NotFound().json(ApiError {
+            error: "not_found".to_string(),
+            message: "Invitation not found".to_string(),
+        }));
+    }
+
+    match invitation_service::cancel_invitation(&state.db, &invitation_id).await {
+        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Err(invitation_service::InvitationError::NotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Invitation not found or already responded".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error canceling invitation: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to cancel invitation".to_string(),
             }))
         }
     }

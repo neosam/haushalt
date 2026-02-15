@@ -1,5 +1,5 @@
 use leptos::*;
-use shared::{CreateHouseholdRequest, Household};
+use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, Role};
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
@@ -8,24 +8,31 @@ use crate::components::modal::Modal;
 #[component]
 pub fn Dashboard() -> impl IntoView {
     let households = create_rw_signal(Vec::<Household>::new());
+    let invitations = create_rw_signal(Vec::<InvitationWithHousehold>::new());
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
     let show_create_modal = create_rw_signal(false);
     let new_household_name = create_rw_signal(String::new());
 
-    // Load households on mount
+    // Load households and invitations on mount
     create_effect(move |_| {
         wasm_bindgen_futures::spawn_local(async move {
+            // Load households
             match ApiClient::list_households().await {
                 Ok(data) => {
                     households.set(data);
-                    loading.set(false);
                 }
                 Err(e) => {
                     error.set(Some(e));
-                    loading.set(false);
                 }
             }
+
+            // Load pending invitations
+            if let Ok(inv) = ApiClient::get_my_invitations().await {
+                invitations.set(inv);
+            }
+
+            loading.set(false);
         });
     });
 
@@ -52,6 +59,30 @@ pub fn Dashboard() -> impl IntoView {
         });
     };
 
+    let on_accept_invitation = move |invitation_id: String, household: Household| {
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::accept_invitation(&invitation_id).await {
+                Ok(_) => {
+                    // Remove from invitations
+                    invitations.update(|inv| inv.retain(|i| i.invitation.id.to_string() != invitation_id));
+                    // Add household to the list
+                    households.update(|h| h.push(household));
+                }
+                Err(e) => {
+                    error.set(Some(e));
+                }
+            }
+        });
+    };
+
+    let on_decline_invitation = move |invitation_id: String| {
+        wasm_bindgen_futures::spawn_local(async move {
+            if ApiClient::decline_invitation(&invitation_id).await.is_ok() {
+                invitations.update(|inv| inv.retain(|i| i.invitation.id.to_string() != invitation_id));
+            }
+        });
+    };
+
     view! {
         <div class="dashboard-header">
             <h1 class="dashboard-title">"Your Households"</h1>
@@ -67,6 +98,57 @@ pub fn Dashboard() -> impl IntoView {
         </Show>
 
         <Show when=move || !loading.get() fallback=|| ()>
+            // Pending Invitations Section
+            <Show when=move || !invitations.get().is_empty() fallback=|| ()>
+                <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--primary-color);">
+                    <div class="card-header">
+                        <h3 class="card-title">"Pending Invitations"</h3>
+                    </div>
+                    {move || {
+                        invitations.get().into_iter().map(|inv| {
+                            let inv_id = inv.invitation.id.to_string();
+                            let accept_id = inv_id.clone();
+                            let decline_id = inv_id.clone();
+                            let household_for_accept = inv.household.clone();
+                            let role_badge = if inv.invitation.role == Role::Admin {
+                                "badge badge-admin"
+                            } else {
+                                "badge badge-member"
+                            };
+                            let role_text = if inv.invitation.role == Role::Admin { "Admin" } else { "Member" };
+
+                            view! {
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border-color);">
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 1rem;">{inv.household.name.clone()}</div>
+                                        <div style="font-size: 0.875rem; color: var(--text-muted);">
+                                            "Invited by " <span style="font-weight: 500;">{inv.invited_by_user.username.clone()}</span>
+                                            " as "<span class=role_badge style="margin-left: 0.25rem;">{role_text}</span>
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <button
+                                            class="btn btn-outline"
+                                            style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                            on:click=move |_| on_decline_invitation(decline_id.clone())
+                                        >
+                                            "Decline"
+                                        </button>
+                                        <button
+                                            class="btn btn-primary"
+                                            style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                            on:click=move |_| on_accept_invitation(accept_id.clone(), household_for_accept.clone())
+                                        >
+                                            "Accept"
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        }).collect_view()
+                    }}
+                </div>
+            </Show>
+
             <div style="margin-bottom: 1rem;">
                 <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
                     "+ Create Household"

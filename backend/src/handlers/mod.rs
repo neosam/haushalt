@@ -7,6 +7,7 @@ pub mod tasks;
 pub mod rewards;
 pub mod punishments;
 pub mod point_conditions;
+pub mod invitations;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -14,5 +15,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .configure(auth::configure)
             .configure(users::configure)
             .configure(households::configure)
+            .configure(invitations::configure)
     );
 }
