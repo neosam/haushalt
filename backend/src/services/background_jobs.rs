@@ -121,6 +121,11 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
     for task_row in tasks {
         let task = task_row.to_shared();
 
+        // Skip free-form and one-time tasks (they can't be "missed")
+        if task.recurrence_type == shared::RecurrenceType::OneTime {
+            continue;
+        }
+
         // Check if task was due yesterday
         if !scheduler::is_task_due_on_date(&task, yesterday) {
             continue;
@@ -217,6 +222,11 @@ pub async fn process_missed_tasks_for_date(
 
     for task_row in tasks {
         let task = task_row.to_shared();
+
+        // Skip free-form and one-time tasks (they can't be "missed")
+        if task.recurrence_type == shared::RecurrenceType::OneTime {
+            continue;
+        }
 
         // Check if task was due on the given date
         if !scheduler::is_task_due_on_date(&task, date) {

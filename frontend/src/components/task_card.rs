@@ -1,5 +1,6 @@
 use leptos::*;
 use shared::TaskWithStatus;
+use std::time::Duration;
 
 #[component]
 pub fn TaskCard(
@@ -14,9 +15,22 @@ pub fn TaskCard(
     let target = task.task.target_count;
     let has_completions = completions > 0;
 
+    // Debounce state
+    let is_debouncing = create_rw_signal(false);
+
     let on_plus = move |_| {
-        if !is_target_met {
-            on_complete.call(task_id.clone());
+        if !is_target_met && !is_debouncing.get() {
+            is_debouncing.set(true);
+
+            // Set 1-second timeout
+            let task_id_clone = task_id.clone();
+            set_timeout(
+                move || {
+                    on_complete.call(task_id_clone);
+                    is_debouncing.set(false);
+                },
+                Duration::from_secs(1)
+            );
         }
     };
 
@@ -61,12 +75,12 @@ pub fn TaskCard(
                     {progress_display}
                 </span>
                 <button
-                    class="btn btn-primary"
+                    class=move || if is_debouncing.get() { "btn btn-primary btn-debouncing" } else { "btn btn-primary" }
                     style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
-                    disabled=is_target_met
+                    disabled=move || is_target_met || is_debouncing.get()
                     on:click=on_plus
                 >
-                    "+"
+                    {move || if is_debouncing.get() { "..." } else { "+" }}
                 </button>
             </div>
         </div>

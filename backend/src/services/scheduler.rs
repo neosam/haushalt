@@ -1,9 +1,14 @@
 use chrono::{Datelike, NaiveDate, Weekday};
-use shared::{RecurrenceType, RecurrenceValue, Task};
+use shared::{RecurrenceType, RecurrenceValue, Task, TimePeriod};
 
 /// Check if a task is due on a specific date based on its recurrence settings
 pub fn is_task_due_on_date(task: &Task, date: NaiveDate) -> bool {
     match task.recurrence_type {
+        RecurrenceType::OneTime => {
+            // Free-form/one-time tasks are always "due" (can be completed anytime)
+            true
+        }
+
         RecurrenceType::Daily => true,
 
         RecurrenceType::Weekly => {
@@ -48,6 +53,11 @@ pub fn is_task_due_on_date(task: &Task, date: NaiveDate) -> bool {
 /// Get the previous due date for a task before the given date
 pub fn get_previous_due_date(task: &Task, current_date: NaiveDate) -> NaiveDate {
     match task.recurrence_type {
+        RecurrenceType::OneTime => {
+            // Free-form/one-time tasks don't have a schedule, return yesterday
+            current_date - chrono::Duration::days(1)
+        }
+
         RecurrenceType::Daily => current_date - chrono::Duration::days(1),
 
         RecurrenceType::Weekly => current_date - chrono::Duration::days(7),
@@ -108,34 +118,47 @@ pub fn get_previous_due_date(task: &Task, current_date: NaiveDate) -> NaiveDate 
 /// Get the period bounds (start, end) for counting completions based on task recurrence
 /// This is used for habits that can be completed multiple times per period
 pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate) {
-    match task.recurrence_type {
-        RecurrenceType::Daily => (date, date),
+    // Determine period: explicit or inferred from recurrence_type
+    let period = task.time_period.unwrap_or_else(|| match task.recurrence_type {
+        RecurrenceType::Daily => TimePeriod::Day,
+        RecurrenceType::Weekly | RecurrenceType::Weekdays => TimePeriod::Week,
+        RecurrenceType::Monthly => TimePeriod::Month,
+        RecurrenceType::Custom | RecurrenceType::OneTime => TimePeriod::None,
+    });
 
-        RecurrenceType::Weekly => {
-            // Get start of week (Monday)
+    match period {
+        TimePeriod::Day => (date, date),
+
+        TimePeriod::Week => {
+            // Get start of week (Monday) and end of week (Sunday)
             let days_from_monday = date.weekday().num_days_from_monday();
             let week_start = date - chrono::Duration::days(days_from_monday as i64);
             let week_end = week_start + chrono::Duration::days(6);
             (week_start, week_end)
         }
 
-        RecurrenceType::Monthly => {
+        TimePeriod::Month => {
             let month_start = NaiveDate::from_ymd_opt(date.year(), date.month(), 1)
                 .unwrap_or(date);
-            let month_end = get_last_day_of_month(date);
-            let month_end_date = NaiveDate::from_ymd_opt(date.year(), date.month(), month_end)
+            let last_day = get_last_day_of_month(date);
+            let month_end = NaiveDate::from_ymd_opt(date.year(), date.month(), last_day)
                 .unwrap_or(date);
-            (month_start, month_end_date)
+            (month_start, month_end)
         }
 
-        RecurrenceType::Weekdays => {
-            // For weekdays, treat each day as its own period
-            (date, date)
+        TimePeriod::Year => {
+            // January 1st to December 31st of the current year
+            let year_start = NaiveDate::from_ymd_opt(date.year(), 1, 1)
+                .unwrap_or(date);
+            let year_end = NaiveDate::from_ymd_opt(date.year(), 12, 31)
+                .unwrap_or(date);
+            (year_start, year_end)
         }
 
-        RecurrenceType::Custom => {
-            // For custom dates, treat each date as its own period
-            (date, date)
+        TimePeriod::None => {
+            // All-time for free-form/one-time tasks
+            // Use the full date range supported by NaiveDate
+            (NaiveDate::MIN, NaiveDate::MAX)
         }
     }
 }
@@ -143,6 +166,11 @@ pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate)
 /// Get the next due date for a task after the given date
 pub fn get_next_due_date(task: &Task, current_date: NaiveDate) -> Option<NaiveDate> {
     match task.recurrence_type {
+        RecurrenceType::OneTime => {
+            // Free-form/one-time tasks don't have a schedule, return None
+            None
+        }
+
         RecurrenceType::Daily => Some(current_date + chrono::Duration::days(1)),
 
         RecurrenceType::Weekly => Some(current_date + chrono::Duration::days(7)),

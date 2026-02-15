@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     household_id TEXT NOT NULL REFERENCES households(id),
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    recurrence_type TEXT NOT NULL DEFAULT 'daily' CHECK(recurrence_type IN ('daily', 'weekly', 'monthly', 'weekdays', 'custom')),
+    recurrence_type TEXT NOT NULL DEFAULT 'daily' CHECK(recurrence_type IN ('daily', 'weekly', 'monthly', 'weekdays', 'custom', 'onetime', 'none')),
     recurrence_value TEXT,
     assigned_user_id TEXT REFERENCES users(id),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -1,12 +1,13 @@
 use leptos::*;
-use shared::{MemberWithUser, Punishment, RecurrenceType, Reward, Task, UpdateTaskRequest};
+use shared::{CreateTaskRequest, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
+use crate::components::calendar_picker::CalendarPicker;
 
 #[component]
-pub fn TaskEditModal(
-    task: Task,
+pub fn TaskModal(
+    task: Option<Task>,
     household_id: String,
     members: Vec<MemberWithUser>,
     household_rewards: Vec<Reward>,
@@ -16,16 +17,44 @@ pub fn TaskEditModal(
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
+    let is_edit = task.is_some();
     let error = create_rw_signal(Option::<String>::None);
     let saving = create_rw_signal(false);
 
-    // Form fields
-    let title = create_rw_signal(task.title.clone());
-    let description = create_rw_signal(task.description.clone());
-    let recurrence_type = create_rw_signal(task.recurrence_type.as_str().to_string());
-    let initial_assigned_user_id = task.assigned_user_id.map(|id| id.to_string());
+    // Form fields - initialize based on mode
+    let title = create_rw_signal(task.as_ref().map(|t| t.title.clone()).unwrap_or_default());
+    let description = create_rw_signal(task.as_ref().map(|t| t.description.clone()).unwrap_or_default());
+    let recurrence_type = create_rw_signal(
+        task.as_ref()
+            .map(|t| t.recurrence_type.as_str().to_string())
+            .unwrap_or_else(|| "daily".to_string())
+    );
+    let initial_assigned_user_id = task.as_ref().and_then(|t| t.assigned_user_id.map(|id| id.to_string()));
     let assigned_user = create_rw_signal(initial_assigned_user_id.clone().unwrap_or_default());
-    let target_count = create_rw_signal(task.target_count.to_string());
+    let target_count = create_rw_signal(
+        task.as_ref()
+            .map(|t| t.target_count.to_string())
+            .unwrap_or_else(|| "1".to_string())
+    );
+
+    // Recurrence value signals
+    let selected_weekdays = create_rw_signal(
+        task.as_ref()
+            .and_then(|t| match &t.recurrence_value {
+                Some(RecurrenceValue::Weekdays(days)) => Some(days.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| vec![1, 2, 3, 4, 5]) // Default Mon-Fri
+    );
+
+    let selected_custom_dates = create_rw_signal(
+        task.as_ref()
+            .and_then(|t| match &t.recurrence_value {
+                Some(RecurrenceValue::CustomDates(dates)) => Some(dates.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    );
 
     // Track linked rewards/punishments
     let selected_rewards = create_rw_signal(
@@ -38,7 +67,7 @@ pub fn TaskEditModal(
     let original_rewards = linked_rewards.iter().map(|r| r.id.to_string()).collect::<Vec<_>>();
     let original_punishments = linked_punishments.iter().map(|p| p.id.to_string()).collect::<Vec<_>>();
 
-    let task_id = task.id.to_string();
+    let task_id = task.as_ref().map(|t| t.id.to_string());
 
     let on_submit = {
         let task_id = task_id.clone();
@@ -57,11 +86,20 @@ pub fn TaskEditModal(
             let original_punishments = original_punishments.clone();
 
             let rec_type = match recurrence_type.get().as_str() {
+                "onetime" => RecurrenceType::OneTime,
                 "daily" => RecurrenceType::Daily,
                 "weekly" => RecurrenceType::Weekly,
                 "monthly" => RecurrenceType::Monthly,
                 "weekdays" => RecurrenceType::Weekdays,
+                "custom" => RecurrenceType::Custom,
                 _ => RecurrenceType::Daily,
+            };
+
+            // Build recurrence value based on type
+            let rec_value = match recurrence_type.get().as_str() {
+                "weekdays" => Some(RecurrenceValue::Weekdays(selected_weekdays.get())),
+                "custom" => Some(RecurrenceValue::CustomDates(selected_custom_dates.get())),
+                _ => None,
             };
 
             let assigned = assigned_user.get();
@@ -72,52 +110,89 @@ pub fn TaskEditModal(
             };
 
             let target = target_count.get().parse::<i32>().unwrap_or(1).max(1);
-            let request = UpdateTaskRequest {
-                title: Some(title.get()),
-                description: Some(description.get()),
-                recurrence_type: Some(rec_type),
-                recurrence_value: None,
-                assigned_user_id,
-                target_count: Some(target),
-            };
-
             let new_rewards = selected_rewards.get();
             let new_punishments = selected_punishments.get();
 
             wasm_bindgen_futures::spawn_local(async move {
-                // Update task
-                match ApiClient::update_task(&household_id, &task_id, request).await {
-                    Ok(updated_task) => {
-                        // Update reward links
-                        for reward_id in &new_rewards {
-                            if !original_rewards.contains(reward_id) {
+                if let Some(task_id) = task_id {
+                    // Edit mode - update existing task
+                    let request = UpdateTaskRequest {
+                        title: Some(title.get()),
+                        description: Some(description.get()),
+                        recurrence_type: Some(rec_type),
+                        recurrence_value: rec_value,
+                        assigned_user_id,
+                        target_count: Some(target),
+                        time_period: None,
+                    };
+
+                    match ApiClient::update_task(&household_id, &task_id, request).await {
+                        Ok(updated_task) => {
+                            // Update reward links
+                            for reward_id in &new_rewards {
+                                if !original_rewards.contains(reward_id) {
+                                    let _ = ApiClient::add_task_reward(&household_id, &task_id, reward_id).await;
+                                }
+                            }
+                            for reward_id in &original_rewards {
+                                if !new_rewards.contains(reward_id) {
+                                    let _ = ApiClient::remove_task_reward(&household_id, &task_id, reward_id).await;
+                                }
+                            }
+
+                            // Update punishment links
+                            for punishment_id in &new_punishments {
+                                if !original_punishments.contains(punishment_id) {
+                                    let _ = ApiClient::add_task_punishment(&household_id, &task_id, punishment_id).await;
+                                }
+                            }
+                            for punishment_id in &original_punishments {
+                                if !new_punishments.contains(punishment_id) {
+                                    let _ = ApiClient::remove_task_punishment(&household_id, &task_id, punishment_id).await;
+                                }
+                            }
+
+                            saving.set(false);
+                            on_save.call(updated_task);
+                        }
+                        Err(e) => {
+                            error.set(Some(e));
+                            saving.set(false);
+                        }
+                    }
+                } else {
+                    // Create mode - create new task
+                    let request = CreateTaskRequest {
+                        title: title.get(),
+                        description: Some(description.get()),
+                        recurrence_type: rec_type,
+                        recurrence_value: rec_value,
+                        assigned_user_id,
+                        target_count: Some(target),
+                        time_period: None,
+                    };
+
+                    match ApiClient::create_task(&household_id, request).await {
+                        Ok(created_task) => {
+                            let task_id = created_task.id.to_string();
+
+                            // Add reward links
+                            for reward_id in &new_rewards {
                                 let _ = ApiClient::add_task_reward(&household_id, &task_id, reward_id).await;
                             }
-                        }
-                        for reward_id in &original_rewards {
-                            if !new_rewards.contains(reward_id) {
-                                let _ = ApiClient::remove_task_reward(&household_id, &task_id, reward_id).await;
-                            }
-                        }
 
-                        // Update punishment links
-                        for punishment_id in &new_punishments {
-                            if !original_punishments.contains(punishment_id) {
+                            // Add punishment links
+                            for punishment_id in &new_punishments {
                                 let _ = ApiClient::add_task_punishment(&household_id, &task_id, punishment_id).await;
                             }
-                        }
-                        for punishment_id in &original_punishments {
-                            if !new_punishments.contains(punishment_id) {
-                                let _ = ApiClient::remove_task_punishment(&household_id, &task_id, punishment_id).await;
-                            }
-                        }
 
-                        saving.set(false);
-                        on_save.call(updated_task);
-                    }
-                    Err(e) => {
-                        error.set(Some(e));
-                        saving.set(false);
+                            saving.set(false);
+                            on_save.call(created_task);
+                        }
+                        Err(e) => {
+                            error.set(Some(e));
+                            saving.set(false);
+                        }
                     }
                 }
             });
@@ -126,11 +201,26 @@ pub fn TaskEditModal(
 
     let close = move |_| on_close.call(());
 
+    let modal_title = if is_edit { "Edit Task" } else { "Create Task" };
+    let submit_button_text = if is_edit { "Save Changes" } else { "Create" };
+    let saving_text = if is_edit { "Saving..." } else { "Creating..." };
+
+    // Weekday labels and values (0 = Sunday, 1 = Monday, etc.)
+    let weekdays: [(u8, &str); 7] = [
+        (1, "Mon"),
+        (2, "Tue"),
+        (3, "Wed"),
+        (4, "Thu"),
+        (5, "Fri"),
+        (6, "Sat"),
+        (0, "Sun"),
+    ];
+
     view! {
         <div class="modal-backdrop" on:click=close.clone()>
             <div class="modal" style="max-width: 600px;" on:click=|e| e.stop_propagation()>
                 <div class="modal-header">
-                    <h3 class="modal-title">"Edit Task"</h3>
+                    <h3 class="modal-title">{modal_title}</h3>
                     <button class="modal-close" on:click=close>"×"</button>
                 </div>
 
@@ -142,11 +232,12 @@ pub fn TaskEditModal(
                     <div style="padding: 1rem; max-height: 60vh; overflow-y: auto;">
                         // Basic Info Section
                         <div class="form-group">
-                            <label class="form-label" for="edit-title">"Title"</label>
+                            <label class="form-label" for="task-title">"Title"</label>
                             <input
                                 type="text"
-                                id="edit-title"
+                                id="task-title"
                                 class="form-input"
+                                placeholder="e.g., Take out the trash"
                                 prop:value=move || title.get()
                                 on:input=move |ev| title.set(event_target_value(&ev))
                                 required
@@ -154,36 +245,88 @@ pub fn TaskEditModal(
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="edit-description">"Description"</label>
+                            <label class="form-label" for="task-description">"Description"</label>
                             <input
                                 type="text"
-                                id="edit-description"
+                                id="task-description"
                                 class="form-input"
+                                placeholder="Optional description"
                                 prop:value=move || description.get()
                                 on:input=move |ev| description.set(event_target_value(&ev))
                             />
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="edit-recurrence">"Recurrence"</label>
-                            <select
-                                id="edit-recurrence"
-                                class="form-select"
-                                prop:value=move || recurrence_type.get()
-                                on:change=move |ev| recurrence_type.set(event_target_value(&ev))
-                            >
-                                <option value="daily">"Daily"</option>
-                                <option value="weekly">"Weekly"</option>
-                                <option value="monthly">"Monthly"</option>
-                                <option value="weekdays">"Weekdays (Mon-Fri)"</option>
-                            </select>
+                            <label class="form-label" for="task-recurrence">"Recurrence"</label>
+                            {
+                                let initial_recurrence = task.as_ref()
+                                    .map(|t| t.recurrence_type.as_str().to_string())
+                                    .unwrap_or_else(|| "daily".to_string());
+                                view! {
+                                    <select
+                                        id="task-recurrence"
+                                        class="form-select"
+                                        on:change=move |ev| recurrence_type.set(event_target_value(&ev))
+                                    >
+                                        <option value="onetime" selected=initial_recurrence == "onetime">"None (Free-form / One-time)"</option>
+                                        <option value="daily" selected=initial_recurrence == "daily">"Daily"</option>
+                                        <option value="weekly" selected=initial_recurrence == "weekly">"Weekly"</option>
+                                        <option value="monthly" selected=initial_recurrence == "monthly">"Monthly"</option>
+                                        <option value="weekdays" selected=initial_recurrence == "weekdays">"Specific Days"</option>
+                                        <option value="custom" selected=initial_recurrence == "custom">"Custom Dates"</option>
+                                    </select>
+                                }
+                            }
                         </div>
 
+                        // Weekday selection (shown when recurrence_type == "weekdays")
+                        <Show when=move || recurrence_type.get() == "weekdays" fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label">"Select Days"</label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                                    {weekdays.into_iter().map(|(day_num, day_name)| {
+                                        view! {
+                                            <label style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; border: 1px solid var(--card-border); border-radius: var(--border-radius); cursor: pointer; user-select: none;">
+                                                <input
+                                                    type="checkbox"
+                                                    prop:checked=move || selected_weekdays.get().contains(&day_num)
+                                                    on:change=move |ev| {
+                                                        let checked = event_target_checked(&ev);
+                                                        selected_weekdays.update(|days| {
+                                                            if checked {
+                                                                if !days.contains(&day_num) {
+                                                                    days.push(day_num);
+                                                                    days.sort();
+                                                                }
+                                                            } else {
+                                                                days.retain(|d| *d != day_num);
+                                                            }
+                                                        });
+                                                    }
+                                                />
+                                                <span>{day_name}</span>
+                                            </label>
+                                        }
+                                    }).collect_view()}
+                                </div>
+                                <small class="form-hint">"Task will be due on selected days each week"</small>
+                            </div>
+                        </Show>
+
+                        // Custom dates picker (shown when recurrence_type == "custom")
+                        <Show when=move || recurrence_type.get() == "custom" fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label">"Custom Dates"</label>
+                                <CalendarPicker selected_dates=selected_custom_dates />
+                                <small class="form-hint">"Task will be due on the specific dates you add"</small>
+                            </div>
+                        </Show>
+
                         <div class="form-group">
-                            <label class="form-label" for="edit-target-count">"Target Count"</label>
+                            <label class="form-label" for="task-target-count">"Target Count"</label>
                             <input
                                 type="number"
-                                id="edit-target-count"
+                                id="task-target-count"
                                 class="form-input"
                                 min="1"
                                 prop:value=move || target_count.get()
@@ -194,9 +337,9 @@ pub fn TaskEditModal(
 
                         // Assignment Section
                         <div class="form-group">
-                            <label class="form-label" for="edit-assigned">"Assigned To"</label>
+                            <label class="form-label" for="task-assigned">"Assigned To"</label>
                             <select
-                                id="edit-assigned"
+                                id="task-assigned"
                                 class="form-select"
                                 prop:value=move || assigned_user.get()
                                 on:change=move |ev| assigned_user.set(event_target_value(&ev))
@@ -305,7 +448,7 @@ pub fn TaskEditModal(
                             class="btn btn-primary"
                             disabled=move || saving.get()
                         >
-                            {move || if saving.get() { "Saving..." } else { "Save Changes" }}
+                            {move || if saving.get() { saving_text } else { submit_button_text }}
                         </button>
                     </div>
                 </form>

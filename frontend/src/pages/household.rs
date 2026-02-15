@@ -3,6 +3,7 @@ use leptos_router::*;
 use shared::{AdjustPointsRequest, CreateInvitationRequest, Household, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus};
 
 use crate::api::ApiClient;
+use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
 use crate::components::points_display::PointsBadge;
@@ -345,14 +346,10 @@ pub fn HouseholdPage() -> impl IntoView {
             {move || household.get().map(|h| {
                 let id = h.id.to_string();
                 view! {
+                    <HouseholdTabs household_id=id.clone() active_tab=HouseholdTab::Overview />
+
                     <div class="dashboard-header">
                         <h1 class="dashboard-title">{h.name}</h1>
-                        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                            <a href=format!("/households/{}/tasks", id.clone()) class="btn btn-outline">"Tasks"</a>
-                            <a href=format!("/households/{}/rewards", id.clone()) class="btn btn-outline">"Rewards"</a>
-                            <a href=format!("/households/{}/punishments", id.clone()) class="btn btn-outline">"Punishments"</a>
-                            <a href=format!("/households/{}/point-conditions", id.clone()) class="btn btn-outline">"Points"</a>
-                        </div>
                     </div>
 
                     <div class="grid grid-2">

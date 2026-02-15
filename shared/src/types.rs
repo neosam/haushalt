@@ -164,6 +164,8 @@ pub enum RecurrenceType {
     Monthly,
     Weekdays,
     Custom,
+    #[serde(rename = "onetime", alias = "none")]
+    OneTime,
 }
 
 impl RecurrenceType {
@@ -174,6 +176,7 @@ impl RecurrenceType {
             RecurrenceType::Monthly => "monthly",
             RecurrenceType::Weekdays => "weekdays",
             RecurrenceType::Custom => "custom",
+            RecurrenceType::OneTime => "onetime",
         }
     }
 
@@ -184,6 +187,7 @@ impl RecurrenceType {
             "monthly" => Some(RecurrenceType::Monthly),
             "weekdays" => Some(RecurrenceType::Weekdays),
             "custom" => Some(RecurrenceType::Custom),
+            "onetime" | "none" => Some(RecurrenceType::OneTime), // backward compat for "none"
             _ => None,
         }
     }
@@ -204,6 +208,39 @@ pub enum RecurrenceValue {
     None,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TimePeriod {
+    Day,
+    Week,
+    Month,
+    Year,
+    None,
+}
+
+impl TimePeriod {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TimePeriod::Day => "day",
+            TimePeriod::Week => "week",
+            TimePeriod::Month => "month",
+            TimePeriod::Year => "year",
+            TimePeriod::None => "none",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "day" => Some(TimePeriod::Day),
+            "week" => Some(TimePeriod::Week),
+            "month" => Some(TimePeriod::Month),
+            "year" => Some(TimePeriod::Year),
+            "none" => Some(TimePeriod::None),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: Uuid,
@@ -214,6 +251,7 @@ pub struct Task {
     pub recurrence_value: Option<RecurrenceValue>,
     pub assigned_user_id: Option<Uuid>,
     pub target_count: i32,
+    pub time_period: Option<TimePeriod>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -226,6 +264,7 @@ pub struct CreateTaskRequest {
     pub recurrence_value: Option<RecurrenceValue>,
     pub assigned_user_id: Option<Uuid>,
     pub target_count: Option<i32>,
+    pub time_period: Option<TimePeriod>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,6 +275,7 @@ pub struct UpdateTaskRequest {
     pub recurrence_value: Option<RecurrenceValue>,
     pub assigned_user_id: Option<Uuid>,
     pub target_count: Option<i32>,
+    pub time_period: Option<TimePeriod>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -629,6 +669,7 @@ mod tests {
         assert_eq!(RecurrenceType::from_str("Monthly"), Some(RecurrenceType::Monthly));
         assert_eq!(RecurrenceType::from_str("weekdays"), Some(RecurrenceType::Weekdays));
         assert_eq!(RecurrenceType::from_str("custom"), Some(RecurrenceType::Custom));
+        assert_eq!(RecurrenceType::from_str("none"), Some(RecurrenceType::None));
         assert_eq!(RecurrenceType::from_str("invalid"), None);
     }
 

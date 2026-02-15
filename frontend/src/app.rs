@@ -4,9 +4,8 @@ use leptos_router::*;
 use crate::api::AuthState;
 use crate::components::navbar::Navbar;
 use crate::pages::{
-    dashboard::Dashboard, household::HouseholdPage, login::Login, point_conditions::PointConditionsPage,
-    punishments::PunishmentsPage, register::Register, rewards::RewardsPage, settings::SettingsPage,
-    tasks::TasksPage,
+    dashboard::Dashboard, household::HouseholdPage, login::Login, punishments::PunishmentsPage,
+    register::Register, rewards::RewardsPage, settings::SettingsPage, tasks::TasksPage,
 };
 
 #[component]
@@ -26,7 +25,6 @@ pub fn App() -> impl IntoView {
                         <Route path="/households/:id/tasks" view=TasksPage />
                         <Route path="/households/:id/rewards" view=RewardsPage />
                         <Route path="/households/:id/punishments" view=PunishmentsPage />
-                        <Route path="/households/:id/point-conditions" view=PointConditionsPage />
                         <Route path="/settings" view=SettingsPage />
                     </Route>
                 </Routes>

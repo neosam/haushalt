@@ -14,6 +14,7 @@ pub struct TaskRow {
     pub recurrence_value: Option<String>,
     pub assigned_user_id: Option<String>,
     pub target_count: i32,
+    pub time_period: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -22,6 +23,10 @@ impl TaskRow {
     pub fn to_shared(&self) -> shared::Task {
         let recurrence_value = self.recurrence_value.as_ref().and_then(|v| {
             serde_json::from_str(v).ok()
+        });
+
+        let time_period = self.time_period.as_ref().and_then(|p| {
+            shared::TimePeriod::from_str(p)
         });
 
         shared::Task {
@@ -34,6 +39,7 @@ impl TaskRow {
             recurrence_value,
             assigned_user_id: self.assigned_user_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
             target_count: self.target_count,
+            time_period,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -60,6 +66,7 @@ mod tests {
             recurrence_value: None,
             assigned_user_id: None,
             target_count: 1,
+            time_period: None,
             created_at: now,
             updated_at: now,
         };
@@ -88,6 +95,7 @@ mod tests {
             recurrence_value: Some("1".to_string()),
             assigned_user_id: Some(user_id.to_string()),
             target_count: 3,
+            time_period: None,
             created_at: now,
             updated_at: now,
         };

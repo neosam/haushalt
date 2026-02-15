@@ -1,11 +1,11 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{CreateTaskRequest, MemberWithUser, Punishment, RecurrenceType, Reward, Task};
+use shared::{MemberWithUser, Punishment, Reward, Task};
 
 use crate::api::ApiClient;
+use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
-use crate::components::modal::Modal;
-use crate::components::task_edit_modal::TaskEditModal;
+use crate::components::task_modal::TaskModal;
 
 #[component]
 pub fn TasksPage() -> impl IntoView {
@@ -25,12 +25,6 @@ pub fn TasksPage() -> impl IntoView {
     let editing_task = create_rw_signal(Option::<Task>::None);
     let task_linked_rewards = create_rw_signal(Vec::<Reward>::new());
     let task_linked_punishments = create_rw_signal(Vec::<Punishment>::new());
-
-    // Form fields for create
-    let title = create_rw_signal(String::new());
-    let description = create_rw_signal(String::new());
-    let recurrence_type = create_rw_signal("daily".to_string());
-    let target_count = create_rw_signal("1".to_string());
 
     // Load tasks and supporting data
     create_effect(move |_| {
@@ -88,42 +82,6 @@ pub fn TasksPage() -> impl IntoView {
         });
     });
 
-    let on_create = move |ev: web_sys::SubmitEvent| {
-        ev.prevent_default();
-
-        let id = household_id();
-        let rec_type = match recurrence_type.get().as_str() {
-            "daily" => RecurrenceType::Daily,
-            "weekly" => RecurrenceType::Weekly,
-            "monthly" => RecurrenceType::Monthly,
-            "weekdays" => RecurrenceType::Weekdays,
-            _ => RecurrenceType::Daily,
-        };
-
-        let target = target_count.get().parse::<i32>().unwrap_or(1).max(1);
-        let request = CreateTaskRequest {
-            title: title.get(),
-            description: Some(description.get()),
-            recurrence_type: rec_type,
-            recurrence_value: None,
-            assigned_user_id: None,
-            target_count: Some(target),
-        };
-
-        wasm_bindgen_futures::spawn_local(async move {
-            match ApiClient::create_task(&id, request).await {
-                Ok(task) => {
-                    tasks.update(|t| t.push(task));
-                    show_create_modal.set(false);
-                    title.set(String::new());
-                    description.set(String::new());
-                    target_count.set("1".to_string());
-                }
-                Err(e) => error.set(Some(e)),
-            }
-        });
-    };
-
     let on_delete = move |task_id: String| {
         let id = household_id();
         wasm_bindgen_futures::spawn_local(async move {
@@ -158,23 +116,28 @@ pub fn TasksPage() -> impl IntoView {
         });
     };
 
-    let on_save = move |updated_task: Task| {
+    // Unified save handler for both create and edit
+    let on_save = move |saved_task: Task| {
         tasks.update(|t| {
-            if let Some(pos) = t.iter().position(|task| task.id == updated_task.id) {
-                t[pos] = updated_task;
+            if let Some(pos) = t.iter().position(|task| task.id == saved_task.id) {
+                // Edit mode - update existing
+                t[pos] = saved_task;
+            } else {
+                // Create mode - push new
+                t.push(saved_task);
             }
         });
         editing_task.set(None);
+        show_create_modal.set(false);
         task_linked_rewards.set(vec![]);
         task_linked_punishments.set(vec![]);
     };
 
     view! {
+        <HouseholdTabs household_id=household_id() active_tab=HouseholdTab::Tasks />
+
         <div class="dashboard-header">
             <h1 class="dashboard-title">"Tasks"</h1>
-            <a href=move || format!("/households/{}", household_id()) style="color: var(--text-muted);">
-                "← Back to household"
-            </a>
         </div>
 
         {move || error.get().map(|e| view! {
@@ -284,81 +247,32 @@ pub fn TasksPage() -> impl IntoView {
             }}
         </Show>
 
-        // Create Modal
+        // Create Modal - uses TaskModal with task=None
         <Show when=move || show_create_modal.get() fallback=|| ()>
-            <Modal title="Create Task" on_close=move |_| show_create_modal.set(false)>
-                <form on:submit=on_create>
-                    <div class="form-group">
-                        <label class="form-label" for="task-title">"Title"</label>
-                        <input
-                            type="text"
-                            id="task-title"
-                            class="form-input"
-                            placeholder="e.g., Take out the trash"
-                            prop:value=move || title.get()
-                            on:input=move |ev| title.set(event_target_value(&ev))
-                            required
-                        />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="task-description">"Description"</label>
-                        <input
-                            type="text"
-                            id="task-description"
-                            class="form-input"
-                            placeholder="Optional description"
-                            prop:value=move || description.get()
-                            on:input=move |ev| description.set(event_target_value(&ev))
-                        />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="recurrence">"Recurrence"</label>
-                        <select
-                            id="recurrence"
-                            class="form-select"
-                            prop:value=move || recurrence_type.get()
-                            on:change=move |ev| recurrence_type.set(event_target_value(&ev))
-                        >
-                            <option value="daily">"Daily"</option>
-                            <option value="weekly">"Weekly"</option>
-                            <option value="monthly">"Monthly"</option>
-                            <option value="weekdays">"Weekdays (Mon-Fri)"</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="target-count">"Target Count"</label>
-                        <input
-                            type="number"
-                            id="target-count"
-                            class="form-input"
-                            min="1"
-                            prop:value=move || target_count.get()
-                            on:input=move |ev| target_count.set(event_target_value(&ev))
-                        />
-                        <small class="form-hint">"How many times per period (1 for regular tasks, more for habits)"</small>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline" on:click=move |_| show_create_modal.set(false)>
-                            "Cancel"
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                            "Create"
-                        </button>
-                    </div>
-                </form>
-            </Modal>
+            {
+                let hid = household_id();
+                view! {
+                    <TaskModal
+                        task=None
+                        household_id=hid
+                        members=members.get()
+                        household_rewards=rewards.get()
+                        household_punishments=punishments.get()
+                        linked_rewards=vec![]
+                        linked_punishments=vec![]
+                        on_close=move |_| show_create_modal.set(false)
+                        on_save=on_save
+                    />
+                }
+            }
         </Show>
 
-        // Edit Modal
+        // Edit Modal - uses TaskModal with task=Some(task)
         {move || editing_task.get().map(|task| {
             let hid = household_id();
             view! {
-                <TaskEditModal
-                    task=task
+                <TaskModal
+                    task=Some(task)
                     household_id=hid
                     members=members.get()
                     household_rewards=rewards.get()
