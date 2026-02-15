@@ -8,7 +8,8 @@ use shared::{
     CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
     HouseholdMembership, Invitation, InvitationWithHousehold, InviteUserRequest, LeaderboardEntry,
     LoginRequest, MemberWithUser, PointCondition, Punishment, Reward, Task, TaskCompletion,
-    TaskWithStatus, UpdateTaskRequest, User, UserPunishment, UserReward,
+    TaskWithStatus, UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward,
+    UserRewardWithUser,
 };
 
 const API_BASE: &str = "/api";
@@ -185,6 +186,16 @@ impl ApiClient {
         Self::request::<Vec<TaskWithStatus>>(
             "GET",
             &format!("/households/{}/tasks/due", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_my_assigned_tasks(household_id: &str) -> Result<Vec<Task>, String> {
+        Self::request::<Vec<Task>>(
+            "GET",
+            &format!("/households/{}/tasks/assigned-to-me", household_id),
             None::<()>,
             true,
         )
@@ -412,6 +423,26 @@ impl ApiClient {
         .await
     }
 
+    pub async fn list_all_user_rewards(household_id: &str) -> Result<Vec<UserRewardWithUser>, String> {
+        Self::request::<Vec<UserRewardWithUser>>(
+            "GET",
+            &format!("/households/{}/rewards/user-rewards/all", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn redeem_reward(household_id: &str, user_reward_id: &str) -> Result<UserReward, String> {
+        Self::request::<UserReward>(
+            "POST",
+            &format!("/households/{}/rewards/user-rewards/{}/redeem", household_id, user_reward_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // Punishment endpoints
     pub async fn list_punishments(household_id: &str) -> Result<Vec<Punishment>, String> {
         Self::request::<Vec<Punishment>>(
@@ -450,6 +481,16 @@ impl ApiClient {
         Self::request::<Vec<UserPunishment>>(
             "GET",
             &format!("/households/{}/punishments/user-punishments", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn list_all_user_punishments(household_id: &str) -> Result<Vec<UserPunishmentWithUser>, String> {
+        Self::request::<Vec<UserPunishmentWithUser>>(
+            "GET",
+            &format!("/households/{}/punishments/user-punishments/all", household_id),
             None::<()>,
             true,
         )

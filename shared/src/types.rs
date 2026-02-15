@@ -369,6 +369,12 @@ pub struct UserRewardWithDetails {
     pub assigned_by_user: Option<User>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserRewardWithUser {
+    pub user_reward: UserReward,
+    pub user: User,
+}
+
 // ============================================================================
 // Punishment Types
 // ============================================================================
@@ -411,6 +417,12 @@ pub struct UserPunishmentWithDetails {
     pub user_punishment: UserPunishment,
     pub punishment: Punishment,
     pub assigned_by_user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserPunishmentWithUser {
+    pub user_punishment: UserPunishment,
+    pub user: User,
 }
 
 // ============================================================================

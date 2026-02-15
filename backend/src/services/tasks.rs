@@ -126,6 +126,22 @@ pub async fn list_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Ta
     Ok(tasks.into_iter().map(|t| t.to_shared()).collect())
 }
 
+pub async fn list_user_assigned_tasks(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<Vec<Task>, TaskError> {
+    let tasks: Vec<TaskRow> = sqlx::query_as(
+        "SELECT * FROM tasks WHERE household_id = ? AND assigned_user_id = ? ORDER BY created_at DESC",
+    )
+    .bind(household_id.to_string())
+    .bind(user_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tasks.into_iter().map(|t| t.to_shared()).collect())
+}
+
 pub async fn update_task(
     pool: &SqlitePool,
     task_id: &Uuid,

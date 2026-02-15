@@ -13,6 +13,7 @@ pub fn TasksPage() -> impl IntoView {
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
     let tasks = create_rw_signal(Vec::<Task>::new());
+    let my_assigned_tasks = create_rw_signal(Vec::<Task>::new());
     let members = create_rw_signal(Vec::<MemberWithUser>::new());
     let rewards = create_rw_signal(Vec::<Reward>::new());
     let punishments = create_rw_signal(Vec::<Punishment>::new());
@@ -38,6 +39,7 @@ pub fn TasksPage() -> impl IntoView {
         }
 
         let id_for_tasks = id.clone();
+        let id_for_assigned = id.clone();
         let id_for_members = id.clone();
         let id_for_rewards = id.clone();
         let id_for_punishments = id.clone();
@@ -53,6 +55,13 @@ pub fn TasksPage() -> impl IntoView {
                     error.set(Some(e));
                     loading.set(false);
                 }
+            }
+        });
+
+        // Load my assigned tasks
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(t) = ApiClient::get_my_assigned_tasks(&id_for_assigned).await {
+                my_assigned_tasks.set(t);
             }
         });
 
@@ -173,11 +182,41 @@ pub fn TasksPage() -> impl IntoView {
         </Show>
 
         <Show when=move || !loading.get() fallback=|| ()>
+            // My Assigned Tasks Section
+            <Show when=move || !my_assigned_tasks.get().is_empty() fallback=|| ()>
+                <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--primary-color);">
+                    <div class="card-header">
+                        <h3 class="card-title">"My Assigned Tasks"</h3>
+                    </div>
+                    {move || {
+                        my_assigned_tasks.get().into_iter().map(|task| {
+                            view! {
+                                <div class="task-item">
+                                    <div class="task-content">
+                                        <div class="task-title">{task.title.clone()}</div>
+                                        <div class="task-meta">
+                                            {format!("{:?}", task.recurrence_type)}
+                                            {if !task.description.is_empty() {
+                                                format!(" | {}", task.description)
+                                            } else {
+                                                String::new()
+                                            }}
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }).collect_view()
+                    }}
+                </div>
+            </Show>
+
             <div style="margin-bottom: 1rem;">
                 <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
                     "+ Create Task"
                 </button>
             </div>
+
+            <h3 style="margin-bottom: 1rem; color: var(--text-muted);">"All Tasks"</h3>
 
             {move || {
                 let t = tasks.get();

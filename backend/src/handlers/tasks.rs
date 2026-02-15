@@ -15,6 +15,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(list_tasks))
             .route("", web::post().to(create_task))
             .route("/due", web::get().to(get_due_tasks))
+            .route("/assigned-to-me", web::get().to(get_assigned_tasks))
             .route("/{task_id}", web::get().to(get_task))
             .route("/{task_id}", web::put().to(update_task))
             .route("/{task_id}", web::delete().to(delete_task))
@@ -405,6 +406,51 @@ async fn get_due_tasks(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to fetch due tasks".to_string(),
+            }))
+        }
+    }
+}
+
+async fn get_assigned_tasks(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check membership
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match task_service::list_user_assigned_tasks(&state.db, &household_id, &user_id).await {
+        Ok(tasks) => Ok(HttpResponse::Ok().json(ApiSuccess::new(tasks))),
+        Err(e) => {
+            log::error!("Error fetching assigned tasks: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch assigned tasks".to_string(),
             }))
         }
     }

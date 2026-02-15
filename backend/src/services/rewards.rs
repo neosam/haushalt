@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::models::{RewardRow, UserRewardRow};
 use crate::services::households;
-use shared::{CreateRewardRequest, Reward, UpdateRewardRequest, UserReward};
+use shared::{CreateRewardRequest, Reward, UpdateRewardRequest, User, UserReward, UserRewardWithUser};
 
 #[derive(Debug, Error)]
 pub enum RewardError {
@@ -254,6 +254,86 @@ pub async fn list_user_rewards(
     .await?;
 
     Ok(rewards.into_iter().map(|r| r.to_shared()).collect())
+}
+
+pub async fn list_all_user_rewards_in_household(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+) -> Result<Vec<UserRewardWithUser>, RewardError> {
+    #[derive(sqlx::FromRow)]
+    struct JoinedRow {
+        // user_rewards fields
+        id: String,
+        user_id: String,
+        reward_id: String,
+        household_id: String,
+        assigned_by: Option<String>,
+        is_purchased: bool,
+        redeemed: bool,
+        assigned_at: chrono::DateTime<chrono::Utc>,
+        // users fields (aliased)
+        u_id: String,
+        u_username: String,
+        u_email: String,
+        u_created_at: chrono::DateTime<chrono::Utc>,
+        u_updated_at: chrono::DateTime<chrono::Utc>,
+    }
+
+    let rows: Vec<JoinedRow> = sqlx::query_as(
+        r#"
+        SELECT
+            ur.id, ur.user_id, ur.reward_id, ur.household_id, ur.assigned_by,
+            ur.is_purchased, ur.redeemed, ur.assigned_at,
+            u.id as u_id, u.username as u_username, u.email as u_email,
+            u.created_at as u_created_at, u.updated_at as u_updated_at
+        FROM user_rewards ur
+        JOIN users u ON ur.user_id = u.id
+        WHERE ur.household_id = ?
+        ORDER BY ur.assigned_at DESC
+        "#,
+    )
+    .bind(household_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| UserRewardWithUser {
+            user_reward: UserReward {
+                id: Uuid::parse_str(&row.id).unwrap(),
+                user_id: Uuid::parse_str(&row.user_id).unwrap(),
+                reward_id: Uuid::parse_str(&row.reward_id).unwrap(),
+                household_id: Uuid::parse_str(&row.household_id).unwrap(),
+                assigned_by: row.assigned_by.map(|s| Uuid::parse_str(&s).unwrap()),
+                is_purchased: row.is_purchased,
+                redeemed: row.redeemed,
+                assigned_at: row.assigned_at,
+            },
+            user: User {
+                id: Uuid::parse_str(&row.u_id).unwrap(),
+                username: row.u_username,
+                email: row.u_email,
+                created_at: row.u_created_at,
+                updated_at: row.u_updated_at,
+            },
+        })
+        .collect())
+}
+
+pub async fn delete_user_reward(
+    pool: &SqlitePool,
+    user_reward_id: &Uuid,
+) -> Result<(), RewardError> {
+    let result = sqlx::query("DELETE FROM user_rewards WHERE id = ?")
+        .bind(user_reward_id.to_string())
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(RewardError::UserRewardNotFound);
+    }
+
+    Ok(())
 }
 
 pub async fn redeem_reward(

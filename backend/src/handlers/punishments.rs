@@ -15,6 +15,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{punishment_id}", web::delete().to(delete_punishment))
             .route("/{punishment_id}/assign/{user_id}", web::post().to(assign_punishment))
             .route("/user-punishments", web::get().to(list_user_punishments))
+            .route("/user-punishments/all", web::get().to(list_all_user_punishments))
             .route("/user-punishments/{id}/complete", web::post().to(complete_punishment))
     );
 }
@@ -406,6 +407,50 @@ async fn list_user_punishments(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to list user punishments".to_string(),
+            }))
+        }
+    }
+}
+
+async fn list_all_user_punishments(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match punishment_service::list_all_user_punishments_in_household(&state.db, &household_id).await {
+        Ok(punishments) => Ok(HttpResponse::Ok().json(ApiSuccess::new(punishments))),
+        Err(e) => {
+            log::error!("Error listing all user punishments: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to list all user punishments".to_string(),
             }))
         }
     }

@@ -4,7 +4,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{PunishmentRow, UserPunishmentRow};
-use shared::{CreatePunishmentRequest, Punishment, UpdatePunishmentRequest, UserPunishment};
+use shared::{CreatePunishmentRequest, Punishment, UpdatePunishmentRequest, User, UserPunishment, UserPunishmentWithUser};
 
 #[derive(Debug, Error)]
 pub enum PunishmentError {
@@ -183,6 +183,70 @@ pub async fn list_user_punishments(
     .await?;
 
     Ok(punishments.into_iter().map(|p| p.to_shared()).collect())
+}
+
+pub async fn list_all_user_punishments_in_household(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+) -> Result<Vec<UserPunishmentWithUser>, PunishmentError> {
+    #[derive(sqlx::FromRow)]
+    struct JoinedRow {
+        // user_punishments fields
+        id: String,
+        user_id: String,
+        punishment_id: String,
+        household_id: String,
+        assigned_by: String,
+        task_completion_id: Option<String>,
+        completed: bool,
+        assigned_at: chrono::DateTime<chrono::Utc>,
+        // users fields (aliased)
+        u_id: String,
+        u_username: String,
+        u_email: String,
+        u_created_at: chrono::DateTime<chrono::Utc>,
+        u_updated_at: chrono::DateTime<chrono::Utc>,
+    }
+
+    let rows: Vec<JoinedRow> = sqlx::query_as(
+        r#"
+        SELECT
+            up.id, up.user_id, up.punishment_id, up.household_id, up.assigned_by,
+            up.task_completion_id, up.completed, up.assigned_at,
+            u.id as u_id, u.username as u_username, u.email as u_email,
+            u.created_at as u_created_at, u.updated_at as u_updated_at
+        FROM user_punishments up
+        JOIN users u ON up.user_id = u.id
+        WHERE up.household_id = ?
+        ORDER BY up.assigned_at DESC
+        "#,
+    )
+    .bind(household_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| UserPunishmentWithUser {
+            user_punishment: UserPunishment {
+                id: Uuid::parse_str(&row.id).unwrap(),
+                user_id: Uuid::parse_str(&row.user_id).unwrap(),
+                punishment_id: Uuid::parse_str(&row.punishment_id).unwrap(),
+                household_id: Uuid::parse_str(&row.household_id).unwrap(),
+                assigned_by: Uuid::parse_str(&row.assigned_by).unwrap(),
+                task_completion_id: row.task_completion_id.map(|s| Uuid::parse_str(&s).unwrap()),
+                completed: row.completed,
+                assigned_at: row.assigned_at,
+            },
+            user: User {
+                id: Uuid::parse_str(&row.u_id).unwrap(),
+                username: row.u_username,
+                email: row.u_email,
+                created_at: row.u_created_at,
+                updated_at: row.u_updated_at,
+            },
+        })
+        .collect())
 }
 
 pub async fn complete_punishment(

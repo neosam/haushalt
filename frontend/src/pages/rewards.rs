@@ -1,6 +1,6 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{CreateRewardRequest, Reward};
+use shared::{CreateRewardRequest, Reward, UserReward, UserRewardWithUser};
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
@@ -12,6 +12,8 @@ pub fn RewardsPage() -> impl IntoView {
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
     let rewards = create_rw_signal(Vec::<Reward>::new());
+    let my_rewards = create_rw_signal(Vec::<UserReward>::new());
+    let all_user_rewards = create_rw_signal(Vec::<UserRewardWithUser>::new());
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
     let success = create_rw_signal(Option::<String>::None);
@@ -30,8 +32,12 @@ pub fn RewardsPage() -> impl IntoView {
             return;
         }
 
+        let id_for_rewards = id.clone();
+        let id_for_my_rewards = id.clone();
+        let id_for_all_user_rewards = id.clone();
+
         wasm_bindgen_futures::spawn_local(async move {
-            match ApiClient::list_rewards(&id).await {
+            match ApiClient::list_rewards(&id_for_rewards).await {
                 Ok(r) => {
                     rewards.set(r);
                     loading.set(false);
@@ -40,6 +46,20 @@ pub fn RewardsPage() -> impl IntoView {
                     error.set(Some(e));
                     loading.set(false);
                 }
+            }
+        });
+
+        // Load my rewards
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(r) = ApiClient::list_user_rewards(&id_for_my_rewards).await {
+                my_rewards.set(r);
+            }
+        });
+
+        // Load all user rewards in household
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(r) = ApiClient::list_all_user_rewards(&id_for_all_user_rewards).await {
+                all_user_rewards.set(r);
             }
         });
     });
@@ -75,8 +95,26 @@ pub fn RewardsPage() -> impl IntoView {
         let id = household_id();
         wasm_bindgen_futures::spawn_local(async move {
             match ApiClient::purchase_reward(&id, &reward_id).await {
-                Ok(_) => {
+                Ok(user_reward) => {
+                    my_rewards.update(|r| r.push(user_reward));
                     success.set(Some("Reward purchased successfully!".to_string()));
+                }
+                Err(e) => error.set(Some(e)),
+            }
+        });
+    };
+
+    let on_redeem = move |user_reward_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::redeem_reward(&id, &user_reward_id).await {
+                Ok(updated) => {
+                    my_rewards.update(|r| {
+                        if let Some(pos) = r.iter().position(|ur| ur.id.to_string() == user_reward_id) {
+                            r[pos] = updated;
+                        }
+                    });
+                    success.set(Some("Reward redeemed!".to_string()));
                 }
                 Err(e) => error.set(Some(e)),
             }
@@ -113,11 +151,66 @@ pub fn RewardsPage() -> impl IntoView {
         </Show>
 
         <Show when=move || !loading.get() fallback=|| ()>
+            // My Rewards Section
+            <Show when=move || !my_rewards.get().is_empty() fallback=|| ()>
+                <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--success-color);">
+                    <div class="card-header">
+                        <h3 class="card-title">"My Rewards"</h3>
+                    </div>
+                    {move || {
+                        let all_rewards = rewards.get();
+                        my_rewards.get().into_iter().map(|user_reward| {
+                            let reward_name = all_rewards.iter()
+                                .find(|r| r.id == user_reward.reward_id)
+                                .map(|r| r.name.clone())
+                                .unwrap_or_else(|| "Unknown Reward".to_string());
+                            let reward_desc = all_rewards.iter()
+                                .find(|r| r.id == user_reward.reward_id)
+                                .map(|r| r.description.clone())
+                                .unwrap_or_default();
+                            let ur_id = user_reward.id.to_string();
+                            let redeem_id = ur_id.clone();
+                            let is_redeemed = user_reward.redeemed;
+                            let is_purchased = user_reward.is_purchased;
+                            view! {
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
+                                    <div>
+                                        <div style="font-weight: 600;">{reward_name}</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                            {if is_purchased { "Purchased" } else { "Assigned" }}
+                                            {if is_redeemed { " • Redeemed" } else { "" }}
+                                            {if !reward_desc.is_empty() { format!(" • {}", reward_desc) } else { String::new() }}
+                                        </div>
+                                    </div>
+                                    {if !is_redeemed {
+                                        view! {
+                                            <button
+                                                class="btn btn-success"
+                                                style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                                on:click=move |_| on_redeem(redeem_id.clone())
+                                            >
+                                                "Redeem"
+                                            </button>
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <span class="badge" style="background: var(--success-color); color: white;">"Redeemed"</span>
+                                        }.into_view()
+                                    }}
+                                </div>
+                            }
+                        }).collect_view()
+                    }}
+                </div>
+            </Show>
+
             <div style="margin-bottom: 1rem;">
                 <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
                     "+ Create Reward"
                 </button>
             </div>
+
+            <h3 style="margin-bottom: 1rem; color: var(--text-muted);">"Available Rewards"</h3>
 
             {move || {
                 let r = rewards.get();
@@ -177,6 +270,44 @@ pub fn RewardsPage() -> impl IntoView {
                     }.into_view()
                 }
             }}
+
+            // All Assigned Rewards Section
+            <Show when=move || !all_user_rewards.get().is_empty() fallback=|| ()>
+                <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: var(--text-muted);">"Assigned Rewards (All Members)"</h3>
+                <div class="card">
+                    {move || {
+                        let all_rewards = rewards.get();
+                        all_user_rewards.get().into_iter().map(|user_reward_with_user| {
+                            let reward_name = all_rewards.iter()
+                                .find(|r| r.id == user_reward_with_user.user_reward.reward_id)
+                                .map(|r| r.name.clone())
+                                .unwrap_or_else(|| "Unknown Reward".to_string());
+                            let is_redeemed = user_reward_with_user.user_reward.redeemed;
+                            let is_purchased = user_reward_with_user.user_reward.is_purchased;
+                            view! {
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
+                                    <div>
+                                        <div style="font-weight: 600;">{reward_name}</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                            "Assigned to: " {user_reward_with_user.user.username}
+                                            {if is_purchased { " (Purchased)" } else { " (Assigned)" }}
+                                        </div>
+                                    </div>
+                                    {if is_redeemed {
+                                        view! {
+                                            <span class="badge" style="background: var(--success-color); color: white;">"Redeemed"</span>
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <span class="badge" style="background: var(--warning-color); color: white;">"Pending"</span>
+                                        }.into_view()
+                                    }}
+                                </div>
+                            }
+                        }).collect_view()
+                    }}
+                </div>
+            </Show>
         </Show>
 
         <Show when=move || show_create_modal.get() fallback=|| ()>
