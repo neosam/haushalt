@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::calendar_picker::CalendarPicker;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn TaskModal(
@@ -263,19 +264,31 @@ pub fn TaskModal(
 
     let close = move |_| on_close.call(());
 
-    let modal_title = if is_edit { "Edit Task" } else { "Create Task" };
-    let submit_button_text = if is_edit { "Save Changes" } else { "Create" };
-    let saving_text = if is_edit { "Saving..." } else { "Creating..." };
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n.clone());
+
+    let modal_title = if is_edit { i18n.t("task_modal.edit_title") } else { i18n.t("task_modal.create_title") };
+    let submit_button_text = if is_edit { i18n.t("task_modal.save_changes") } else { i18n.t("common.create") };
+    let saving_text = if is_edit { i18n.t("task_modal.saving") } else { i18n.t("task_modal.creating") };
+
+    // Weekday labels - short forms for checkbox display
+    let weekday_mon = i18n.t("weekday.monday").chars().take(3).collect::<String>();
+    let weekday_tue = i18n.t("weekday.tuesday").chars().take(3).collect::<String>();
+    let weekday_wed = i18n.t("weekday.wednesday").chars().take(3).collect::<String>();
+    let weekday_thu = i18n.t("weekday.thursday").chars().take(3).collect::<String>();
+    let weekday_fri = i18n.t("weekday.friday").chars().take(3).collect::<String>();
+    let weekday_sat = i18n.t("weekday.saturday").chars().take(3).collect::<String>();
+    let weekday_sun = i18n.t("weekday.sunday").chars().take(3).collect::<String>();
 
     // Weekday labels and values (0 = Sunday, 1 = Monday, etc.)
-    let weekdays: [(u8, &str); 7] = [
-        (1, "Mon"),
-        (2, "Tue"),
-        (3, "Wed"),
-        (4, "Thu"),
-        (5, "Fri"),
-        (6, "Sat"),
-        (0, "Sun"),
+    let weekdays: [(u8, String); 7] = [
+        (1, weekday_mon),
+        (2, weekday_tue),
+        (3, weekday_wed),
+        (4, weekday_thu),
+        (5, weekday_fri),
+        (6, weekday_sat),
+        (0, weekday_sun),
     ];
 
     view! {
@@ -294,12 +307,12 @@ pub fn TaskModal(
                     <div style="padding: 1rem; max-height: 60vh; overflow-y: auto;">
                         // Basic Info Section
                         <div class="form-group">
-                            <label class="form-label" for="task-title">"Title"</label>
+                            <label class="form-label" for="task-title">{i18n_stored.get_value().t("task_modal.title_label")}</label>
                             <input
                                 type="text"
                                 id="task-title"
                                 class="form-input"
-                                placeholder="e.g., Take out the trash"
+                                placeholder=i18n_stored.get_value().t("task_modal.title_placeholder")
                                 prop:value=move || title.get()
                                 on:input=move |ev| title.set(event_target_value(&ev))
                                 required
@@ -307,35 +320,41 @@ pub fn TaskModal(
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="task-description">"Description"</label>
+                            <label class="form-label" for="task-description">{i18n_stored.get_value().t("task_modal.description_label")}</label>
                             <input
                                 type="text"
                                 id="task-description"
                                 class="form-input"
-                                placeholder="Optional description"
+                                placeholder=i18n_stored.get_value().t("task_modal.description_placeholder")
                                 prop:value=move || description.get()
                                 on:input=move |ev| description.set(event_target_value(&ev))
                             />
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="task-recurrence">"Recurrence"</label>
+                            <label class="form-label" for="task-recurrence">{i18n_stored.get_value().t("task_modal.recurrence_label")}</label>
                             {
                                 let initial_recurrence = task.as_ref()
                                     .map(|t| t.recurrence_type.as_str().to_string())
                                     .unwrap_or_else(|| "daily".to_string());
+                                let onetime_label = i18n_stored.get_value().t("recurrence.onetime_freeform");
+                                let daily_label = i18n_stored.get_value().t("recurrence.daily");
+                                let weekly_label = i18n_stored.get_value().t("recurrence.weekly");
+                                let monthly_label = i18n_stored.get_value().t("recurrence.monthly");
+                                let specific_days_label = i18n_stored.get_value().t("recurrence.specific_days");
+                                let custom_dates_label = i18n_stored.get_value().t("recurrence.custom_dates");
                                 view! {
                                     <select
                                         id="task-recurrence"
                                         class="form-select"
                                         on:change=move |ev| recurrence_type.set(event_target_value(&ev))
                                     >
-                                        <option value="onetime" selected=initial_recurrence == "onetime">"None (Free-form / One-time)"</option>
-                                        <option value="daily" selected=initial_recurrence == "daily">"Daily"</option>
-                                        <option value="weekly" selected=initial_recurrence == "weekly">"Weekly"</option>
-                                        <option value="monthly" selected=initial_recurrence == "monthly">"Monthly"</option>
-                                        <option value="weekdays" selected=initial_recurrence == "weekdays">"Specific Days"</option>
-                                        <option value="custom" selected=initial_recurrence == "custom">"Custom Dates"</option>
+                                        <option value="onetime" selected=initial_recurrence == "onetime">{onetime_label}</option>
+                                        <option value="daily" selected=initial_recurrence == "daily">{daily_label}</option>
+                                        <option value="weekly" selected=initial_recurrence == "weekly">{weekly_label}</option>
+                                        <option value="monthly" selected=initial_recurrence == "monthly">{monthly_label}</option>
+                                        <option value="weekdays" selected=initial_recurrence == "weekdays">{specific_days_label}</option>
+                                        <option value="custom" selected=initial_recurrence == "custom">{custom_dates_label}</option>
                                     </select>
                                 }
                             }
@@ -343,96 +362,128 @@ pub fn TaskModal(
 
                         // Single weekday selection (shown when recurrence_type == "weekly")
                         <Show when=move || recurrence_type.get() == "weekly" fallback=|| ()>
-                            <div class="form-group">
-                                <label class="form-label" for="task-weekday">"Day of Week"</label>
-                                <select
-                                    id="task-weekday"
-                                    class="form-select"
-                                    on:change=move |ev| {
-                                        if let Ok(day) = event_target_value(&ev).parse::<u8>() {
-                                            selected_weekday.set(day);
-                                        }
-                                    }
-                                >
-                                    <option value="0" selected=move || selected_weekday.get() == 0>"Sunday"</option>
-                                    <option value="1" selected=move || selected_weekday.get() == 1>"Monday"</option>
-                                    <option value="2" selected=move || selected_weekday.get() == 2>"Tuesday"</option>
-                                    <option value="3" selected=move || selected_weekday.get() == 3>"Wednesday"</option>
-                                    <option value="4" selected=move || selected_weekday.get() == 4>"Thursday"</option>
-                                    <option value="5" selected=move || selected_weekday.get() == 5>"Friday"</option>
-                                    <option value="6" selected=move || selected_weekday.get() == 6>"Saturday"</option>
-                                </select>
-                                <small class="form-hint">"Task will be due on this day each week"</small>
-                            </div>
+                            {
+                                let day_of_week_label = i18n_stored.get_value().t("task_modal.day_of_week");
+                                let weekly_hint = i18n_stored.get_value().t("task_modal.weekly_hint");
+                                let sunday = i18n_stored.get_value().t("weekday.sunday");
+                                let monday = i18n_stored.get_value().t("weekday.monday");
+                                let tuesday = i18n_stored.get_value().t("weekday.tuesday");
+                                let wednesday = i18n_stored.get_value().t("weekday.wednesday");
+                                let thursday = i18n_stored.get_value().t("weekday.thursday");
+                                let friday = i18n_stored.get_value().t("weekday.friday");
+                                let saturday = i18n_stored.get_value().t("weekday.saturday");
+                                view! {
+                                    <div class="form-group">
+                                        <label class="form-label" for="task-weekday">{day_of_week_label}</label>
+                                        <select
+                                            id="task-weekday"
+                                            class="form-select"
+                                            on:change=move |ev| {
+                                                if let Ok(day) = event_target_value(&ev).parse::<u8>() {
+                                                    selected_weekday.set(day);
+                                                }
+                                            }
+                                        >
+                                            <option value="0" selected=move || selected_weekday.get() == 0>{sunday.clone()}</option>
+                                            <option value="1" selected=move || selected_weekday.get() == 1>{monday.clone()}</option>
+                                            <option value="2" selected=move || selected_weekday.get() == 2>{tuesday.clone()}</option>
+                                            <option value="3" selected=move || selected_weekday.get() == 3>{wednesday.clone()}</option>
+                                            <option value="4" selected=move || selected_weekday.get() == 4>{thursday.clone()}</option>
+                                            <option value="5" selected=move || selected_weekday.get() == 5>{friday.clone()}</option>
+                                            <option value="6" selected=move || selected_weekday.get() == 6>{saturday.clone()}</option>
+                                        </select>
+                                        <small class="form-hint">{weekly_hint}</small>
+                                    </div>
+                                }
+                            }
                         </Show>
 
                         // Day of month selection (shown when recurrence_type == "monthly")
                         <Show when=move || recurrence_type.get() == "monthly" fallback=|| ()>
-                            <div class="form-group">
-                                <label class="form-label" for="task-monthday">"Day of Month"</label>
-                                <input
-                                    type="number"
-                                    id="task-monthday"
-                                    class="form-input"
-                                    min="1"
-                                    max="31"
-                                    prop:value=move || selected_month_day.get().to_string()
-                                    on:input=move |ev| {
-                                        if let Ok(day) = event_target_value(&ev).parse::<u8>() {
-                                            let clamped = day.clamp(1, 31);
-                                            selected_month_day.set(clamped);
-                                        }
-                                    }
-                                />
-                                <small class="form-hint">"Task will be due on this day each month (adjusted for shorter months)"</small>
-                            </div>
+                            {
+                                let day_of_month_label = i18n_stored.get_value().t("task_modal.day_of_month");
+                                let monthly_hint = i18n_stored.get_value().t("task_modal.monthly_hint");
+                                view! {
+                                    <div class="form-group">
+                                        <label class="form-label" for="task-monthday">{day_of_month_label}</label>
+                                        <input
+                                            type="number"
+                                            id="task-monthday"
+                                            class="form-input"
+                                            min="1"
+                                            max="31"
+                                            prop:value=move || selected_month_day.get().to_string()
+                                            on:input=move |ev| {
+                                                if let Ok(day) = event_target_value(&ev).parse::<u8>() {
+                                                    let clamped = day.clamp(1, 31);
+                                                    selected_month_day.set(clamped);
+                                                }
+                                            }
+                                        />
+                                        <small class="form-hint">{monthly_hint}</small>
+                                    </div>
+                                }
+                            }
                         </Show>
 
                         // Multiple weekday selection (shown when recurrence_type == "weekdays")
                         <Show when=move || recurrence_type.get() == "weekdays" fallback=|| ()>
-                            <div class="form-group">
-                                <label class="form-label">"Select Days"</label>
-                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                                    {weekdays.into_iter().map(|(day_num, day_name)| {
-                                        view! {
-                                            <label style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; border: 1px solid var(--card-border); border-radius: var(--border-radius); cursor: pointer; user-select: none;">
-                                                <input
-                                                    type="checkbox"
-                                                    prop:checked=move || selected_weekdays.get().contains(&day_num)
-                                                    on:change=move |ev| {
-                                                        let checked = event_target_checked(&ev);
-                                                        selected_weekdays.update(|days| {
-                                                            if checked {
-                                                                if !days.contains(&day_num) {
-                                                                    days.push(day_num);
-                                                                    days.sort();
-                                                                }
-                                                            } else {
-                                                                days.retain(|d| *d != day_num);
+                            {
+                                let select_days_label = i18n_stored.get_value().t("task_modal.select_days");
+                                let weekdays_hint = i18n_stored.get_value().t("task_modal.weekdays_hint");
+                                let weekdays_cloned = weekdays.clone();
+                                view! {
+                                    <div class="form-group">
+                                        <label class="form-label">{select_days_label}</label>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                                            {weekdays_cloned.into_iter().map(|(day_num, day_name)| {
+                                                view! {
+                                                    <label style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; border: 1px solid var(--card-border); border-radius: var(--border-radius); cursor: pointer; user-select: none;">
+                                                        <input
+                                                            type="checkbox"
+                                                            prop:checked=move || selected_weekdays.get().contains(&day_num)
+                                                            on:change=move |ev| {
+                                                                let checked = event_target_checked(&ev);
+                                                                selected_weekdays.update(|days| {
+                                                                    if checked {
+                                                                        if !days.contains(&day_num) {
+                                                                            days.push(day_num);
+                                                                            days.sort();
+                                                                        }
+                                                                    } else {
+                                                                        days.retain(|d| *d != day_num);
+                                                                    }
+                                                                });
                                                             }
-                                                        });
-                                                    }
-                                                />
-                                                <span>{day_name}</span>
-                                            </label>
-                                        }
-                                    }).collect_view()}
-                                </div>
-                                <small class="form-hint">"Task will be due on selected days each week"</small>
-                            </div>
+                                                        />
+                                                        <span>{day_name}</span>
+                                                    </label>
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                        <small class="form-hint">{weekdays_hint}</small>
+                                    </div>
+                                }
+                            }
                         </Show>
 
                         // Custom dates picker (shown when recurrence_type == "custom")
                         <Show when=move || recurrence_type.get() == "custom" fallback=|| ()>
-                            <div class="form-group">
-                                <label class="form-label">"Custom Dates"</label>
-                                <CalendarPicker selected_dates=selected_custom_dates />
-                                <small class="form-hint">"Task will be due on the specific dates you add"</small>
-                            </div>
+                            {
+                                let custom_dates_label = i18n_stored.get_value().t("task_modal.custom_dates");
+                                let custom_dates_hint = i18n_stored.get_value().t("task_modal.custom_dates_hint");
+                                view! {
+                                    <div class="form-group">
+                                        <label class="form-label">{custom_dates_label}</label>
+                                        <CalendarPicker selected_dates=selected_custom_dates />
+                                        <small class="form-hint">{custom_dates_hint}</small>
+                                    </div>
+                                }
+                            }
                         </Show>
 
                         <div class="form-group">
-                            <label class="form-label" for="task-target-count">"Target Count"</label>
+                            <label class="form-label" for="task-target-count">{i18n_stored.get_value().t("task_modal.target_count")}</label>
                             <input
                                 type="number"
                                 id="task-target-count"
@@ -441,7 +492,7 @@ pub fn TaskModal(
                                 prop:value=move || target_count.get()
                                 on:input=move |ev| target_count.set(event_target_value(&ev))
                             />
-                            <small class="form-hint">"How many times per period (1 for regular tasks, more for habits)"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.target_count_hint")}</small>
                         </div>
 
                         <div class="form-group">
@@ -451,9 +502,9 @@ pub fn TaskModal(
                                     prop:checked=move || allow_exceed_target.get()
                                     on:change=move |ev| allow_exceed_target.set(event_target_checked(&ev))
                                 />
-                                <span>"Allow exceeding target"</span>
+                                <span>{i18n_stored.get_value().t("task_modal.allow_exceed")}</span>
                             </label>
-                            <small class="form-hint">"When unchecked, the complete button is disabled once the target is reached"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.allow_exceed_hint")}</small>
                         </div>
 
                         <div class="form-group">
@@ -463,40 +514,48 @@ pub fn TaskModal(
                                     prop:checked=move || requires_review.get()
                                     on:change=move |ev| requires_review.set(event_target_checked(&ev))
                                 />
-                                <span>"Require review"</span>
+                                <span>{i18n_stored.get_value().t("task_modal.require_review")}</span>
                             </label>
-                            <small class="form-hint">"When enabled, completions must be approved by an owner before points/rewards are finalized"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.require_review_hint")}</small>
                         </div>
 
                         // Assignment Section
                         <div class="form-group">
-                            <label class="form-label" for="task-assigned">"Assigned To"</label>
-                            <select
-                                id="task-assigned"
-                                class="form-select"
-                                prop:value=move || assigned_user.get()
-                                on:change=move |ev| assigned_user.set(event_target_value(&ev))
-                            >
-                                <option value="" selected=initial_assigned_user_id.is_none()>"Not assigned (all members)"</option>
-                                {members.clone().into_iter().map(|m| {
-                                    let user_id = m.user.id.to_string();
-                                    let is_selected = initial_assigned_user_id.as_ref() == Some(&user_id);
-                                    let name = m.user.username.clone();
-                                    view! {
-                                        <option value=user_id selected=is_selected>{name}</option>
-                                    }
-                                }).collect_view()}
-                            </select>
-                            <small class="form-hint">"If assigned, only this user is penalized for missed tasks"</small>
+                            <label class="form-label" for="task-assigned">{i18n_stored.get_value().t("task_modal.assigned_to")}</label>
+                            {
+                                let not_assigned_label = i18n_stored.get_value().t("task_modal.not_assigned");
+                                let assigned_hint = i18n_stored.get_value().t("task_modal.assigned_hint");
+                                view! {
+                                    <select
+                                        id="task-assigned"
+                                        class="form-select"
+                                        prop:value=move || assigned_user.get()
+                                        on:change=move |ev| assigned_user.set(event_target_value(&ev))
+                                    >
+                                        <option value="" selected=initial_assigned_user_id.is_none()>{not_assigned_label}</option>
+                                        {members.clone().into_iter().map(|m| {
+                                            let user_id = m.user.id.to_string();
+                                            let is_selected = initial_assigned_user_id.as_ref() == Some(&user_id);
+                                            let name = m.user.username.clone();
+                                            view! {
+                                                <option value=user_id selected=is_selected>{name}</option>
+                                            }
+                                        }).collect_view()}
+                                    </select>
+                                    <small class="form-hint">{assigned_hint}</small>
+                                }
+                            }
                         </div>
 
                         // Rewards Section
                         <div class="form-group">
-                            <label class="form-label">"Rewards on Completion"</label>
+                            <label class="form-label">{i18n_stored.get_value().t("task_modal.rewards_on_completion")}</label>
                             <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
                                 // Add new reward row
                                 {
                                     let household_rewards_for_dropdown = household_rewards.clone();
+                                    let select_reward_label = i18n_stored.get_value().t("task_modal.select_reward");
+                                    let add_label = i18n_stored.get_value().t("task_modal.add");
                                     view! {
                                         <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
                                             <select
@@ -505,7 +564,7 @@ pub fn TaskModal(
                                                 prop:value=move || selected_new_reward.get()
                                                 on:change=move |ev| selected_new_reward.set(event_target_value(&ev))
                                             >
-                                                <option value="">"Select a reward..."</option>
+                                                <option value="">{select_reward_label.clone()}</option>
                                                 {move || {
                                                     let current_reward_ids: Vec<String> = selected_rewards.get().iter().map(|(id, _)| id.clone()).collect();
                                                     household_rewards_for_dropdown.iter()
@@ -551,7 +610,7 @@ pub fn TaskModal(
                                                     }
                                                 }
                                             >
-                                                "Add"
+                                                {add_label}
                                             </button>
                                         </div>
                                     }
@@ -560,20 +619,25 @@ pub fn TaskModal(
                                 // List of linked rewards
                                 {
                                     let household_rewards_for_list = household_rewards.clone();
+                                    let no_rewards_linked = i18n_stored.get_value().t("task_modal.no_rewards_linked");
+                                    let unknown_label = i18n_stored.get_value().t("task_modal.unknown");
+                                    let remove_label = i18n_stored.get_value().t("task_modal.remove");
                                     view! {
                                         <div>
                                             {move || {
                                                 let rewards = selected_rewards.get();
                                                 if rewards.is_empty() {
-                                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">"No rewards linked"</p> }.into_view()
+                                                    let no_rewards_linked = no_rewards_linked.clone();
+                                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">{no_rewards_linked}</p> }.into_view()
                                                 } else {
                                                     rewards.iter().map(|(reward_id, amount)| {
                                                         let reward_name = household_rewards_for_list.iter()
                                                             .find(|r| r.id.to_string() == *reward_id)
                                                             .map(|r| r.name.clone())
-                                                            .unwrap_or_else(|| "Unknown".to_string());
+                                                            .unwrap_or_else(|| unknown_label.clone());
                                                         let reward_id_for_remove = reward_id.clone();
                                                         let amount_display = *amount;
+                                                        let remove_label = remove_label.clone();
                                                         view! {
                                                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
                                                                 <span>
@@ -594,7 +658,7 @@ pub fn TaskModal(
                                                                         });
                                                                     }
                                                                 >
-                                                                    "Remove"
+                                                                    {remove_label}
                                                                 </button>
                                                             </div>
                                                         }
@@ -605,16 +669,18 @@ pub fn TaskModal(
                                     }
                                 }
                             </div>
-                            <small class="form-hint">"Rewards will be automatically assigned when this task is completed"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.rewards_hint")}</small>
                         </div>
 
                         // Punishments Section
                         <div class="form-group">
-                            <label class="form-label">"Punishments on Miss"</label>
+                            <label class="form-label">{i18n_stored.get_value().t("task_modal.punishments_on_miss")}</label>
                             <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
                                 // Add new punishment row
                                 {
                                     let household_punishments_for_dropdown = household_punishments.clone();
+                                    let select_punishment_label = i18n_stored.get_value().t("task_modal.select_punishment");
+                                    let add_label = i18n_stored.get_value().t("task_modal.add");
                                     view! {
                                         <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
                                             <select
@@ -623,7 +689,7 @@ pub fn TaskModal(
                                                 prop:value=move || selected_new_punishment.get()
                                                 on:change=move |ev| selected_new_punishment.set(event_target_value(&ev))
                                             >
-                                                <option value="">"Select a punishment..."</option>
+                                                <option value="">{select_punishment_label.clone()}</option>
                                                 {move || {
                                                     let current_punishment_ids: Vec<String> = selected_punishments.get().iter().map(|(id, _)| id.clone()).collect();
                                                     household_punishments_for_dropdown.iter()
@@ -669,7 +735,7 @@ pub fn TaskModal(
                                                     }
                                                 }
                                             >
-                                                "Add"
+                                                {add_label}
                                             </button>
                                         </div>
                                     }
@@ -678,20 +744,25 @@ pub fn TaskModal(
                                 // List of linked punishments
                                 {
                                     let household_punishments_for_list = household_punishments.clone();
+                                    let no_punishments_linked = i18n_stored.get_value().t("task_modal.no_punishments_linked");
+                                    let unknown_label = i18n_stored.get_value().t("task_modal.unknown");
+                                    let remove_label = i18n_stored.get_value().t("task_modal.remove");
                                     view! {
                                         <div>
                                             {move || {
                                                 let punishments = selected_punishments.get();
                                                 if punishments.is_empty() {
-                                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">"No punishments linked"</p> }.into_view()
+                                                    let no_punishments_linked = no_punishments_linked.clone();
+                                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">{no_punishments_linked}</p> }.into_view()
                                                 } else {
                                                     punishments.iter().map(|(punishment_id, amount)| {
                                                         let punishment_name = household_punishments_for_list.iter()
                                                             .find(|p| p.id.to_string() == *punishment_id)
                                                             .map(|p| p.name.clone())
-                                                            .unwrap_or_else(|| "Unknown".to_string());
+                                                            .unwrap_or_else(|| unknown_label.clone());
                                                         let punishment_id_for_remove = punishment_id.clone();
                                                         let amount_display = *amount;
+                                                        let remove_label = remove_label.clone();
                                                         view! {
                                                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
                                                                 <span>
@@ -712,7 +783,7 @@ pub fn TaskModal(
                                                                         });
                                                                     }
                                                                 >
-                                                                    "Remove"
+                                                                    {remove_label}
                                                                 </button>
                                                             </div>
                                                         }
@@ -723,7 +794,7 @@ pub fn TaskModal(
                                     }
                                 }
                             </div>
-                            <small class="form-hint">"Punishments will be automatically assigned when this task is missed"</small>
+                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.punishments_hint")}</small>
                         </div>
                     </div>
 
@@ -734,14 +805,14 @@ pub fn TaskModal(
                             on:click=move |_| on_close.call(())
                             disabled=move || saving.get()
                         >
-                            "Cancel"
+                            {i18n_stored.get_value().t("common.cancel")}
                         </button>
                         <button
                             type="submit"
                             class="btn btn-primary"
                             disabled=move || saving.get()
                         >
-                            {move || if saving.get() { saving_text } else { submit_button_text }}
+                            {move || if saving.get() { saving_text.clone() } else { submit_button_text.clone() }}
                         </button>
                     </div>
                 </form>

@@ -1,32 +1,45 @@
 use chrono::{Datelike, NaiveDate, Weekday};
 use leptos::*;
-use shared::TaskWithStatus;
+use shared::{RecurrenceType, TaskWithStatus};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use crate::i18n::use_i18n;
+use crate::i18n::{use_i18n, I18nContext};
 use crate::utils::timezone::today_in_tz;
 
-/// Format a next due date for display
-fn format_next_due_date(date: NaiveDate, today: NaiveDate) -> String {
+/// Get the translation key for a weekday
+fn weekday_translation_key(weekday: Weekday) -> &'static str {
+    match weekday {
+        Weekday::Mon => "weekday.monday",
+        Weekday::Tue => "weekday.tuesday",
+        Weekday::Wed => "weekday.wednesday",
+        Weekday::Thu => "weekday.thursday",
+        Weekday::Fri => "weekday.friday",
+        Weekday::Sat => "weekday.saturday",
+        Weekday::Sun => "weekday.sunday",
+    }
+}
+
+/// Get the translation key for a recurrence type
+fn recurrence_type_translation_key(recurrence_type: &RecurrenceType) -> &'static str {
+    match recurrence_type {
+        RecurrenceType::Daily => "recurrence.daily",
+        RecurrenceType::Weekly => "recurrence.weekly",
+        RecurrenceType::Monthly => "recurrence.monthly",
+        RecurrenceType::Weekdays => "recurrence.weekdays",
+        RecurrenceType::Custom => "recurrence.custom",
+        RecurrenceType::OneTime => "recurrence.onetime",
+    }
+}
+
+/// Format a next due date for display with translations
+fn format_next_due_date(date: NaiveDate, today: NaiveDate, i18n: &I18nContext) -> String {
     let days_until = (date - today).num_days();
 
     match days_until {
-        0 => "Today".to_string(),
-        1 => "Tomorrow".to_string(),
-        2..=6 => {
-            // Show weekday name
-            match date.weekday() {
-                Weekday::Mon => "Monday",
-                Weekday::Tue => "Tuesday",
-                Weekday::Wed => "Wednesday",
-                Weekday::Thu => "Thursday",
-                Weekday::Fri => "Friday",
-                Weekday::Sat => "Saturday",
-                Weekday::Sun => "Sunday",
-            }
-            .to_string()
-        }
+        0 => i18n.t("dates.today"),
+        1 => i18n.t("dates.tomorrow"),
+        2..=6 => i18n.t(weekday_translation_key(date.weekday())),
         _ => {
             // Show date
             date.format("%b %d").to_string()
@@ -41,6 +54,9 @@ pub fn TaskCard(
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let is_target_met = task.is_target_met();
     let can_complete = task.can_complete();
     let task_id = task.task.id.to_string();
@@ -85,7 +101,22 @@ pub fn TaskCard(
 
     // Format next due date using household timezone
     let today = today_in_tz(&timezone);
-    let next_due_display = task.next_due_date.map(|d| format_next_due_date(d, today));
+    let next_due_display = task.next_due_date.map(|d| format_next_due_date(d, today, &i18n_stored.get_value()));
+
+    // Format due label
+    let due_label = i18n_stored.get_value().t("dates.due");
+    let due_display = next_due_display.map(|due| format!(" | {}: {}", due_label, due)).unwrap_or_default();
+
+    // Format streak label
+    let streak_label = i18n_stored.get_value().t("dates.streak");
+    let streak_display = if task.current_streak > 0 {
+        format!(" | {}: {}", streak_label, task.current_streak)
+    } else {
+        String::new()
+    };
+
+    // Translate recurrence type
+    let recurrence_display = i18n_stored.get_value().t(recurrence_type_translation_key(&task.task.recurrence_type));
 
     view! {
         <div class=card_class>
@@ -94,13 +125,9 @@ pub fn TaskCard(
                     {task.task.title.clone()}
                 </div>
                 <div class="task-meta">
-                    {format!("{:?}", task.task.recurrence_type)}
-                    {next_due_display.map(|due| format!(" | Due: {}", due)).unwrap_or_default()}
-                    {if task.current_streak > 0 {
-                        format!(" | Streak: {}", task.current_streak)
-                    } else {
-                        String::new()
-                    }}
+                    {recurrence_display}
+                    {due_display}
+                    {streak_display}
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -184,17 +211,9 @@ impl DueDateGroup {
                     0 => DueDateGroup::Today,
                     1 => DueDateGroup::Tomorrow,
                     2..=6 => {
-                        let weekday_name = match d.weekday() {
-                            Weekday::Mon => "Monday",
-                            Weekday::Tue => "Tuesday",
-                            Weekday::Wed => "Wednesday",
-                            Weekday::Thu => "Thursday",
-                            Weekday::Fri => "Friday",
-                            Weekday::Sat => "Saturday",
-                            Weekday::Sun => "Sunday",
-                        }
-                        .to_string();
-                        DueDateGroup::Weekday(days_until as u32, weekday_name)
+                        // Store the weekday for later translation
+                        let weekday_key = weekday_translation_key(d.weekday()).to_string();
+                        DueDateGroup::Weekday(days_until as u32, weekday_key)
                     }
                     _ => DueDateGroup::Later(d),
                 }
@@ -202,13 +221,13 @@ impl DueDateGroup {
         }
     }
 
-    fn title(&self) -> String {
+    fn title(&self, i18n: &I18nContext) -> String {
         match self {
-            DueDateGroup::Today => "Today".to_string(),
-            DueDateGroup::Tomorrow => "Tomorrow".to_string(),
-            DueDateGroup::Weekday(_, name) => name.clone(),
+            DueDateGroup::Today => i18n.t("dates.today"),
+            DueDateGroup::Tomorrow => i18n.t("dates.tomorrow"),
+            DueDateGroup::Weekday(_, key) => i18n.t(key),
             DueDateGroup::Later(date) => date.format("%b %d").to_string(),
-            DueDateGroup::NoSchedule => "No Schedule".to_string(),
+            DueDateGroup::NoSchedule => i18n.t("dates.no_schedule"),
         }
     }
 }
@@ -251,7 +270,7 @@ pub fn GroupedTaskList(
                 view! {
                     <div>
                         {groups.into_iter().map(|(group, group_tasks)| {
-                            let title = group.title();
+                            let title = group.title(&i18n_stored.get_value());
                             let is_today = matches!(group, DueDateGroup::Today);
                             let tz_inner = tz.clone();
                             view! {

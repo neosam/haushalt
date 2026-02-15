@@ -533,6 +533,12 @@ pub fn HouseholdPage() -> impl IntoView {
                                     let m = members.get();
                                     let can_manage = current_user_can_manage.get();
                                     let current_settings = settings.get();
+                                    let adjust_points_title = i18n_stored.get_value().t("buttons.adjust_points");
+                                    let assign_reward_title = i18n_stored.get_value().t("buttons.assign_reward");
+                                    let assign_punishment_title = i18n_stored.get_value().t("buttons.assign_punishment");
+                                    let role_owner_default = i18n_stored.get_value().t("roles.owner");
+                                    let role_admin_default = i18n_stored.get_value().t("roles.admin");
+                                    let role_member_default = i18n_stored.get_value().t("roles.member");
                                     view! {
                                         <div>
                                             {m.into_iter().map(|member| {
@@ -542,15 +548,18 @@ pub fn HouseholdPage() -> impl IntoView {
                                                     shared::Role::Member => "badge badge-member",
                                                 };
                                                 let role_text = current_settings.as_ref()
-                                                    .map(|s| match member.membership.role {
-                                                        shared::Role::Owner => s.role_label_owner.clone(),
-                                                        shared::Role::Admin => s.role_label_admin.clone(),
-                                                        shared::Role::Member => s.role_label_member.clone(),
+                                                    .and_then(|s| {
+                                                        let label = match member.membership.role {
+                                                            shared::Role::Owner => &s.role_label_owner,
+                                                            shared::Role::Admin => &s.role_label_admin,
+                                                            shared::Role::Member => &s.role_label_member,
+                                                        };
+                                                        if label.is_empty() { None } else { Some(label.clone()) }
                                                     })
                                                     .unwrap_or_else(|| match member.membership.role {
-                                                        shared::Role::Owner => "Owner".to_string(),
-                                                        shared::Role::Admin => "Admin".to_string(),
-                                                        shared::Role::Member => "Member".to_string(),
+                                                        shared::Role::Owner => role_owner_default.clone(),
+                                                        shared::Role::Admin => role_admin_default.clone(),
+                                                        shared::Role::Member => role_member_default.clone(),
                                                     });
                                                 let user_id = member.user.id.to_string();
                                                 let username = member.user.username.clone();
@@ -560,6 +569,9 @@ pub fn HouseholdPage() -> impl IntoView {
                                                 let username_reward = username.clone();
                                                 let user_id_punishment = user_id.clone();
                                                 let username_punishment = username.clone();
+                                                let adjust_points_title = adjust_points_title.clone();
+                                                let assign_reward_title = assign_reward_title.clone();
+                                                let assign_punishment_title = assign_punishment_title.clone();
                                                 view! {
                                                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
                                                         <div>
@@ -573,7 +585,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                                                         <button
                                                                             class="btn btn-outline"
                                                                             style="padding: 0.125rem 0.5rem; font-size: 0.75rem;"
-                                                                            title="Adjust Points"
+                                                                            title=adjust_points_title.clone()
                                                                             on:click=move |_| open_adjust_points_modal(user_id_points.clone(), username_points.clone())
                                                                         >
                                                                             "±"
@@ -581,7 +593,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                                                         <button
                                                                             class="btn btn-outline"
                                                                             style="padding: 0.125rem 0.5rem; font-size: 0.75rem; color: var(--success-color);"
-                                                                            title="Assign Reward"
+                                                                            title=assign_reward_title.clone()
                                                                             on:click=move |_| open_assign_reward_modal(user_id_reward.clone(), username_reward.clone())
                                                                         >
                                                                             "🎁"
@@ -589,7 +601,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                                                         <button
                                                                             class="btn btn-outline"
                                                                             style="padding: 0.125rem 0.5rem; font-size: 0.75rem; color: var(--error-color);"
-                                                                            title="Assign Punishment"
+                                                                            title=assign_punishment_title.clone()
                                                                             on:click=move |_| open_assign_punishment_modal(user_id_punishment.clone(), username_punishment.clone())
                                                                         >
                                                                             "⚠"
@@ -614,6 +626,8 @@ pub fn HouseholdPage() -> impl IntoView {
                                         <h4 style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem;">{i18n_stored.get_value().t("invitations.pending")}</h4>
                                         {move || {
                                             let current_settings = settings.get();
+                                            let role_admin_default = i18n_stored.get_value().t("roles.admin");
+                                            let role_member_default = i18n_stored.get_value().t("roles.member");
                                             invitations.get().into_iter().map(|inv| {
                                                 let inv_id = inv.id.to_string();
                                                 let cancel_id = inv_id.clone();
@@ -623,15 +637,18 @@ pub fn HouseholdPage() -> impl IntoView {
                                                     "badge badge-member"
                                                 };
                                                 let role_text = current_settings.as_ref()
-                                                    .map(|s| if inv.role == Role::Admin {
-                                                        s.role_label_admin.clone()
-                                                    } else {
-                                                        s.role_label_member.clone()
+                                                    .and_then(|s| {
+                                                        let label = if inv.role == Role::Admin {
+                                                            &s.role_label_admin
+                                                        } else {
+                                                            &s.role_label_member
+                                                        };
+                                                        if label.is_empty() { None } else { Some(label.clone()) }
                                                     })
                                                     .unwrap_or_else(|| if inv.role == Role::Admin {
-                                                        "Admin".to_string()
+                                                        role_admin_default.clone()
                                                     } else {
-                                                        "Member".to_string()
+                                                        role_member_default.clone()
                                                     });
                                                 view! {
                                                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); opacity: 0.7;">

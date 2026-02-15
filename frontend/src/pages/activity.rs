@@ -5,7 +5,7 @@ use shared::{ActivityLogWithUsers, ActivityType, HouseholdSettings};
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
-use crate::i18n::use_i18n;
+use crate::i18n::{use_i18n, I18nContext};
 use crate::utils::format_datetime;
 
 #[component]
@@ -84,7 +84,7 @@ pub fn ActivityPage() -> impl IntoView {
                     view! {
                         <div class="card">
                             {a.into_iter().map(|activity| {
-                                let description = format_activity_description(&activity);
+                                let description = format_activity_description(&activity, &i18n_stored.get_value());
                                 let timestamp = format_datetime(activity.log.created_at, &tz);
 
                                 view! {
@@ -104,8 +104,17 @@ pub fn ActivityPage() -> impl IntoView {
     }
 }
 
-/// Format a human-readable description of an activity
-fn format_activity_description(activity: &ActivityLogWithUsers) -> String {
+/// Helper to replace placeholders in a translation string
+fn replace_placeholders(template: &str, replacements: &[(&str, &str)]) -> String {
+    let mut result = template.to_string();
+    for (placeholder, value) in replacements {
+        result = result.replace(placeholder, value);
+    }
+    result
+}
+
+/// Format a human-readable description of an activity with translations
+fn format_activity_description(activity: &ActivityLogWithUsers, i18n: &I18nContext) -> String {
     let actor = &activity.actor.username;
     let affected = activity.affected_user.as_ref().map(|u| u.username.as_str());
 
@@ -133,149 +142,149 @@ fn format_activity_description(activity: &ActivityLogWithUsers) -> String {
         // Task events
         ActivityType::TaskCreated => {
             if entity_name.is_empty() {
-                format!("{} created a task", actor)
+                replace_placeholders(&i18n.t("activity.task_created_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} created task '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.task_created"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::TaskUpdated => {
             if entity_name.is_empty() {
-                format!("{} updated a task", actor)
+                replace_placeholders(&i18n.t("activity.task_updated_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} updated task '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.task_updated"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::TaskDeleted => {
             if entity_name.is_empty() {
-                format!("{} deleted a task", actor)
+                replace_placeholders(&i18n.t("activity.task_deleted_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} deleted task '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.task_deleted"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::TaskAssigned => {
             if let Some(to) = affected {
                 if entity_name.is_empty() {
-                    format!("{} assigned a task to {}", actor, to)
+                    replace_placeholders(&i18n.t("activity.task_assigned_no_name"), &[("{actor}", actor), ("{user}", to)])
                 } else {
-                    format!("{} assigned task '{}' to {}", actor, entity_name, to)
+                    replace_placeholders(&i18n.t("activity.task_assigned"), &[("{actor}", actor), ("{name}", entity_name), ("{user}", to)])
                 }
             } else {
-                format!("{} assigned a task", actor)
+                replace_placeholders(&i18n.t("activity.task_assigned_no_user"), &[("{actor}", actor)])
             }
         }
         ActivityType::TaskCompleted => {
             if entity_name.is_empty() {
-                format!("{} completed a task", actor)
+                replace_placeholders(&i18n.t("activity.task_completed_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} completed task '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.task_completed"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::TaskMissed => {
             if let Some(user) = affected {
                 if entity_name.is_empty() {
-                    format!("{} missed a task", user)
+                    replace_placeholders(&i18n.t("activity.task_missed_no_name"), &[("{user}", user)])
                 } else {
-                    format!("{} missed task '{}'", user, entity_name)
+                    replace_placeholders(&i18n.t("activity.task_missed"), &[("{user}", user), ("{name}", entity_name)])
                 }
             } else {
-                format!("A task was missed")
+                i18n.t("activity.task_missed_no_user")
             }
         }
         ActivityType::TaskCompletionApproved => {
             if let Some(user) = affected {
                 if entity_name.is_empty() {
-                    format!("{} approved {}'s task completion", actor, user)
+                    replace_placeholders(&i18n.t("activity.task_completion_approved_no_name"), &[("{actor}", actor), ("{user}", user)])
                 } else {
-                    format!("{} approved {}'s completion of task '{}'", actor, user, entity_name)
+                    replace_placeholders(&i18n.t("activity.task_completion_approved"), &[("{actor}", actor), ("{user}", user), ("{name}", entity_name)])
                 }
             } else {
-                format!("{} approved a task completion", actor)
+                replace_placeholders(&i18n.t("activity.task_completion_approved_no_user"), &[("{actor}", actor)])
             }
         }
         ActivityType::TaskCompletionRejected => {
             if let Some(user) = affected {
                 if entity_name.is_empty() {
-                    format!("{} rejected {}'s task completion", actor, user)
+                    replace_placeholders(&i18n.t("activity.task_completion_rejected_no_name"), &[("{actor}", actor), ("{user}", user)])
                 } else {
-                    format!("{} rejected {}'s completion of task '{}'", actor, user, entity_name)
+                    replace_placeholders(&i18n.t("activity.task_completion_rejected"), &[("{actor}", actor), ("{user}", user), ("{name}", entity_name)])
                 }
             } else {
-                format!("{} rejected a task completion", actor)
+                replace_placeholders(&i18n.t("activity.task_completion_rejected_no_user"), &[("{actor}", actor)])
             }
         }
 
         // Reward events
         ActivityType::RewardCreated => {
             if entity_name.is_empty() {
-                format!("{} created a reward", actor)
+                replace_placeholders(&i18n.t("activity.reward_created_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} created reward '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.reward_created"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::RewardDeleted => {
             if entity_name.is_empty() {
-                format!("{} deleted a reward", actor)
+                replace_placeholders(&i18n.t("activity.reward_deleted_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} deleted reward '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.reward_deleted"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::RewardAssigned => {
             if let Some(to) = affected {
                 if entity_name.is_empty() {
-                    format!("{} assigned a reward to {}", actor, to)
+                    replace_placeholders(&i18n.t("activity.reward_assigned_no_name"), &[("{actor}", actor), ("{user}", to)])
                 } else {
-                    format!("{} assigned reward '{}' to {}", actor, entity_name, to)
+                    replace_placeholders(&i18n.t("activity.reward_assigned"), &[("{actor}", actor), ("{name}", entity_name), ("{user}", to)])
                 }
             } else {
-                format!("{} assigned a reward", actor)
+                replace_placeholders(&i18n.t("activity.reward_assigned_no_user"), &[("{actor}", actor)])
             }
         }
         ActivityType::RewardPurchased => {
             if entity_name.is_empty() {
-                format!("{} purchased a reward", actor)
+                replace_placeholders(&i18n.t("activity.reward_purchased_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} purchased reward '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.reward_purchased"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::RewardRedeemed => {
             if entity_name.is_empty() {
-                format!("{} redeemed a reward", actor)
+                replace_placeholders(&i18n.t("activity.reward_redeemed_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} redeemed reward '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.reward_redeemed"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
 
         // Punishment events
         ActivityType::PunishmentCreated => {
             if entity_name.is_empty() {
-                format!("{} created a punishment", actor)
+                replace_placeholders(&i18n.t("activity.punishment_created_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} created punishment '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.punishment_created"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::PunishmentDeleted => {
             if entity_name.is_empty() {
-                format!("{} deleted a punishment", actor)
+                replace_placeholders(&i18n.t("activity.punishment_deleted_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} deleted punishment '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.punishment_deleted"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
         ActivityType::PunishmentAssigned => {
             if let Some(to) = affected {
                 if entity_name.is_empty() {
-                    format!("{} assigned a punishment to {}", actor, to)
+                    replace_placeholders(&i18n.t("activity.punishment_assigned_no_name"), &[("{actor}", actor), ("{user}", to)])
                 } else {
-                    format!("{} assigned punishment '{}' to {}", actor, entity_name, to)
+                    replace_placeholders(&i18n.t("activity.punishment_assigned"), &[("{actor}", actor), ("{name}", entity_name), ("{user}", to)])
                 }
             } else {
-                format!("{} assigned a punishment", actor)
+                replace_placeholders(&i18n.t("activity.punishment_assigned_no_user"), &[("{actor}", actor)])
             }
         }
         ActivityType::PunishmentCompleted => {
             if entity_name.is_empty() {
-                format!("{} completed a punishment", actor)
+                replace_placeholders(&i18n.t("activity.punishment_completed_no_name"), &[("{actor}", actor)])
             } else {
-                format!("{} completed punishment '{}'", actor, entity_name)
+                replace_placeholders(&i18n.t("activity.punishment_completed"), &[("{actor}", actor), ("{name}", entity_name)])
             }
         }
 
@@ -283,23 +292,23 @@ fn format_activity_description(activity: &ActivityLogWithUsers) -> String {
         ActivityType::RewardRedemptionApproved => {
             if let Some(user) = affected {
                 if entity_name.is_empty() {
-                    format!("{} approved {}'s reward redemption", actor, user)
+                    replace_placeholders(&i18n.t("activity.reward_redemption_approved_no_name"), &[("{actor}", actor), ("{user}", user)])
                 } else {
-                    format!("{} approved {}'s redemption of reward '{}'", actor, user, entity_name)
+                    replace_placeholders(&i18n.t("activity.reward_redemption_approved"), &[("{actor}", actor), ("{user}", user), ("{name}", entity_name)])
                 }
             } else {
-                format!("{} approved a reward redemption", actor)
+                replace_placeholders(&i18n.t("activity.reward_redemption_approved_no_user"), &[("{actor}", actor)])
             }
         }
         ActivityType::RewardRedemptionRejected => {
             if let Some(user) = affected {
                 if entity_name.is_empty() {
-                    format!("{} rejected {}'s reward redemption", actor, user)
+                    replace_placeholders(&i18n.t("activity.reward_redemption_rejected_no_name"), &[("{actor}", actor), ("{user}", user)])
                 } else {
-                    format!("{} rejected {}'s redemption of reward '{}'", actor, user, entity_name)
+                    replace_placeholders(&i18n.t("activity.reward_redemption_rejected"), &[("{actor}", actor), ("{user}", user), ("{name}", entity_name)])
                 }
             } else {
-                format!("{} rejected a reward redemption", actor)
+                replace_placeholders(&i18n.t("activity.reward_redemption_rejected_no_user"), &[("{actor}", actor)])
             }
         }
 
@@ -307,23 +316,23 @@ fn format_activity_description(activity: &ActivityLogWithUsers) -> String {
         ActivityType::PunishmentCompletionApproved => {
             if let Some(user) = affected {
                 if entity_name.is_empty() {
-                    format!("{} approved {}'s punishment completion", actor, user)
+                    replace_placeholders(&i18n.t("activity.punishment_completion_approved_no_name"), &[("{actor}", actor), ("{user}", user)])
                 } else {
-                    format!("{} approved {}'s completion of punishment '{}'", actor, user, entity_name)
+                    replace_placeholders(&i18n.t("activity.punishment_completion_approved"), &[("{actor}", actor), ("{user}", user), ("{name}", entity_name)])
                 }
             } else {
-                format!("{} approved a punishment completion", actor)
+                replace_placeholders(&i18n.t("activity.punishment_completion_approved_no_user"), &[("{actor}", actor)])
             }
         }
         ActivityType::PunishmentCompletionRejected => {
             if let Some(user) = affected {
                 if entity_name.is_empty() {
-                    format!("{} rejected {}'s punishment completion", actor, user)
+                    replace_placeholders(&i18n.t("activity.punishment_completion_rejected_no_name"), &[("{actor}", actor), ("{user}", user)])
                 } else {
-                    format!("{} rejected {}'s completion of punishment '{}'", actor, user, entity_name)
+                    replace_placeholders(&i18n.t("activity.punishment_completion_rejected"), &[("{actor}", actor), ("{user}", user), ("{name}", entity_name)])
                 }
             } else {
-                format!("{} rejected a punishment completion", actor)
+                replace_placeholders(&i18n.t("activity.punishment_completion_rejected_no_user"), &[("{actor}", actor)])
             }
         }
 
@@ -343,32 +352,40 @@ fn format_activity_description(activity: &ActivityLogWithUsers) -> String {
                     });
 
                 if let Some(pts) = points {
-                    let sign = if pts >= 0 { "+" } else { "" };
-                    format!("{} adjusted {}'s points by {}{}", actor, user, sign, pts)
+                    let pts_str = if pts >= 0 {
+                        format!("+{}", pts)
+                    } else {
+                        pts.to_string()
+                    };
+                    if pts >= 0 {
+                        replace_placeholders(&i18n.t("activity.points_adjusted_positive"), &[("{actor}", actor), ("{user}", user), ("{points}", &pts.to_string())])
+                    } else {
+                        replace_placeholders(&i18n.t("activity.points_adjusted_negative"), &[("{actor}", actor), ("{user}", user), ("{points}", &pts_str)])
+                    }
                 } else {
-                    format!("{} adjusted {}'s points", actor, user)
+                    replace_placeholders(&i18n.t("activity.points_adjusted_no_amount"), &[("{actor}", actor), ("{user}", user)])
                 }
             } else {
-                format!("{} adjusted points", actor)
+                replace_placeholders(&i18n.t("activity.points_adjusted_no_user"), &[("{actor}", actor)])
             }
         }
 
         // Membership events
         ActivityType::MemberJoined => {
-            format!("{} joined the household", actor)
+            replace_placeholders(&i18n.t("activity.member_joined"), &[("{actor}", actor)])
         }
         ActivityType::MemberLeft => {
             if let Some(user) = affected {
-                format!("{} was removed from the household by {}", user, actor)
+                replace_placeholders(&i18n.t("activity.member_removed"), &[("{user}", user), ("{actor}", actor)])
             } else {
-                format!("{} left the household", actor)
+                replace_placeholders(&i18n.t("activity.member_left"), &[("{actor}", actor)])
             }
         }
         ActivityType::MemberRoleChanged => {
             if let Some(user) = affected {
-                format!("{} changed {}'s role", actor, user)
+                replace_placeholders(&i18n.t("activity.member_role_changed"), &[("{actor}", actor), ("{user}", user)])
             } else {
-                format!("{} changed a member's role", actor)
+                replace_placeholders(&i18n.t("activity.member_role_changed_no_user"), &[("{actor}", actor)])
             }
         }
         ActivityType::InvitationSent => {
@@ -386,15 +403,15 @@ fn format_activity_description(activity: &ActivityLogWithUsers) -> String {
                 .unwrap_or("");
 
             if email.is_empty() {
-                format!("{} sent an invitation", actor)
+                replace_placeholders(&i18n.t("activity.invitation_sent_no_email"), &[("{actor}", actor)])
             } else {
-                format!("{} invited {}", actor, email)
+                replace_placeholders(&i18n.t("activity.invitation_sent"), &[("{actor}", actor), ("{email}", email)])
             }
         }
 
         // Settings events
         ActivityType::SettingsChanged => {
-            format!("{} changed household settings", actor)
+            replace_placeholders(&i18n.t("activity.settings_changed"), &[("{actor}", actor)])
         }
     }
 }

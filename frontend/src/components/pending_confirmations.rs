@@ -2,12 +2,16 @@ use leptos::*;
 use shared::{PendingPunishmentCompletion, PendingRewardRedemption};
 
 use crate::api::ApiClient;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn PendingConfirmations(
     household_id: String,
     #[prop(into)] on_confirmation_complete: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
     let pending_rewards = create_rw_signal(Vec::<PendingRewardRedemption>::new());
     let pending_punishments = create_rw_signal(Vec::<PendingPunishmentCompletion>::new());
     let loading = create_rw_signal(true);
@@ -166,7 +170,7 @@ pub fn PendingConfirmations(
     view! {
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">"Pending Confirmations"</h3>
+                <h3 class="card-title">{i18n_stored.get_value().t("pending_confirmations.title")}</h3>
             </div>
 
             {move || error.get().map(|e| view! {
@@ -175,14 +179,21 @@ pub fn PendingConfirmations(
 
             {move || {
                 if loading.get() {
-                    view! { <div class="empty-state"><p>"Loading..."</p></div> }.into_view()
+                    view! { <div class="empty-state"><p>{i18n_stored.get_value().t("common.loading")}</p></div> }.into_view()
                 } else {
                     let rewards = pending_rewards.get();
                     let punishments = pending_punishments.get();
 
                     if rewards.is_empty() && punishments.is_empty() {
-                        view! { <div class="empty-state"><p>"No pending confirmations"</p></div> }.into_view()
+                        view! { <div class="empty-state"><p>{i18n_stored.get_value().t("pending_confirmations.empty")}</p></div> }.into_view()
                     } else {
+                        let reward_label = i18n_stored.get_value().t("pending_confirmations.reward");
+                        let punishment_label = i18n_stored.get_value().t("pending_confirmations.punishment");
+                        let redemption_by_label = i18n_stored.get_value().t("pending_confirmations.redemption_requested_by");
+                        let completion_by_label = i18n_stored.get_value().t("pending_confirmations.completion_marked_by");
+                        let approve_label = i18n_stored.get_value().t("pending_confirmations.approve");
+                        let reject_label = i18n_stored.get_value().t("pending_confirmations.reject");
+
                         view! {
                             <div>
                                 // Pending reward redemptions
@@ -196,12 +207,16 @@ pub fn PendingConfirmations(
                                     let id_check_4 = id.clone();
                                     let approve = approve_reward.clone();
                                     let reject = reject_reward.clone();
+                                    let reward_label = reward_label.clone();
+                                    let redemption_by_label = redemption_by_label.clone();
+                                    let approve_label = approve_label.clone();
+                                    let reject_label = reject_label.clone();
 
                                     view! {
                                         <div class="pending-review-item">
                                             <div class="pending-review-content">
                                                 <div class="pending-review-task">
-                                                    "Reward: "{item.reward.name.clone()}
+                                                    {reward_label.clone()} " " {item.reward.name.clone()}
                                                     {if item.user_reward.pending_redemption > 1 {
                                                         format!(" (x{})", item.user_reward.pending_redemption)
                                                     } else {
@@ -209,7 +224,7 @@ pub fn PendingConfirmations(
                                                     }}
                                                 </div>
                                                 <div class="pending-review-meta">
-                                                    "Redemption requested by "
+                                                    {redemption_by_label.clone()} " "
                                                     <strong>{item.user.username.clone()}</strong>
                                                 </div>
                                             </div>
@@ -220,7 +235,10 @@ pub fn PendingConfirmations(
                                                     disabled=move || processing.get() == Some(id_check_1.clone())
                                                     on:click=move |_| approve(id_for_approve.clone())
                                                 >
-                                                    {move || if processing.get() == Some(id_check_2.clone()) { "..." } else { "Approve" }}
+                                                    {
+                                                        let approve_label = approve_label.clone();
+                                                        move || if processing.get() == Some(id_check_2.clone()) { "...".to_string() } else { approve_label.clone() }
+                                                    }
                                                 </button>
                                                 <button
                                                     class="btn btn-danger"
@@ -228,7 +246,10 @@ pub fn PendingConfirmations(
                                                     disabled=move || processing.get() == Some(id_check_3.clone())
                                                     on:click=move |_| reject(id_for_reject.clone())
                                                 >
-                                                    {move || if processing.get() == Some(id_check_4.clone()) { "..." } else { "Reject" }}
+                                                    {
+                                                        let reject_label = reject_label.clone();
+                                                        move || if processing.get() == Some(id_check_4.clone()) { "...".to_string() } else { reject_label.clone() }
+                                                    }
                                                 </button>
                                             </div>
                                         </div>
@@ -246,12 +267,16 @@ pub fn PendingConfirmations(
                                     let id_check_4 = id.clone();
                                     let approve = approve_punishment.clone();
                                     let reject = reject_punishment.clone();
+                                    let punishment_label = punishment_label.clone();
+                                    let completion_by_label = completion_by_label.clone();
+                                    let approve_label = approve_label.clone();
+                                    let reject_label = reject_label.clone();
 
                                     view! {
                                         <div class="pending-review-item">
                                             <div class="pending-review-content">
                                                 <div class="pending-review-task">
-                                                    "Punishment: "{item.punishment.name.clone()}
+                                                    {punishment_label.clone()} " " {item.punishment.name.clone()}
                                                     {if item.user_punishment.pending_completion > 1 {
                                                         format!(" (x{})", item.user_punishment.pending_completion)
                                                     } else {
@@ -259,7 +284,7 @@ pub fn PendingConfirmations(
                                                     }}
                                                 </div>
                                                 <div class="pending-review-meta">
-                                                    "Completion marked by "
+                                                    {completion_by_label.clone()} " "
                                                     <strong>{item.user.username.clone()}</strong>
                                                 </div>
                                             </div>
@@ -270,7 +295,10 @@ pub fn PendingConfirmations(
                                                     disabled=move || processing.get() == Some(id_check_1.clone())
                                                     on:click=move |_| approve(id_for_approve.clone())
                                                 >
-                                                    {move || if processing.get() == Some(id_check_2.clone()) { "..." } else { "Approve" }}
+                                                    {
+                                                        let approve_label = approve_label.clone();
+                                                        move || if processing.get() == Some(id_check_2.clone()) { "...".to_string() } else { approve_label.clone() }
+                                                    }
                                                 </button>
                                                 <button
                                                     class="btn btn-danger"
@@ -278,7 +306,10 @@ pub fn PendingConfirmations(
                                                     disabled=move || processing.get() == Some(id_check_3.clone())
                                                     on:click=move |_| reject(id_for_reject.clone())
                                                 >
-                                                    {move || if processing.get() == Some(id_check_4.clone()) { "..." } else { "Reject" }}
+                                                    {
+                                                        let reject_label = reject_label.clone();
+                                                        move || if processing.get() == Some(id_check_4.clone()) { "...".to_string() } else { reject_label.clone() }
+                                                    }
                                                 </button>
                                             </div>
                                         </div>
