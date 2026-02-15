@@ -29,7 +29,17 @@ pub fn TaskModal(
             .map(|t| t.recurrence_type.as_str().to_string())
             .unwrap_or_else(|| "daily".to_string())
     );
-    let initial_assigned_user_id = task.as_ref().and_then(|t| t.assigned_user_id.map(|id| id.to_string()));
+    // Auto-select if only one member can be assigned (create mode only)
+    let initial_assigned_user_id = task.as_ref()
+        .and_then(|t| t.assigned_user_id.map(|id| id.to_string()))
+        .or_else(|| {
+            // In create mode with exactly one assignable member, auto-select them
+            if task.is_none() && members.len() == 1 {
+                Some(members[0].user.id.to_string())
+            } else {
+                None
+            }
+        });
     let assigned_user = create_rw_signal(initial_assigned_user_id.clone().unwrap_or_default());
     let target_count = create_rw_signal(
         task.as_ref()
