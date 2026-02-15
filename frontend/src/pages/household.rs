@@ -1,6 +1,6 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{CreateInvitationRequest, Household, Invitation, LeaderboardEntry, MemberWithUser, Role, TaskWithStatus};
+use shared::{AdjustPointsRequest, CreateInvitationRequest, Household, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus};
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
@@ -30,6 +30,35 @@ pub fn HouseholdPage() -> impl IntoView {
 
     // Check if current user can manage members
     let current_user_can_manage = create_rw_signal(false);
+
+    // Rewards and punishments for assignment
+    let rewards = create_rw_signal(Vec::<Reward>::new());
+    let punishments = create_rw_signal(Vec::<Punishment>::new());
+
+    // Adjust points modal state
+    let show_adjust_points_modal = create_rw_signal(false);
+    let adjust_points_user_id = create_rw_signal(String::new());
+    let adjust_points_username = create_rw_signal(String::new());
+    let adjust_points_amount = create_rw_signal(String::new());
+    let adjust_points_reason = create_rw_signal(String::new());
+    let adjust_points_error = create_rw_signal(Option::<String>::None);
+    let adjusting_points = create_rw_signal(false);
+
+    // Assign reward modal state
+    let show_assign_reward_modal = create_rw_signal(false);
+    let assign_reward_user_id = create_rw_signal(String::new());
+    let assign_reward_username = create_rw_signal(String::new());
+    let selected_reward_id = create_rw_signal(String::new());
+    let assign_reward_error = create_rw_signal(Option::<String>::None);
+    let assigning_reward = create_rw_signal(false);
+
+    // Assign punishment modal state
+    let show_assign_punishment_modal = create_rw_signal(false);
+    let assign_punishment_user_id = create_rw_signal(String::new());
+    let assign_punishment_username = create_rw_signal(String::new());
+    let selected_punishment_id = create_rw_signal(String::new());
+    let assign_punishment_error = create_rw_signal(Option::<String>::None);
+    let assigning_punishment = create_rw_signal(false);
 
     // Load data on mount
     create_effect(move |_| {
@@ -70,6 +99,14 @@ pub fn HouseholdPage() -> impl IntoView {
             // Load invitations (only for admins/owners, will fail silently for members)
             if let Ok(inv) = ApiClient::list_household_invitations(&id).await {
                 invitations.set(inv);
+            }
+
+            // Load rewards and punishments for assignment modals
+            if let Ok(r) = ApiClient::list_rewards(&id).await {
+                rewards.set(r);
+            }
+            if let Ok(p) = ApiClient::list_punishments(&id).await {
+                punishments.set(p);
             }
 
             loading.set(false);
@@ -130,6 +167,152 @@ pub fn HouseholdPage() -> impl IntoView {
             if ApiClient::cancel_invitation(&id, &invitation_id).await.is_ok() {
                 invitations.update(|inv| inv.retain(|i| i.id.to_string() != invitation_id));
             }
+        });
+    };
+
+    // Open adjust points modal for a specific member
+    let open_adjust_points_modal = move |user_id: String, username: String| {
+        adjust_points_user_id.set(user_id);
+        adjust_points_username.set(username);
+        adjust_points_amount.set(String::new());
+        adjust_points_reason.set(String::new());
+        adjust_points_error.set(None);
+        show_adjust_points_modal.set(true);
+    };
+
+    let on_adjust_points_submit = move |ev: web_sys::SubmitEvent| {
+        ev.prevent_default();
+
+        let id = household_id();
+        let user_id = adjust_points_user_id.get();
+        let amount_str = adjust_points_amount.get();
+        let reason = adjust_points_reason.get();
+
+        let points: i64 = match amount_str.parse() {
+            Ok(p) => p,
+            Err(_) => {
+                adjust_points_error.set(Some("Please enter a valid number".to_string()));
+                return;
+            }
+        };
+
+        if points == 0 {
+            adjust_points_error.set(Some("Points cannot be zero".to_string()));
+            return;
+        }
+
+        adjusting_points.set(true);
+        adjust_points_error.set(None);
+
+        wasm_bindgen_futures::spawn_local(async move {
+            let request = AdjustPointsRequest {
+                points,
+                reason: if reason.is_empty() { None } else { Some(reason) },
+            };
+            match ApiClient::adjust_member_points(&id, &user_id, request).await {
+                Ok(_) => {
+                    show_adjust_points_modal.set(false);
+                    // Refresh members and leaderboard
+                    if let Ok(m) = ApiClient::list_members(&id).await {
+                        members.set(m);
+                    }
+                    if let Ok(l) = ApiClient::get_leaderboard(&id).await {
+                        leaderboard.set(l);
+                    }
+                }
+                Err(e) => {
+                    adjust_points_error.set(Some(e));
+                }
+            }
+            adjusting_points.set(false);
+        });
+    };
+
+    // Open assign reward modal for a specific member
+    let open_assign_reward_modal = move |user_id: String, username: String| {
+        assign_reward_user_id.set(user_id);
+        assign_reward_username.set(username);
+        selected_reward_id.set(String::new());
+        assign_reward_error.set(None);
+        show_assign_reward_modal.set(true);
+    };
+
+    let on_assign_reward_submit = move |ev: web_sys::SubmitEvent| {
+        ev.prevent_default();
+
+        let id = household_id();
+        let user_id = assign_reward_user_id.get();
+        let reward_id = selected_reward_id.get();
+
+        if reward_id.is_empty() {
+            assign_reward_error.set(Some("Please select a reward".to_string()));
+            return;
+        }
+
+        assigning_reward.set(true);
+        assign_reward_error.set(None);
+
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::assign_reward(&id, &reward_id, &user_id).await {
+                Ok(_) => {
+                    show_assign_reward_modal.set(false);
+                    // Refresh members and leaderboard
+                    if let Ok(m) = ApiClient::list_members(&id).await {
+                        members.set(m);
+                    }
+                    if let Ok(l) = ApiClient::get_leaderboard(&id).await {
+                        leaderboard.set(l);
+                    }
+                }
+                Err(e) => {
+                    assign_reward_error.set(Some(e));
+                }
+            }
+            assigning_reward.set(false);
+        });
+    };
+
+    // Open assign punishment modal for a specific member
+    let open_assign_punishment_modal = move |user_id: String, username: String| {
+        assign_punishment_user_id.set(user_id);
+        assign_punishment_username.set(username);
+        selected_punishment_id.set(String::new());
+        assign_punishment_error.set(None);
+        show_assign_punishment_modal.set(true);
+    };
+
+    let on_assign_punishment_submit = move |ev: web_sys::SubmitEvent| {
+        ev.prevent_default();
+
+        let id = household_id();
+        let user_id = assign_punishment_user_id.get();
+        let punishment_id = selected_punishment_id.get();
+
+        if punishment_id.is_empty() {
+            assign_punishment_error.set(Some("Please select a punishment".to_string()));
+            return;
+        }
+
+        assigning_punishment.set(true);
+        assign_punishment_error.set(None);
+
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::assign_punishment(&id, &punishment_id, &user_id).await {
+                Ok(_) => {
+                    show_assign_punishment_modal.set(false);
+                    // Refresh members and leaderboard
+                    if let Ok(m) = ApiClient::list_members(&id).await {
+                        members.set(m);
+                    }
+                    if let Ok(l) = ApiClient::get_leaderboard(&id).await {
+                        leaderboard.set(l);
+                    }
+                }
+                Err(e) => {
+                    assign_punishment_error.set(Some(e));
+                }
+            }
+            assigning_punishment.set(false);
         });
     };
 
@@ -218,6 +401,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                 </div>
                                 {move || {
                                     let m = members.get();
+                                    let can_manage = current_user_can_manage.get();
                                     view! {
                                         <div>
                                             {m.into_iter().map(|member| {
@@ -231,13 +415,55 @@ pub fn HouseholdPage() -> impl IntoView {
                                                     shared::Role::Admin => "Admin",
                                                     shared::Role::Member => "Member",
                                                 };
+                                                let user_id = member.user.id.to_string();
+                                                let username = member.user.username.clone();
+                                                let user_id_points = user_id.clone();
+                                                let username_points = username.clone();
+                                                let user_id_reward = user_id.clone();
+                                                let username_reward = username.clone();
+                                                let user_id_punishment = user_id.clone();
+                                                let username_punishment = username.clone();
                                                 view! {
                                                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
                                                         <div>
                                                             <span style="font-weight: 500;">{member.user.username}</span>
                                                             <span class=badge_class style="margin-left: 0.5rem;">{role_text}</span>
                                                         </div>
-                                                        <PointsBadge points=member.membership.points />
+                                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                            {if can_manage {
+                                                                view! {
+                                                                    <div style="display: flex; gap: 0.25rem;">
+                                                                        <button
+                                                                            class="btn btn-outline"
+                                                                            style="padding: 0.125rem 0.5rem; font-size: 0.75rem;"
+                                                                            title="Adjust Points"
+                                                                            on:click=move |_| open_adjust_points_modal(user_id_points.clone(), username_points.clone())
+                                                                        >
+                                                                            "±"
+                                                                        </button>
+                                                                        <button
+                                                                            class="btn btn-outline"
+                                                                            style="padding: 0.125rem 0.5rem; font-size: 0.75rem; color: var(--success-color);"
+                                                                            title="Assign Reward"
+                                                                            on:click=move |_| open_assign_reward_modal(user_id_reward.clone(), username_reward.clone())
+                                                                        >
+                                                                            "🎁"
+                                                                        </button>
+                                                                        <button
+                                                                            class="btn btn-outline"
+                                                                            style="padding: 0.125rem 0.5rem; font-size: 0.75rem; color: var(--error-color);"
+                                                                            title="Assign Punishment"
+                                                                            on:click=move |_| open_assign_punishment_modal(user_id_punishment.clone(), username_punishment.clone())
+                                                                        >
+                                                                            "⚠"
+                                                                        </button>
+                                                                    </div>
+                                                                }.into_view()
+                                                            } else {
+                                                                view! { <></> }.into_view()
+                                                            }}
+                                                            <PointsBadge points=member.membership.points />
+                                                        </div>
                                                     </div>
                                                 }
                                             }).collect_view()}
@@ -336,6 +562,160 @@ pub fn HouseholdPage() -> impl IntoView {
                                 disabled=move || inviting.get()
                             >
                                 {move || if inviting.get() { "Sending..." } else { "Send Invitation" }}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            </Show>
+
+            // Adjust Points Modal
+            <Show when=move || show_adjust_points_modal.get() fallback=|| ()>
+                <Modal title="Adjust Points" on_close=move |_| show_adjust_points_modal.set(false)>
+                    {move || adjust_points_error.get().map(|e| view! {
+                        <div class="alert alert-error" style="margin-bottom: 1rem;">{e}</div>
+                    })}
+
+                    <form on:submit=on_adjust_points_submit>
+                        <div class="form-group">
+                            <label class="form-label" for="adjust-points-amount">"Points"</label>
+                            <input
+                                type="number"
+                                id="adjust-points-amount"
+                                class="form-input"
+                                placeholder="e.g., 10 or -5"
+                                prop:value=move || adjust_points_amount.get()
+                                on:input=move |ev| adjust_points_amount.set(event_target_value(&ev))
+                                required
+                            />
+                            <small class="form-hint">"Enter a positive number to add points, negative to remove"</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="adjust-points-reason">"Reason (optional)"</label>
+                            <input
+                                type="text"
+                                id="adjust-points-reason"
+                                class="form-input"
+                                placeholder="e.g., Bonus for helping out"
+                                prop:value=move || adjust_points_reason.get()
+                                on:input=move |ev| adjust_points_reason.set(event_target_value(&ev))
+                            />
+                        </div>
+
+                        <div class="modal-footer">
+                            <button
+                                type="button"
+                                class="btn btn-outline"
+                                on:click=move |_| show_adjust_points_modal.set(false)
+                                disabled=move || adjusting_points.get()
+                            >
+                                "Cancel"
+                            </button>
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                disabled=move || adjusting_points.get()
+                            >
+                                {move || if adjusting_points.get() { "Adjusting..." } else { "Adjust Points" }}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            </Show>
+
+            // Assign Reward Modal
+            <Show when=move || show_assign_reward_modal.get() fallback=|| ()>
+                <Modal title="Assign Reward" on_close=move |_| show_assign_reward_modal.set(false)>
+                    {move || assign_reward_error.get().map(|e| view! {
+                        <div class="alert alert-error" style="margin-bottom: 1rem;">{e}</div>
+                    })}
+
+                    <form on:submit=on_assign_reward_submit>
+                        <div class="form-group">
+                            <label class="form-label" for="select-reward">"Select Reward"</label>
+                            <select
+                                id="select-reward"
+                                class="form-select"
+                                prop:value=move || selected_reward_id.get()
+                                on:change=move |ev| selected_reward_id.set(event_target_value(&ev))
+                                required
+                            >
+                                <option value="">"-- Select a reward --"</option>
+                                {move || rewards.get().into_iter().map(|r| {
+                                    let id = r.id.to_string();
+                                    let cost_text = r.point_cost.map(|c| format!(" ({} pts)", c)).unwrap_or_default();
+                                    view! {
+                                        <option value=id.clone()>{r.name}{cost_text}</option>
+                                    }
+                                }).collect_view()}
+                            </select>
+                            <small class="form-hint">"The reward will be granted to this member (points will be deducted)"</small>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button
+                                type="button"
+                                class="btn btn-outline"
+                                on:click=move |_| show_assign_reward_modal.set(false)
+                                disabled=move || assigning_reward.get()
+                            >
+                                "Cancel"
+                            </button>
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                disabled=move || assigning_reward.get()
+                            >
+                                {move || if assigning_reward.get() { "Assigning..." } else { "Assign Reward" }}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            </Show>
+
+            // Assign Punishment Modal
+            <Show when=move || show_assign_punishment_modal.get() fallback=|| ()>
+                <Modal title="Assign Punishment" on_close=move |_| show_assign_punishment_modal.set(false)>
+                    {move || assign_punishment_error.get().map(|e| view! {
+                        <div class="alert alert-error" style="margin-bottom: 1rem;">{e}</div>
+                    })}
+
+                    <form on:submit=on_assign_punishment_submit>
+                        <div class="form-group">
+                            <label class="form-label" for="select-punishment">"Select Punishment"</label>
+                            <select
+                                id="select-punishment"
+                                class="form-select"
+                                prop:value=move || selected_punishment_id.get()
+                                on:change=move |ev| selected_punishment_id.set(event_target_value(&ev))
+                                required
+                            >
+                                <option value="">"-- Select a punishment --"</option>
+                                {move || punishments.get().into_iter().map(|p| {
+                                    let id = p.id.to_string();
+                                    view! {
+                                        <option value=id.clone()>{p.name}</option>
+                                    }
+                                }).collect_view()}
+                            </select>
+                            <small class="form-hint">"The punishment will be applied to this member (points will be deducted)"</small>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button
+                                type="button"
+                                class="btn btn-outline"
+                                on:click=move |_| show_assign_punishment_modal.set(false)
+                                disabled=move || assigning_punishment.get()
+                            >
+                                "Cancel"
+                            </button>
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                disabled=move || assigning_punishment.get()
+                            >
+                                {move || if assigning_punishment.get() { "Assigning..." } else { "Assign Punishment" }}
                             </button>
                         </div>
                     </form>

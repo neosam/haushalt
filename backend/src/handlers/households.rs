@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse, Result};
-use shared::{ApiError, ApiSuccess, CreateHouseholdRequest, CreateInvitationRequest, UpdateHouseholdRequest, UpdateRoleRequest};
+use shared::{AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, CreateHouseholdRequest, CreateInvitationRequest, UpdateHouseholdRequest, UpdateRoleRequest};
 use uuid::Uuid;
 
 use crate::models::AppState;
@@ -20,6 +20,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{id}/invitations/{inv_id}", web::delete().to(cancel_invitation))
             .route("/{id}/members/{user_id}", web::delete().to(remove_member))
             .route("/{id}/members/{user_id}/role", web::put().to(update_member_role))
+            .route("/{id}/members/{user_id}/points", web::post().to(adjust_member_points))
             .route("/{id}/leaderboard", web::get().to(get_leaderboard))
             .service(
                 web::scope("/{household_id}")
@@ -683,6 +684,76 @@ async fn get_leaderboard(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to fetch leaderboard".to_string(),
+            }))
+        }
+    }
+}
+
+/// Manually adjust a member's points (add or remove)
+async fn adjust_member_points(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+    body: web::Json<AdjustPointsRequest>,
+) -> Result<HttpResponse> {
+    let current_user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, target_user_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let target_user_id = match Uuid::parse_str(&target_user_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user ID format".to_string(),
+            }));
+        }
+    };
+
+    // Only owner and admin can adjust points
+    let role = household_service::get_member_role(&state.db, &household_id, &current_user_id).await;
+    if !role.map(|r| r.can_manage_members()).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners and admins can adjust member points".to_string(),
+        }));
+    }
+
+    // Verify target user is a member
+    if !household_service::is_member(&state.db, &household_id, &target_user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::BadRequest().json(ApiError {
+            error: "invalid_user".to_string(),
+            message: "Target user is not a member of this household".to_string(),
+        }));
+    }
+
+    let request = body.into_inner();
+
+    match household_service::update_member_points(&state.db, &household_id, &target_user_id, request.points).await {
+        Ok(new_points) => Ok(HttpResponse::Ok().json(ApiSuccess::new(AdjustPointsResponse { new_points }))),
+        Err(e) => {
+            log::error!("Error adjusting points: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to adjust points".to_string(),
             }))
         }
     }

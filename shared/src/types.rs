@@ -141,6 +141,17 @@ pub struct UpdateRoleRequest {
     pub role: Role,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdjustPointsRequest {
+    pub points: i64,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdjustPointsResponse {
+    pub new_points: i64,
+}
+
 // ============================================================================
 // Task Types
 // ============================================================================

@@ -3,12 +3,12 @@ use gloo_storage::{LocalStorage, Storage};
 use leptos::*;
 use serde::{de::DeserializeOwned, Serialize};
 use shared::{
-    ApiError, ApiSuccess, AuthResponse, CreateHouseholdRequest, CreateInvitationRequest,
-    CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
-    CreateUserRequest, Household, HouseholdMembership, Invitation, InvitationWithHousehold,
-    InviteUserRequest, LeaderboardEntry, LoginRequest, MemberWithUser, PointCondition, Punishment,
-    Reward, Task, TaskCompletion, TaskWithStatus, UpdateTaskRequest, User, UserPunishment,
-    UserReward,
+    AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, AuthResponse,
+    CreateHouseholdRequest, CreateInvitationRequest, CreatePointConditionRequest,
+    CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
+    HouseholdMembership, Invitation, InvitationWithHousehold, InviteUserRequest, LeaderboardEntry,
+    LoginRequest, MemberWithUser, PointCondition, Punishment, Reward, Task, TaskCompletion,
+    TaskWithStatus, UpdateTaskRequest, User, UserPunishment, UserReward,
 };
 
 const API_BASE: &str = "/api";
@@ -518,6 +518,49 @@ impl ApiClient {
         Self::request::<()>(
             "POST",
             &format!("/invitations/{}/decline", invitation_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // Member management endpoints
+    pub async fn adjust_member_points(
+        household_id: &str,
+        user_id: &str,
+        request: AdjustPointsRequest,
+    ) -> Result<AdjustPointsResponse, String> {
+        Self::request(
+            "POST",
+            &format!("/households/{}/members/{}/points", household_id, user_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn assign_reward(
+        household_id: &str,
+        reward_id: &str,
+        user_id: &str,
+    ) -> Result<UserReward, String> {
+        Self::request::<UserReward>(
+            "POST",
+            &format!("/households/{}/rewards/{}/assign/{}", household_id, reward_id, user_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn assign_punishment(
+        household_id: &str,
+        punishment_id: &str,
+        user_id: &str,
+    ) -> Result<UserPunishment, String> {
+        Self::request::<UserPunishment>(
+            "POST",
+            &format!("/households/{}/punishments/{}/assign/{}", household_id, punishment_id, user_id),
             None::<()>,
             true,
         )
