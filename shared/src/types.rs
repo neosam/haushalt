@@ -265,6 +265,9 @@ pub struct Task {
     pub assigned_user_id: Option<Uuid>,
     pub target_count: i32,
     pub time_period: Option<TimePeriod>,
+    /// When true, users can track completions beyond the target count.
+    /// When false, the complete button is disabled once target is reached.
+    pub allow_exceed_target: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -278,6 +281,8 @@ pub struct CreateTaskRequest {
     pub assigned_user_id: Option<Uuid>,
     pub target_count: Option<i32>,
     pub time_period: Option<TimePeriod>,
+    /// When true (default), users can track completions beyond the target count.
+    pub allow_exceed_target: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -289,6 +294,7 @@ pub struct UpdateTaskRequest {
     pub assigned_user_id: Option<Uuid>,
     pub target_count: Option<i32>,
     pub time_period: Option<TimePeriod>,
+    pub allow_exceed_target: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -317,6 +323,12 @@ impl TaskWithStatus {
     /// Returns remaining completions needed to meet the target
     pub fn remaining(&self) -> i32 {
         (self.task.target_count - self.completions_today).max(0)
+    }
+
+    /// Returns true if the user can add more completions
+    /// This is false when target is met AND allow_exceed_target is false
+    pub fn can_complete(&self) -> bool {
+        self.task.allow_exceed_target || !self.is_target_met()
     }
 }
 
@@ -716,5 +728,95 @@ mod tests {
         assert_eq!("Declined".parse(), Ok(InvitationStatus::Declined));
         assert_eq!("expired".parse(), Ok(InvitationStatus::Expired));
         assert!("invalid".parse::<InvitationStatus>().is_err());
+    }
+
+    fn create_task_with_status(completions: i32, target: i32, allow_exceed: bool) -> TaskWithStatus {
+        TaskWithStatus {
+            task: Task {
+                id: Uuid::new_v4(),
+                household_id: Uuid::new_v4(),
+                title: "Test Task".to_string(),
+                description: String::new(),
+                recurrence_type: RecurrenceType::Daily,
+                recurrence_value: None,
+                assigned_user_id: None,
+                target_count: target,
+                time_period: None,
+                allow_exceed_target: allow_exceed,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            },
+            completions_today: completions,
+            current_streak: 0,
+            last_completion: None,
+        }
+    }
+
+    #[test]
+    fn test_task_with_status_is_target_met() {
+        // Not met
+        let task = create_task_with_status(1, 3, true);
+        assert!(!task.is_target_met());
+
+        // Exactly met
+        let task = create_task_with_status(3, 3, true);
+        assert!(task.is_target_met());
+
+        // Exceeded
+        let task = create_task_with_status(5, 3, true);
+        assert!(task.is_target_met());
+    }
+
+    #[test]
+    fn test_task_with_status_remaining() {
+        // Some remaining
+        let task = create_task_with_status(1, 3, true);
+        assert_eq!(task.remaining(), 2);
+
+        // None remaining (met)
+        let task = create_task_with_status(3, 3, true);
+        assert_eq!(task.remaining(), 0);
+
+        // None remaining (exceeded) - should not go negative
+        let task = create_task_with_status(5, 3, true);
+        assert_eq!(task.remaining(), 0);
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_target_not_met() {
+        // Can always complete when target not met, regardless of allow_exceed_target
+        let task_allow = create_task_with_status(1, 3, true);
+        assert!(task_allow.can_complete());
+
+        let task_restrict = create_task_with_status(1, 3, false);
+        assert!(task_restrict.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_target_met_allow_exceed() {
+        // Can complete when target met and allow_exceed_target is true
+        let task = create_task_with_status(3, 3, true);
+        assert!(task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_target_met_no_exceed() {
+        // Cannot complete when target met and allow_exceed_target is false
+        let task = create_task_with_status(3, 3, false);
+        assert!(!task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_exceeded_allow() {
+        // Can continue completing when already exceeded with allow_exceed_target true
+        let task = create_task_with_status(5, 3, true);
+        assert!(task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_exceeded_no_exceed() {
+        // Cannot complete when already exceeded with allow_exceed_target false
+        let task = create_task_with_status(5, 3, false);
+        assert!(!task.can_complete());
     }
 }

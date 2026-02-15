@@ -9,6 +9,7 @@ pub fn TaskCard(
     #[prop(into)] on_uncomplete: Callback<String>,
 ) -> impl IntoView {
     let is_target_met = task.is_target_met();
+    let can_complete = task.can_complete();
     let task_id = task.task.id.to_string();
     let task_id_for_minus = task_id.clone();
     let completions = task.completions_today;
@@ -19,7 +20,7 @@ pub fn TaskCard(
     let is_debouncing = create_rw_signal(false);
 
     let on_plus = move |_| {
-        if !is_target_met && !is_debouncing.get() {
+        if can_complete && !is_debouncing.get() {
             is_debouncing.set(true);
 
             // Set 1-second timeout
@@ -77,7 +78,7 @@ pub fn TaskCard(
                 <button
                     class=move || if is_debouncing.get() { "btn btn-primary btn-debouncing" } else { "btn btn-primary" }
                     style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
-                    disabled=move || is_target_met || is_debouncing.get()
+                    disabled=move || !can_complete || is_debouncing.get()
                     on:click=on_plus
                 >
                     {move || if is_debouncing.get() { "..." } else { "+" }}
@@ -128,6 +129,10 @@ mod tests {
     wasm_bindgen_test_configure!(run_in_browser);
 
     fn create_test_task(completions: i32, target: i32) -> TaskWithStatus {
+        create_test_task_with_exceed(completions, target, true)
+    }
+
+    fn create_test_task_with_exceed(completions: i32, target: i32, allow_exceed: bool) -> TaskWithStatus {
         TaskWithStatus {
             task: Task {
                 id: Uuid::new_v4(),
@@ -139,6 +144,7 @@ mod tests {
                 assigned_user_id: None,
                 target_count: target,
                 time_period: None,
+                allow_exceed_target: allow_exceed,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -237,6 +243,7 @@ mod tests {
                 assigned_user_id: None,
                 target_count: 1,
                 time_period: None,
+                allow_exceed_target: true,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -261,5 +268,42 @@ mod tests {
             String::new()
         };
         assert_eq!(streak_text, "");
+    }
+
+    // Tests for can_complete / allow_exceed_target functionality
+
+    #[wasm_bindgen_test]
+    fn test_can_complete_target_not_met() {
+        // Can always complete if target not yet met
+        let task = create_test_task_with_exceed(1, 3, false);
+        assert!(task.can_complete());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_can_complete_target_met_allow_exceed() {
+        // Can complete beyond target when allow_exceed_target is true
+        let task = create_test_task_with_exceed(3, 3, true);
+        assert!(task.can_complete());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_can_complete_target_met_no_exceed() {
+        // Cannot complete beyond target when allow_exceed_target is false
+        let task = create_test_task_with_exceed(3, 3, false);
+        assert!(!task.can_complete());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_can_complete_over_target_allow_exceed() {
+        // Can continue completing when already over target with allow_exceed_target true
+        let task = create_test_task_with_exceed(5, 3, true);
+        assert!(task.can_complete());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_can_complete_over_target_no_exceed() {
+        // Cannot complete when already over target with allow_exceed_target false
+        let task = create_test_task_with_exceed(5, 3, false);
+        assert!(!task.can_complete());
     }
 }

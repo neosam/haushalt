@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_background_job_error_display() {
-        let err = BackgroundJobError::DatabaseError(sqlx::Error::RowNotFound);
+        let err = BackgroundJobError::Database(sqlx::Error::RowNotFound);
         assert!(err.to_string().contains("Database error"));
     }
 }

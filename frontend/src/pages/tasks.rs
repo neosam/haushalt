@@ -309,6 +309,7 @@ mod tests {
             recurrence_value: None,
             target_count: 1,
             time_period: None,
+            allow_exceed_target: true,
             assigned_user_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

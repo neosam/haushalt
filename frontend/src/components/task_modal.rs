@@ -36,6 +36,11 @@ pub fn TaskModal(
             .map(|t| t.target_count.to_string())
             .unwrap_or_else(|| "1".to_string())
     );
+    let allow_exceed_target = create_rw_signal(
+        task.as_ref()
+            .map(|t| t.allow_exceed_target)
+            .unwrap_or(true)  // Default to true for new tasks
+    );
 
     // Recurrence value signals
     let selected_weekdays = create_rw_signal(
@@ -124,6 +129,7 @@ pub fn TaskModal(
                         assigned_user_id,
                         target_count: Some(target),
                         time_period: None,
+                        allow_exceed_target: Some(allow_exceed_target.get()),
                     };
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
@@ -170,6 +176,7 @@ pub fn TaskModal(
                         assigned_user_id,
                         target_count: Some(target),
                         time_period: None,
+                        allow_exceed_target: Some(allow_exceed_target.get()),
                     };
 
                     match ApiClient::create_task(&household_id, request).await {
@@ -333,6 +340,18 @@ pub fn TaskModal(
                                 on:input=move |ev| target_count.set(event_target_value(&ev))
                             />
                             <small class="form-hint">"How many times per period (1 for regular tasks, more for habits)"</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input
+                                    type="checkbox"
+                                    prop:checked=move || allow_exceed_target.get()
+                                    on:change=move |ev| allow_exceed_target.set(event_target_checked(&ev))
+                                />
+                                <span>"Allow exceeding target"</span>
+                            </label>
+                            <small class="form-hint">"When unchecked, the complete button is disabled once the target is reached"</small>
                         </div>
 
                         // Assignment Section

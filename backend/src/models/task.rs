@@ -15,6 +15,7 @@ pub struct TaskRow {
     pub assigned_user_id: Option<String>,
     pub target_count: i32,
     pub time_period: Option<String>,
+    pub allow_exceed_target: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -37,6 +38,7 @@ impl TaskRow {
             assigned_user_id: self.assigned_user_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
             target_count: self.target_count,
             time_period,
+            allow_exceed_target: self.allow_exceed_target,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -64,6 +66,7 @@ mod tests {
             assigned_user_id: None,
             target_count: 1,
             time_period: None,
+            allow_exceed_target: true,
             created_at: now,
             updated_at: now,
         };
@@ -76,6 +79,7 @@ mod tests {
         assert_eq!(shared.recurrence_type, RecurrenceType::Daily);
         assert!(shared.assigned_user_id.is_none());
         assert_eq!(shared.target_count, 1);
+        assert!(shared.allow_exceed_target);
     }
 
     #[test]
@@ -93,6 +97,7 @@ mod tests {
             assigned_user_id: Some(user_id.to_string()),
             target_count: 3,
             time_period: None,
+            allow_exceed_target: false,
             created_at: now,
             updated_at: now,
         };
@@ -102,5 +107,45 @@ mod tests {
         assert_eq!(shared.assigned_user_id, Some(user_id));
         assert_eq!(shared.recurrence_type, RecurrenceType::Weekly);
         assert_eq!(shared.target_count, 3);
+        assert!(!shared.allow_exceed_target);
+    }
+
+    #[test]
+    fn test_task_row_allow_exceed_target() {
+        let now = Utc::now();
+
+        // Test with allow_exceed_target = true
+        let row_allow = TaskRow {
+            id: Uuid::new_v4().to_string(),
+            household_id: Uuid::new_v4().to_string(),
+            title: "Allow Exceed".to_string(),
+            description: "".to_string(),
+            recurrence_type: "daily".to_string(),
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 5,
+            time_period: None,
+            allow_exceed_target: true,
+            created_at: now,
+            updated_at: now,
+        };
+        assert!(row_allow.to_shared().allow_exceed_target);
+
+        // Test with allow_exceed_target = false
+        let row_restrict = TaskRow {
+            id: Uuid::new_v4().to_string(),
+            household_id: Uuid::new_v4().to_string(),
+            title: "Restrict to Target".to_string(),
+            description: "".to_string(),
+            recurrence_type: "daily".to_string(),
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 5,
+            time_period: None,
+            allow_exceed_target: false,
+            created_at: now,
+            updated_at: now,
+        };
+        assert!(!row_restrict.to_shared().allow_exceed_target);
     }
 }

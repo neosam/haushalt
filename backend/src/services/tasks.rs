@@ -29,6 +29,7 @@ pub async fn create_task(
     let id = Uuid::new_v4();
     let now = Utc::now();
     let target_count = request.target_count.unwrap_or(1);
+    let allow_exceed_target = request.allow_exceed_target.unwrap_or(true);
 
     let recurrence_value = request
         .recurrence_value
@@ -39,8 +40,8 @@ pub async fn create_task(
 
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -52,6 +53,7 @@ pub async fn create_task(
     .bind(request.assigned_user_id.map(|u| u.to_string()))
     .bind(target_count)
     .bind(time_period_str)
+    .bind(allow_exceed_target)
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -67,6 +69,7 @@ pub async fn create_task(
         assigned_user_id: request.assigned_user_id,
         target_count,
         time_period: request.time_period,
+        allow_exceed_target,
         created_at: now,
         updated_at: now,
     })
@@ -184,13 +187,16 @@ pub async fn update_task(
     if let Some(time_period) = request.time_period {
         task.time_period = Some(time_period.as_str().to_string());
     }
+    if let Some(allow_exceed_target) = request.allow_exceed_target {
+        task.allow_exceed_target = allow_exceed_target;
+    }
 
     let now = Utc::now();
     task.updated_at = now;
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -201,6 +207,7 @@ pub async fn update_task(
     .bind(&task.assigned_user_id)
     .bind(task.target_count)
     .bind(&task.time_period)
+    .bind(task.allow_exceed_target)
     .bind(now)
     .bind(task_id.to_string())
     .execute(pool)
@@ -252,8 +259,8 @@ pub async fn complete_task(
 
     // Special handling for RecurrenceType::OneTime (free-form and one-time tasks)
     if task.recurrence_type == shared::RecurrenceType::OneTime {
-        if task.target_count > 0 {
-            // One-time task: check total completions EVER (across all time)
+        if task.target_count > 0 && !task.allow_exceed_target {
+            // One-time task with exceed disabled: check total completions EVER (across all time)
             let total_completions = sqlx::query_scalar::<_, i64>(
                 "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ?"
             )
@@ -266,7 +273,7 @@ pub async fn complete_task(
                 return Err(TaskError::AlreadyCompleted);
             }
         }
-        // else: free-form (target=0), always allow completion
+        // else: free-form (target=0) or allow_exceed_target=true, always allow completion
     } else {
         // Scheduled tasks: existing logic with period bounds
         // Check if task is due today
@@ -274,20 +281,22 @@ pub async fn complete_task(
             return Err(TaskError::NotDueToday);
         }
 
-        // Check if target completions already reached for this period
-        let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
-        let existing = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
-        )
-        .bind(task_id.to_string())
-        .bind(user_id.to_string())
-        .bind(period_start)
-        .bind(period_end)
-        .fetch_one(pool)
-        .await?;
+        // Check if target completions already reached for this period (only if exceed is disabled)
+        if !task.allow_exceed_target {
+            let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
+            let existing = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
+            )
+            .bind(task_id.to_string())
+            .bind(user_id.to_string())
+            .bind(period_start)
+            .bind(period_end)
+            .fetch_one(pool)
+            .await?;
 
-        if existing >= task.target_count as i64 {
-            return Err(TaskError::AlreadyCompleted);
+            if existing >= task.target_count as i64 {
+                return Err(TaskError::AlreadyCompleted);
+            }
         }
     }
 
@@ -442,6 +451,7 @@ async fn calculate_streak(pool: &SqlitePool, task: &Task, user_id: &Uuid) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shared::{CreateTaskRequest, RecurrenceType};
 
     #[test]
     fn test_task_error_display() {
@@ -450,5 +460,343 @@ mod tests {
             TaskError::AlreadyCompleted.to_string(),
             "Task already completed for today"
         );
+    }
+
+    async fn setup_test_db() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+        // Run migrations
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY NOT NULL,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS households (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                owner_id TEXT NOT NULL REFERENCES users(id),
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                recurrence_type TEXT NOT NULL DEFAULT 'daily',
+                recurrence_value TEXT,
+                assigned_user_id TEXT REFERENCES users(id),
+                target_count INTEGER NOT NULL DEFAULT 1,
+                time_period TEXT,
+                allow_exceed_target BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS task_completions (
+                id TEXT PRIMARY KEY NOT NULL,
+                task_id TEXT NOT NULL REFERENCES tasks(id),
+                user_id TEXT NOT NULL REFERENCES users(id),
+                completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                due_date DATE NOT NULL
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS memberships (
+                id TEXT PRIMARY KEY NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                user_id TEXT NOT NULL REFERENCES users(id),
+                role TEXT NOT NULL DEFAULT 'member',
+                points INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(household_id, user_id)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS point_conditions (
+                id TEXT PRIMARY KEY NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                name TEXT NOT NULL,
+                condition_type TEXT NOT NULL,
+                points_value INTEGER NOT NULL,
+                streak_threshold INTEGER,
+                multiplier REAL,
+                task_id TEXT REFERENCES tasks(id),
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS task_rewards (
+                id TEXT PRIMARY KEY NOT NULL,
+                task_id TEXT NOT NULL REFERENCES tasks(id),
+                reward_id TEXT NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS task_punishments (
+                id TEXT PRIMARY KEY NOT NULL,
+                task_id TEXT NOT NULL REFERENCES tasks(id),
+                punishment_id TEXT NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS user_rewards (
+                id TEXT PRIMARY KEY NOT NULL,
+                user_id TEXT NOT NULL REFERENCES users(id),
+                reward_id TEXT NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                amount INTEGER NOT NULL DEFAULT 1,
+                redeemed_amount INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS user_punishments (
+                id TEXT PRIMARY KEY NOT NULL,
+                user_id TEXT NOT NULL REFERENCES users(id),
+                punishment_id TEXT NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                amount INTEGER NOT NULL DEFAULT 1,
+                completed_amount INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        pool
+    }
+
+    async fn create_test_user(pool: &SqlitePool) -> Uuid {
+        let user_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
+        )
+        .bind(user_id.to_string())
+        .bind("testuser")
+        .bind("test@example.com")
+        .bind("hash")
+        .execute(pool)
+        .await
+        .unwrap();
+        user_id
+    }
+
+    async fn create_test_household(pool: &SqlitePool, owner_id: &Uuid) -> Uuid {
+        let household_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO households (id, name, owner_id) VALUES (?, ?, ?)",
+        )
+        .bind(household_id.to_string())
+        .bind("Test Household")
+        .bind(owner_id.to_string())
+        .execute(pool)
+        .await
+        .unwrap();
+
+        // Add membership
+        sqlx::query(
+            "INSERT INTO memberships (id, household_id, user_id, role) VALUES (?, ?, ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(household_id.to_string())
+        .bind(owner_id.to_string())
+        .bind("owner")
+        .execute(pool)
+        .await
+        .unwrap();
+
+        household_id
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_allow_exceed_true() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create task with allow_exceed_target = true and target_count = 1
+        let request = CreateTaskRequest {
+            title: "Test Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: Some(true),
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // First completion should succeed
+        let result1 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result1.is_ok());
+
+        // Second completion should also succeed (exceeding target)
+        let result2 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result2.is_ok());
+
+        // Third completion should also succeed
+        let result3 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result3.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_allow_exceed_false() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create task with allow_exceed_target = false and target_count = 1
+        let request = CreateTaskRequest {
+            title: "Test Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: Some(false),
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // First completion should succeed
+        let result1 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result1.is_ok());
+
+        // Second completion should fail (target reached, no exceed allowed)
+        let result2 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(matches!(result2, Err(TaskError::AlreadyCompleted)));
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_allow_exceed_false_target_2() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create task with allow_exceed_target = false and target_count = 2
+        let request = CreateTaskRequest {
+            title: "Test Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(2),
+            time_period: None,
+            allow_exceed_target: Some(false),
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // First completion should succeed
+        let result1 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result1.is_ok());
+
+        // Second completion should succeed (reaching target)
+        let result2 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result2.is_ok());
+
+        // Third completion should fail (target reached, no exceed allowed)
+        let result3 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(matches!(result3, Err(TaskError::AlreadyCompleted)));
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_default_allow_exceed() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create task without specifying allow_exceed_target (should default to true)
+        let request = CreateTaskRequest {
+            title: "Test Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None, // Default
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Verify default is true
+        assert!(task.allow_exceed_target);
+
+        // First completion should succeed
+        let result1 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result1.is_ok());
+
+        // Second completion should also succeed (default allows exceeding)
+        let result2 = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result2.is_ok());
     }
 }

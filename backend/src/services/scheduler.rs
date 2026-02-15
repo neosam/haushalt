@@ -216,6 +216,8 @@ mod tests {
             recurrence_value,
             assigned_user_id: None,
             target_count: 1,
+            time_period: None,
+            allow_exceed_target: true,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
