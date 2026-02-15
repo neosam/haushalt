@@ -104,9 +104,14 @@ pub fn TaskCard(
     let today = today_in_tz(&timezone);
     let next_due_display = task.next_due_date.map(|d| format_next_due_date(d, today, &i18n_stored.get_value()));
 
-    // Format due label
+    // Format due time (e.g., "14:00")
+    let due_time_display = task.task.due_time.clone()
+        .map(|time| format!(" ({})", time))
+        .unwrap_or_default();
+
+    // Format due label with time
     let due_label = i18n_stored.get_value().t("dates.due");
-    let due_display = next_due_display.map(|due| format!(" | {}: {}", due_label, due)).unwrap_or_default();
+    let due_display = next_due_display.map(|due| format!(" | {}: {}{}", due_label, due, due_time_display)).unwrap_or_default();
 
     // Format streak label
     let streak_label = i18n_stored.get_value().t("dates.streak");
