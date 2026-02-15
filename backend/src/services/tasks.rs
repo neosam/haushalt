@@ -109,23 +109,22 @@ pub async fn get_task_with_status(
     let today = Utc::now().date_naive();
 
     // Get completion count for today (or current period for weekly/monthly tasks)
+    // Count ALL household completions, not just the current user's
     let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
     let completions_today = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
+        "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date >= ? AND due_date <= ?",
     )
     .bind(task_id.to_string())
-    .bind(user_id.to_string())
     .bind(period_start)
     .bind(period_end)
     .fetch_one(pool)
     .await? as i32;
 
-    // Get last completion
+    // Get last completion (household-wide)
     let last_completion: Option<TaskCompletionRow> = sqlx::query_as(
-        "SELECT * FROM task_completions WHERE task_id = ? AND user_id = ? ORDER BY completed_at DESC LIMIT 1",
+        "SELECT * FROM task_completions WHERE task_id = ? ORDER BY completed_at DESC LIMIT 1",
     )
     .bind(task_id.to_string())
-    .bind(user_id.to_string())
     .fetch_optional(pool)
     .await?;
 
@@ -680,31 +679,29 @@ pub async fn get_all_tasks_with_status(
     Ok(tasks_with_status)
 }
 
-async fn calculate_streak(pool: &SqlitePool, task: &Task, user_id: &Uuid) -> Result<i32, TaskError> {
+async fn calculate_streak(pool: &SqlitePool, task: &Task, _user_id: &Uuid) -> Result<i32, TaskError> {
     // Edge case: Free-form and one-time tasks don't have traditional streaks
     if task.recurrence_type == shared::RecurrenceType::OneTime {
         if task.target_count == 0 {
             // Free-form: no schedule, no streak concept
             return Ok(0);
         } else {
-            // One-time: return total completions (more intuitive than "streak")
+            // One-time: return total completions (household-wide)
             let completions = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ?"
+                "SELECT COUNT(*) FROM task_completions WHERE task_id = ?"
             )
             .bind(task.id.to_string())
-            .bind(user_id.to_string())
             .fetch_one(pool)
             .await? as i32;
             return Ok(completions);
         }
     }
 
-    // Get all completions ordered by due date descending
+    // Get all completions ordered by due date descending (household-wide)
     let completions: Vec<TaskCompletionRow> = sqlx::query_as(
-        "SELECT * FROM task_completions WHERE task_id = ? AND user_id = ? ORDER BY due_date DESC",
+        "SELECT * FROM task_completions WHERE task_id = ? ORDER BY due_date DESC",
     )
     .bind(task.id.to_string())
-    .bind(user_id.to_string())
     .fetch_all(pool)
     .await?;
 
