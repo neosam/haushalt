@@ -104,6 +104,27 @@ body {
     font-weight: 500;
 }
 
+/* Mobile responsive tabs */
+@media (max-width: 768px) {
+    .household-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
+    }
+
+    .household-tabs::-webkit-scrollbar {
+        display: none; /* Chrome/Safari */
+    }
+
+    .tab-link {
+        padding: 0.75rem 1rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+        font-size: 0.875rem;
+    }
+}
+
 /* Cards */
 .card {
     background-color: var(--card-color);
