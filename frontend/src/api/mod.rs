@@ -5,16 +5,16 @@ use gloo_storage::{LocalStorage, Storage};
 use leptos::*;
 use serde::{de::DeserializeOwned, Serialize};
 use shared::{
-    ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, ApiError, ApiSuccess, AuthResponse,
-    ChatMessageWithUser, CreateChatMessageRequest, CreateHouseholdRequest, CreateInvitationRequest,
-    CreateNoteRequest, CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest,
-    CreateTaskRequest, CreateUserRequest, Household, HouseholdMembership, HouseholdSettings, Invitation,
-    InvitationWithHousehold, InviteUserRequest, LeaderboardEntry, LoginRequest, MemberWithUser, Note,
-    NoteWithUser, PendingPunishmentCompletion, PendingReview, PendingRewardRedemption, PointCondition,
-    Punishment, Reward, Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus,
-    UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest,
-    UpdateRewardRequest, UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward,
-    UserRewardWithUser,
+    ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, Announcement, ApiError, ApiSuccess,
+    AuthResponse, ChatMessageWithUser, CreateAnnouncementRequest, CreateChatMessageRequest,
+    CreateHouseholdRequest, CreateInvitationRequest, CreateNoteRequest, CreatePointConditionRequest,
+    CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
+    HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
+    LeaderboardEntry, LoginRequest, MemberWithUser, Note, NoteWithUser, PendingPunishmentCompletion,
+    PendingReview, PendingRewardRedemption, PointCondition, Punishment, Reward, Task, TaskCompletion,
+    TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest, UpdateChatMessageRequest,
+    UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest, UpdateRewardRequest,
+    UpdateTaskRequest, User, UserPunishment, UserPunishmentWithUser, UserReward, UserRewardWithUser,
 };
 
 const API_BASE: &str = "/api";
@@ -978,6 +978,64 @@ impl ApiClient {
         Self::request::<()>(
             "DELETE",
             &format!("/households/{}/notes/{}", household_id, note_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // Announcement endpoints
+    pub async fn list_announcements(household_id: &str) -> Result<Vec<Announcement>, String> {
+        Self::request::<Vec<Announcement>>(
+            "GET",
+            &format!("/households/{}/announcements", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn list_active_announcements(household_id: &str) -> Result<Vec<Announcement>, String> {
+        Self::request::<Vec<Announcement>>(
+            "GET",
+            &format!("/households/{}/announcements/active", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn create_announcement(
+        household_id: &str,
+        request: CreateAnnouncementRequest,
+    ) -> Result<Announcement, String> {
+        Self::request(
+            "POST",
+            &format!("/households/{}/announcements", household_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_announcement(
+        household_id: &str,
+        announcement_id: &str,
+        request: UpdateAnnouncementRequest,
+    ) -> Result<Announcement, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/announcements/{}", household_id, announcement_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_announcement(household_id: &str, announcement_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/households/{}/announcements/{}", household_id, announcement_id),
             None::<()>,
             true,
         )

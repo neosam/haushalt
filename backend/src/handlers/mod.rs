@@ -12,6 +12,7 @@ pub mod activity_logs;
 pub mod chat;
 pub mod websocket;
 pub mod notes;
+pub mod announcements;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(

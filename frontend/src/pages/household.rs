@@ -1,8 +1,10 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{AdjustPointsRequest, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus};
+use shared::{AdjustPointsRequest, Announcement, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus};
 
 use crate::api::ApiClient;
+use crate::components::announcement_banner::AnnouncementBanner;
+use crate::components::announcement_modal::AnnouncementModal;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
@@ -39,6 +41,10 @@ pub fn HouseholdPage() -> impl IntoView {
     // Rewards and punishments for assignment
     let rewards = create_rw_signal(Vec::<Reward>::new());
     let punishments = create_rw_signal(Vec::<Punishment>::new());
+
+    // Announcements
+    let active_announcements = create_rw_signal(Vec::<Announcement>::new());
+    let show_announcement_modal = create_rw_signal(false);
 
     // Adjust points modal state
     let show_adjust_points_modal = create_rw_signal(false);
@@ -111,6 +117,11 @@ pub fn HouseholdPage() -> impl IntoView {
             }
             if let Ok(p) = ApiClient::list_punishments(&id).await {
                 punishments.set(p);
+            }
+
+            // Load active announcements
+            if let Ok(anns) = ApiClient::list_active_announcements(&id).await {
+                active_announcements.set(anns);
             }
 
             // Load settings and apply dark mode
@@ -371,6 +382,40 @@ pub fn HouseholdPage() -> impl IntoView {
                 let id = h.id.to_string();
                 view! {
                     <HouseholdTabs household_id=id.clone() active_tab=HouseholdTab::Overview />
+
+                    // Announcement Banner
+                    {move || {
+                        let announcements = active_announcements.get();
+                        let has_announcements = !announcements.is_empty();
+                        let is_owner = current_user_role.get().map(|r| r == Role::Owner).unwrap_or(false);
+
+                        if has_announcements && is_owner {
+                            view! {
+                                <AnnouncementBanner
+                                    announcements=announcements
+                                    on_manage=Callback::new(move |_| show_announcement_modal.set(true))
+                                />
+                            }.into_view()
+                        } else if has_announcements {
+                            view! {
+                                <AnnouncementBanner announcements=announcements />
+                            }.into_view()
+                        } else if is_owner {
+                            // Show just the manage button if owner and no announcements
+                            view! {
+                                <div class="announcements-container">
+                                    <button
+                                        class="btn btn-secondary btn-sm announcement-manage-btn"
+                                        on:click=move |_| show_announcement_modal.set(true)
+                                    >
+                                        "Manage Announcements"
+                                    </button>
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! {}.into_view()
+                        }
+                    }}
 
                     <div class="dashboard-header">
                         <h1 class="dashboard-title">{h.name}</h1>
@@ -820,6 +865,23 @@ pub fn HouseholdPage() -> impl IntoView {
                         </div>
                     </form>
                 </Modal>
+            </Show>
+
+            // Announcement Management Modal
+            <Show when=move || show_announcement_modal.get() fallback=|| ()>
+                <AnnouncementModal
+                    household_id=household_id()
+                    on_close=Callback::new(move |_| {
+                        show_announcement_modal.set(false);
+                        // Refresh active announcements
+                        let hid = household_id();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let Ok(anns) = ApiClient::list_active_announcements(&hid).await {
+                                active_announcements.set(anns);
+                            }
+                        });
+                    })
+                />
             </Show>
         </Show>
     }

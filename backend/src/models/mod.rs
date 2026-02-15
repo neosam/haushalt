@@ -15,6 +15,7 @@ pub mod invitation;
 pub mod activity_log;
 pub mod chat_message;
 pub mod note;
+pub mod announcement;
 
 pub use user::*;
 pub use household::*;
@@ -29,6 +30,7 @@ pub use invitation::*;
 pub use activity_log::*;
 pub use chat_message::*;
 pub use note::*;
+pub use announcement::*;
 
 /// Application state shared across all handlers
 pub struct AppState {

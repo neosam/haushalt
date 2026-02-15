@@ -14,3 +14,5 @@ pub mod chat_message;
 pub mod markdown;
 pub mod note_card;
 pub mod note_modal;
+pub mod announcement_banner;
+pub mod announcement_modal;

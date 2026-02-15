@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::models::AppState;
 use crate::services::{activity_logs as activity_log_service, households as household_service, household_settings as settings_service, invitations as invitation_service};
-use crate::handlers::{tasks, rewards, punishments, point_conditions, activity_logs, chat, notes};
+use crate::handlers::{tasks, rewards, punishments, point_conditions, activity_logs, chat, notes, announcements};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -33,6 +33,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     .configure(activity_logs::configure)
                     .configure(chat::configure)
                     .configure(notes::configure)
+                    .configure(announcements::configure)
             )
     );
 }

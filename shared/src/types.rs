@@ -1100,6 +1100,41 @@ pub struct UpdateNoteRequest {
 }
 
 // ============================================================================
+// Announcement Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Announcement {
+    pub id: Uuid,
+    pub household_id: Uuid,
+    pub created_by: Uuid,
+    pub title: String,
+    pub content: String,
+    pub starts_at: Option<DateTime<Utc>>,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAnnouncementRequest {
+    pub title: String,
+    pub content: Option<String>,
+    pub starts_at: Option<DateTime<Utc>>,
+    pub ends_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateAnnouncementRequest {
+    pub title: Option<String>,
+    pub content: Option<String>,
+    /// None = no change, Some(None) = clear, Some(Some(dt)) = set
+    pub starts_at: Option<Option<DateTime<Utc>>>,
+    /// None = no change, Some(None) = clear, Some(Some(dt)) = set
+    pub ends_at: Option<Option<DateTime<Utc>>>,
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
