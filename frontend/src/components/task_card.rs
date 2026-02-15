@@ -41,9 +41,6 @@ pub fn TaskCard(
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
-    let i18n = use_i18n();
-    let i18n_stored = store_value(i18n);
-
     let is_target_met = task.is_target_met();
     let can_complete = task.can_complete();
     let task_id = task.task.id.to_string();
@@ -90,20 +87,11 @@ pub fn TaskCard(
     let today = today_in_tz(&timezone);
     let next_due_display = task.next_due_date.map(|d| format_next_due_date(d, today));
 
-    let requires_review = task.task.requires_review;
-
     view! {
         <div class=card_class>
             <div class="task-content" style="flex: 1;">
                 <div class="task-title">
                     {task.task.title.clone()}
-                    {if requires_review {
-                        view! {
-                            <span class="task-badge task-badge-review" title="Requires review">{i18n_stored.get_value().t("tasks.pending_review")}</span>
-                        }.into_view()
-                    } else {
-                        ().into_view()
-                    }}
                 </div>
                 <div class="task-meta">
                     {format!("{:?}", task.task.recurrence_type)}
