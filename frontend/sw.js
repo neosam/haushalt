@@ -1,4 +1,4 @@
-const CACHE_NAME = 'household-v1';
+const CACHE_NAME = 'household-v2';
 const PRECACHE_URLS = [
   '/',
   '/index.html',

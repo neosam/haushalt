@@ -1,11 +1,9 @@
-use chrono::{DateTime, TimeZone, Utc};
-use chrono_tz::Tz;
 use leptos::*;
 use shared::{Announcement, CreateAnnouncementRequest, HouseholdSettings, UpdateAnnouncementRequest};
 
 use crate::api::ApiClient;
 use crate::components::markdown::MarkdownViewReactive;
-use crate::utils::format_datetime;
+use crate::utils::{format_datetime, local_string_to_utc, utc_to_local_string};
 
 /// Modal for managing announcements - can list, create, edit, and delete
 #[component]
@@ -187,36 +185,30 @@ pub fn AnnouncementModal(
 
                 // Create mode
                 <Show when=move || matches!(edit_announcement.get(), Some(None)) fallback=|| ()>
-                    {
-                        let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
-                        view! {
-                            <AnnouncementForm
-                                announcement=None
-                                household_id=household_id_signal.get_value()
-                                timezone=tz
-                                on_save=Callback::new(move |_: Announcement| {
-                                    edit_announcement.set(None);
-                                    success.set(Some("Announcement created".to_string()));
-                                    reload_announcements();
-                                })
-                                on_cancel=Callback::new(move |_| {
-                                    edit_announcement.set(None);
-                                })
-                            />
-                        }
-                    }
+                    <AnnouncementForm
+                        announcement=None
+                        household_id=household_id_signal.get_value()
+                        settings=settings
+                        on_save=Callback::new(move |_: Announcement| {
+                            edit_announcement.set(None);
+                            success.set(Some("Announcement created".to_string()));
+                            reload_announcements();
+                        })
+                        on_cancel=Callback::new(move |_| {
+                            edit_announcement.set(None);
+                        })
+                    />
                 </Show>
 
                 // Edit mode
                 <Show when=move || matches!(edit_announcement.get(), Some(Some(_))) fallback=|| ()>
                     {move || {
                         edit_announcement.get().and_then(|inner| inner).map(|ann| {
-                            let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
                             view! {
                                 <AnnouncementForm
                                     announcement=Some(ann)
                                     household_id=household_id_signal.get_value()
-                                    timezone=tz
+                                    settings=settings
                                     on_save=Callback::new(move |_: Announcement| {
                                         edit_announcement.set(None);
                                         success.set(Some("Announcement updated".to_string()));
@@ -235,35 +227,12 @@ pub fn AnnouncementModal(
     }
 }
 
-/// Convert UTC datetime to local time string for datetime-local input
-fn utc_to_local_string(dt: DateTime<Utc>, tz_str: &str) -> String {
-    let tz: Tz = tz_str.parse().unwrap_or(chrono_tz::UTC);
-    let local = dt.with_timezone(&tz);
-    local.format("%Y-%m-%dT%H:%M").to_string()
-}
-
-/// Parse local datetime string and convert to UTC
-fn local_string_to_utc(s: &str, tz_str: &str) -> Option<DateTime<Utc>> {
-    if s.is_empty() {
-        return None;
-    }
-    let tz: Tz = tz_str.parse().unwrap_or(chrono_tz::UTC);
-    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M")
-        .ok()
-        .and_then(|naive| {
-            // Convert naive local time to the timezone, then to UTC
-            tz.from_local_datetime(&naive)
-                .single()
-                .map(|local_dt: DateTime<Tz>| local_dt.with_timezone(&Utc))
-        })
-}
-
 /// Form component for creating/editing announcements
 #[component]
 fn AnnouncementForm(
     announcement: Option<Announcement>,
     household_id: String,
-    #[prop(default = "UTC".to_string())] timezone: String,
+    settings: RwSignal<Option<HouseholdSettings>>,
     #[prop(into)] on_save: Callback<Announcement>,
     #[prop(into)] on_cancel: Callback<()>,
 ) -> impl IntoView {
@@ -272,7 +241,13 @@ fn AnnouncementForm(
     let saving = create_rw_signal(false);
     let preview_mode = create_rw_signal(false);
 
+    // Get timezone from settings (reactively)
+    let get_timezone = move || {
+        settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string())
+    };
+
     // Form fields - convert UTC to local timezone for display
+    let initial_timezone = get_timezone();
     let title = create_rw_signal(
         announcement
             .as_ref()
@@ -289,20 +264,19 @@ fn AnnouncementForm(
         announcement
             .as_ref()
             .and_then(|a| a.starts_at)
-            .map(|dt| utc_to_local_string(dt, &timezone))
+            .map(|dt| utc_to_local_string(dt, &initial_timezone))
             .unwrap_or_default(),
     );
     let ends_at = create_rw_signal(
         announcement
             .as_ref()
             .and_then(|a| a.ends_at)
-            .map(|dt| utc_to_local_string(dt, &timezone))
+            .map(|dt| utc_to_local_string(dt, &initial_timezone))
             .unwrap_or_default(),
     );
 
     let announcement_id = store_value(announcement.as_ref().map(|a| a.id.to_string()));
     let household_id = store_value(household_id);
-    let timezone = store_value(timezone);
 
     let on_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
@@ -317,7 +291,7 @@ fn AnnouncementForm(
 
         let announcement_id = announcement_id.get_value();
         let household_id = household_id.get_value();
-        let tz = timezone.get_value();
+        let tz = get_timezone();
         let starts_at_val = local_string_to_utc(&starts_at.get(), &tz);
         let ends_at_val = local_string_to_utc(&ends_at.get(), &tz);
         let title_val = title.get();

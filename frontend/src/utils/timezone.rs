@@ -1,6 +1,32 @@
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use chrono_tz::Tz;
 
+use chrono::TimeZone as _;
+
+/// Convert a local time string to UTC
+/// Used when parsing datetime-local input values
+pub fn local_string_to_utc(s: &str, tz_str: &str) -> Option<DateTime<Utc>> {
+    if s.is_empty() {
+        return None;
+    }
+    let tz: Tz = tz_str.parse().unwrap_or(chrono_tz::UTC);
+    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M")
+        .ok()
+        .and_then(|naive| {
+            // Convert naive local time to the timezone, then to UTC
+            tz.from_local_datetime(&naive)
+                .single()
+                .map(|local_dt: DateTime<Tz>| local_dt.with_timezone(&Utc))
+        })
+}
+
+/// Convert UTC datetime to local time string for datetime-local input
+pub fn utc_to_local_string(dt: DateTime<Utc>, tz_str: &str) -> String {
+    let tz: Tz = tz_str.parse().unwrap_or(chrono_tz::UTC);
+    let local = dt.with_timezone(&tz);
+    local.format("%Y-%m-%dT%H:%M").to_string()
+}
+
 /// List of common timezones for the dropdown
 pub const COMMON_TIMEZONES: &[(&str, &str)] = &[
     ("UTC", "UTC"),
@@ -83,7 +109,7 @@ pub fn format_relative_date(date: NaiveDate, tz_str: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Timelike};
 
     #[test]
     fn test_format_datetime() {
@@ -107,5 +133,47 @@ mod tests {
     fn test_invalid_timezone_defaults_to_utc() {
         let dt = Utc.with_ymd_and_hms(2024, 1, 15, 12, 30, 0).unwrap();
         assert_eq!(format_time(dt, "Invalid/Timezone"), "12:30");
+    }
+
+    #[test]
+    fn test_berlin_timezone_conversion() {
+        // In February, Berlin is UTC+1
+        let dt = Utc.with_ymd_and_hms(2024, 2, 13, 21, 39, 0).unwrap();
+
+        // 21:39 UTC should display as 22:39 Berlin time
+        assert_eq!(format_time(dt, "Europe/Berlin"), "22:39");
+    }
+
+    #[test]
+    fn test_local_string_to_utc_berlin() {
+        // 22:39 Berlin time should convert to 21:39 UTC (Berlin is UTC+1 in February)
+        let result = local_string_to_utc("2024-02-13T22:39", "Europe/Berlin");
+        assert!(result.is_some());
+        let utc = result.unwrap();
+        assert_eq!(utc.hour(), 21);
+        assert_eq!(utc.minute(), 39);
+    }
+
+    #[test]
+    fn test_utc_to_local_string_berlin() {
+        // 21:39 UTC should display as 22:39 Berlin time
+        let dt = Utc.with_ymd_and_hms(2024, 2, 13, 21, 39, 0).unwrap();
+        let result = utc_to_local_string(dt, "Europe/Berlin");
+        assert_eq!(result, "2024-02-13T22:39");
+    }
+
+    #[test]
+    fn test_roundtrip_berlin() {
+        // Start with a UTC time
+        let original_utc = Utc.with_ymd_and_hms(2024, 2, 13, 21, 39, 0).unwrap();
+
+        // Convert to local string
+        let local_str = utc_to_local_string(original_utc, "Europe/Berlin");
+
+        // Convert back to UTC
+        let back_to_utc = local_string_to_utc(&local_str, "Europe/Berlin").unwrap();
+
+        // Should match the original
+        assert_eq!(original_utc, back_to_utc);
     }
 }
