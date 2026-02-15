@@ -400,6 +400,37 @@ pub async fn get_due_tasks(
     Ok(due_tasks)
 }
 
+/// Get all tasks for a household with their status (not just due today)
+/// Tasks are returned sorted by next_due_date (tasks due sooner first, None last)
+pub async fn get_all_tasks_with_status(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<Vec<TaskWithStatus>, TaskError> {
+    let tasks = list_tasks(pool, household_id).await?;
+
+    let mut tasks_with_status = Vec::new();
+
+    for task in tasks {
+        let status = get_task_with_status(pool, &task.id, user_id).await?;
+        if let Some(s) = status {
+            tasks_with_status.push(s);
+        }
+    }
+
+    // Sort by next_due_date: tasks with dates first (ascending), then tasks without dates
+    tasks_with_status.sort_by(|a, b| {
+        match (&a.next_due_date, &b.next_due_date) {
+            (Some(date_a), Some(date_b)) => date_a.cmp(date_b),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    });
+
+    Ok(tasks_with_status)
+}
+
 async fn calculate_streak(pool: &SqlitePool, task: &Task, user_id: &Uuid) -> Result<i32, TaskError> {
     // Edge case: Free-form and one-time tasks don't have traditional streaks
     if task.recurrence_type == shared::RecurrenceType::OneTime {

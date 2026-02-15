@@ -198,6 +198,16 @@ impl ApiClient {
         .await
     }
 
+    pub async fn get_all_tasks_with_status(household_id: &str) -> Result<Vec<TaskWithStatus>, String> {
+        Self::request::<Vec<TaskWithStatus>>(
+            "GET",
+            &format!("/households/{}/tasks/all", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     pub async fn get_my_assigned_tasks(household_id: &str) -> Result<Vec<Task>, String> {
         Self::request::<Vec<Task>>(
             "GET",

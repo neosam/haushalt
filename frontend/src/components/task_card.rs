@@ -1,6 +1,7 @@
 use chrono::{Datelike, NaiveDate, Weekday};
 use leptos::*;
 use shared::TaskWithStatus;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 /// Format a next due date for display
@@ -143,6 +144,114 @@ pub fn TaskList(
                     <div>
                         {tasks.into_iter().map(|task| {
                             view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete /> }
+                        }).collect_view()}
+                    </div>
+                }.into_any()
+            }}
+        </div>
+    }
+}
+
+/// Group key for organizing tasks by due date
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum DueDateGroup {
+    Today,
+    Tomorrow,
+    Weekday(u32, String), // (days_until, weekday_name)
+    Later(NaiveDate),
+    NoSchedule,
+}
+
+impl DueDateGroup {
+    fn from_date(date: Option<NaiveDate>, today: NaiveDate) -> Self {
+        match date {
+            None => DueDateGroup::NoSchedule,
+            Some(d) => {
+                let days_until = (d - today).num_days();
+                match days_until {
+                    0 => DueDateGroup::Today,
+                    1 => DueDateGroup::Tomorrow,
+                    2..=6 => {
+                        let weekday_name = match d.weekday() {
+                            Weekday::Mon => "Monday",
+                            Weekday::Tue => "Tuesday",
+                            Weekday::Wed => "Wednesday",
+                            Weekday::Thu => "Thursday",
+                            Weekday::Fri => "Friday",
+                            Weekday::Sat => "Saturday",
+                            Weekday::Sun => "Sunday",
+                        }
+                        .to_string();
+                        DueDateGroup::Weekday(days_until as u32, weekday_name)
+                    }
+                    _ => DueDateGroup::Later(d),
+                }
+            }
+        }
+    }
+
+    fn title(&self) -> String {
+        match self {
+            DueDateGroup::Today => "Today".to_string(),
+            DueDateGroup::Tomorrow => "Tomorrow".to_string(),
+            DueDateGroup::Weekday(_, name) => name.clone(),
+            DueDateGroup::Later(date) => date.format("%b %d").to_string(),
+            DueDateGroup::NoSchedule => "No Schedule".to_string(),
+        }
+    }
+}
+
+#[component]
+pub fn GroupedTaskList(
+    tasks: Vec<TaskWithStatus>,
+    #[prop(into)] on_complete: Callback<String>,
+    #[prop(into)] on_uncomplete: Callback<String>,
+) -> impl IntoView {
+    let today = chrono::Utc::now().date_naive();
+
+    // Group tasks by their due date
+    let mut grouped: BTreeMap<DueDateGroup, Vec<TaskWithStatus>> = BTreeMap::new();
+
+    for task in tasks {
+        let group = DueDateGroup::from_date(task.next_due_date, today);
+        grouped.entry(group).or_default().push(task);
+    }
+
+    let groups: Vec<(DueDateGroup, Vec<TaskWithStatus>)> = grouped.into_iter().collect();
+
+    view! {
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">"Tasks"</h3>
+            </div>
+            {if groups.is_empty() {
+                view! {
+                    <div class="empty-state">
+                        <p>"No tasks yet!"</p>
+                    </div>
+                }.into_any()
+            } else {
+                view! {
+                    <div>
+                        {groups.into_iter().map(|(group, group_tasks)| {
+                            let title = group.title();
+                            let is_today = matches!(group, DueDateGroup::Today);
+                            view! {
+                                <div class="task-group" style=if is_today { "margin-bottom: 1.5rem;" } else { "margin-bottom: 1rem;" }>
+                                    <div style=if is_today {
+                                        "font-weight: 600; font-size: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border-radius: var(--border-radius);"
+                                    } else {
+                                        "font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: var(--bg-muted); color: var(--text-muted); border-radius: var(--border-radius);"
+                                    }>
+                                        {title}
+                                    </div>
+                                    <div style="margin-top: 0.5rem;">
+                                        {group_tasks.into_iter().map(|task| {
+                                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete /> }
+                                        }).collect_view()}
+                                    </div>
+                                </div>
+                            }
                         }).collect_view()}
                     </div>
                 }.into_any()

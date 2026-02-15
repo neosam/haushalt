@@ -7,7 +7,7 @@ use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
 use crate::components::points_display::PointsBadge;
-use crate::components::task_card::TaskList;
+use crate::components::task_card::GroupedTaskList;
 
 #[component]
 pub fn HouseholdPage() -> impl IntoView {
@@ -87,8 +87,8 @@ pub fn HouseholdPage() -> impl IntoView {
                 members.set(m);
             }
 
-            // Load due tasks
-            if let Ok(t) = ApiClient::get_due_tasks(&id).await {
+            // Load all tasks with status
+            if let Ok(t) = ApiClient::get_all_tasks_with_status(&id).await {
                 tasks.set(t);
             }
 
@@ -119,7 +119,7 @@ pub fn HouseholdPage() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             if ApiClient::complete_task(&id, &task_id).await.is_ok() {
                 // Refresh tasks
-                if let Ok(t) = ApiClient::get_due_tasks(&id).await {
+                if let Ok(t) = ApiClient::get_all_tasks_with_status(&id).await {
                     tasks.set(t);
                 }
                 // Refresh leaderboard
@@ -135,7 +135,7 @@ pub fn HouseholdPage() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             if ApiClient::uncomplete_task(&id, &task_id).await.is_ok() {
                 // Refresh tasks
-                if let Ok(t) = ApiClient::get_due_tasks(&id).await {
+                if let Ok(t) = ApiClient::get_all_tasks_with_status(&id).await {
                     tasks.set(t);
                 }
                 // Refresh leaderboard
@@ -354,7 +354,7 @@ pub fn HouseholdPage() -> impl IntoView {
 
                     <div class="grid grid-2">
                         <div>
-                            <TaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task />
+                            <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task />
                         </div>
 
                         <div>

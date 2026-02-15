@@ -28,6 +28,7 @@
           buildInputs = with pkgs; [
             # Rust toolchain with WASM target
             rustToolchain
+            cargo-watch
 
             # SQLite and sqlx
             sqlite

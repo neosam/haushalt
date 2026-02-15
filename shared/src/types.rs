@@ -203,7 +203,6 @@ impl FromStr for RecurrenceType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
 pub enum RecurrenceValue {
     /// For weekly: day of week (0 = Sunday, 1 = Monday, etc.)
     WeekDay(u8),
