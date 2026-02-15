@@ -5,6 +5,7 @@ use shared::{ActivityLogWithUsers, ActivityType, HouseholdSettings};
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::utils::format_datetime;
 
 #[component]
 pub fn ActivityPage() -> impl IntoView {
@@ -75,11 +76,12 @@ pub fn ActivityPage() -> impl IntoView {
                         </div>
                     }.into_view()
                 } else {
+                    let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
                     view! {
                         <div class="card">
                             {a.into_iter().map(|activity| {
                                 let description = format_activity_description(&activity);
-                                let timestamp = activity.log.created_at.format("%Y-%m-%d %H:%M").to_string();
+                                let timestamp = format_datetime(activity.log.created_at, &tz);
 
                                 view! {
                                     <div class="task-item">

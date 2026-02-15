@@ -129,6 +129,7 @@ pub struct HouseholdSettings {
     pub role_label_admin: String,
     pub role_label_member: String,
     pub hierarchy_type: HierarchyType,
+    pub timezone: String,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -141,6 +142,7 @@ impl Default for HouseholdSettings {
             role_label_admin: "Admin".to_string(),
             role_label_member: "Member".to_string(),
             hierarchy_type: HierarchyType::default(),
+            timezone: "UTC".to_string(),
             updated_at: Utc::now(),
         }
     }
@@ -153,6 +155,7 @@ pub struct UpdateHouseholdSettingsRequest {
     pub role_label_admin: Option<String>,
     pub role_label_member: Option<String>,
     pub hierarchy_type: Option<HierarchyType>,
+    pub timezone: Option<String>,
 }
 
 // ============================================================================

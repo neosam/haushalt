@@ -13,6 +13,7 @@ pub struct HouseholdSettingsRow {
     pub role_label_admin: String,
     pub role_label_member: String,
     pub hierarchy_type: String,
+    pub timezone: String,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -26,6 +27,7 @@ impl HouseholdSettingsRow {
             role_label_member: self.role_label_member.clone(),
             hierarchy_type: HierarchyType::from_str(&self.hierarchy_type)
                 .unwrap_or_default(),
+            timezone: self.timezone.clone(),
             updated_at: self.updated_at,
         }
     }
@@ -47,6 +49,7 @@ mod tests {
             role_label_admin: "Guardian".to_string(),
             role_label_member: "Child".to_string(),
             hierarchy_type: "hierarchy".to_string(),
+            timezone: "America/New_York".to_string(),
             updated_at: now,
         };
 
@@ -58,6 +61,7 @@ mod tests {
         assert_eq!(shared.role_label_admin, "Guardian");
         assert_eq!(shared.role_label_member, "Child");
         assert_eq!(shared.hierarchy_type, HierarchyType::Hierarchy);
+        assert_eq!(shared.timezone, "America/New_York");
     }
 
     #[test]
@@ -72,6 +76,7 @@ mod tests {
             role_label_admin: "Admin".to_string(),
             role_label_member: "Member".to_string(),
             hierarchy_type: "invalid".to_string(),
+            timezone: "UTC".to_string(),
             updated_at: now,
         };
 

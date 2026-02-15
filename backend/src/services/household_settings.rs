@@ -32,14 +32,16 @@ pub async fn get_or_create_settings(
     // Create default settings
     let now = Utc::now();
     let default_hierarchy = HierarchyType::default();
+    let default_timezone = "UTC";
     sqlx::query(
         r#"
-        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, updated_at)
-        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?)
+        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, updated_at)
+        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, ?)
         "#,
     )
     .bind(household_id.to_string())
     .bind(default_hierarchy.as_str())
+    .bind(default_timezone)
     .bind(now)
     .execute(pool)
     .await?;
@@ -51,6 +53,7 @@ pub async fn get_or_create_settings(
         role_label_admin: "Admin".to_string(),
         role_label_member: "Member".to_string(),
         hierarchy_type: default_hierarchy,
+        timezone: default_timezone.to_string(),
         updated_at: now,
     })
 }
@@ -80,6 +83,9 @@ pub async fn update_settings(
     if let Some(hierarchy_type) = request.hierarchy_type {
         settings.hierarchy_type = hierarchy_type;
     }
+    if let Some(ref timezone) = request.timezone {
+        settings.timezone = timezone.clone();
+    }
 
     let now = Utc::now();
     settings.updated_at = now;
@@ -87,7 +93,7 @@ pub async fn update_settings(
     sqlx::query(
         r#"
         UPDATE household_settings
-        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, updated_at = ?
+        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, updated_at = ?
         WHERE household_id = ?
         "#,
     )
@@ -96,6 +102,7 @@ pub async fn update_settings(
     .bind(&settings.role_label_admin)
     .bind(&settings.role_label_member)
     .bind(settings.hierarchy_type.as_str())
+    .bind(&settings.timezone)
     .bind(now)
     .bind(household_id.to_string())
     .execute(pool)

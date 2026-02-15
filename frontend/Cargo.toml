@@ -27,6 +27,7 @@ serde_json = { workspace = true }
 # Types
 uuid = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = "0.10"
 
 # Markdown rendering
 pulldown-cmark = "0.9"

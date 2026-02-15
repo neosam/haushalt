@@ -423,7 +423,10 @@ pub fn HouseholdPage() -> impl IntoView {
 
                     <div class="grid grid-2">
                         <div>
-                            <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task />
+                            {
+                                let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
+                                view! { <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz /> }
+                            }
 
                             // Pending Reviews Section (only for managers/owners)
                             <Show when=move || current_user_can_manage.get() fallback=|| ()>

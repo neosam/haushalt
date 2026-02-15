@@ -191,15 +191,18 @@ pub fn ChatPage() -> impl IntoView {
                                 </div>
                             }.into_view()
                         } else {
+                            let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
                             msgs.into_iter().map(|msg| {
                                 let on_edit = on_edit.clone();
                                 let on_delete = on_delete.clone();
+                                let tz = tz.clone();
                                 view! {
                                     <ChatMessage
                                         message=msg
                                         current_user_id=user_id
                                         on_edit=on_edit
                                         on_delete=on_delete
+                                        timezone=tz
                                     />
                                 }
                             }).collect_view()

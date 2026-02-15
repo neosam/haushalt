@@ -2,6 +2,8 @@ use leptos::*;
 use shared::ChatMessageWithUser;
 use uuid::Uuid;
 
+use crate::utils::format_time;
+
 /// A single chat message display
 #[component]
 pub fn ChatMessage(
@@ -9,6 +11,7 @@ pub fn ChatMessage(
     current_user_id: Uuid,
     on_edit: Callback<(Uuid, String)>,
     on_delete: Callback<Uuid>,
+    #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
     let (editing, set_editing) = create_signal(false);
     let original_content = store_value(message.message.content.clone());
@@ -20,12 +23,12 @@ pub fn ChatMessage(
     let content_display = message.message.content.clone();
     let username = message.user.username.clone();
 
-    let format_time = {
+    let formatted_time = {
         let created = message.message.created_at;
         let updated = message.message.updated_at;
         let was_edited = updated > created;
 
-        let time_str = created.format("%H:%M").to_string();
+        let time_str = format_time(created, &timezone);
         if was_edited {
             format!("{} (edited)", time_str)
         } else {
@@ -64,7 +67,7 @@ pub fn ChatMessage(
         }>
             <div class="chat-message-header">
                 <span class="chat-message-author">{username}</span>
-                <span class="chat-message-time">{format_time}</span>
+                <span class="chat-message-time">{formatted_time}</span>
             </div>
 
             {move || {

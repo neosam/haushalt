@@ -4,6 +4,8 @@ use shared::TaskWithStatus;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use crate::utils::timezone::today_in_tz;
+
 /// Format a next due date for display
 fn format_next_due_date(date: NaiveDate, today: NaiveDate) -> String {
     let days_until = (date - today).num_days();
@@ -36,6 +38,7 @@ pub fn TaskCard(
     task: TaskWithStatus,
     #[prop(into)] on_complete: Callback<String>,
     #[prop(into)] on_uncomplete: Callback<String>,
+    #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
     let is_target_met = task.is_target_met();
     let can_complete = task.can_complete();
@@ -79,8 +82,8 @@ pub fn TaskCard(
     // Progress display as fraction (e.g., "2/3")
     let progress_display = format!("{}/{}", completions, target);
 
-    // Format next due date
-    let today = chrono::Utc::now().date_naive();
+    // Format next due date using household timezone
+    let today = today_in_tz(&timezone);
     let next_due_display = task.next_due_date.map(|d| format_next_due_date(d, today));
 
     let requires_review = task.task.requires_review;
@@ -138,6 +141,7 @@ pub fn TaskList(
     tasks: Vec<TaskWithStatus>,
     #[prop(into)] on_complete: Callback<String>,
     #[prop(into)] on_uncomplete: Callback<String>,
+    #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
     view! {
         <div class="card">
@@ -151,10 +155,12 @@ pub fn TaskList(
                     </div>
                 }.into_any()
             } else {
+                let tz = timezone.clone();
                 view! {
                     <div>
                         {tasks.into_iter().map(|task| {
-                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete /> }
+                            let tz = tz.clone();
+                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz /> }
                         }).collect_view()}
                     </div>
                 }.into_any()
@@ -217,8 +223,9 @@ pub fn GroupedTaskList(
     tasks: Vec<TaskWithStatus>,
     #[prop(into)] on_complete: Callback<String>,
     #[prop(into)] on_uncomplete: Callback<String>,
+    #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
-    let today = chrono::Utc::now().date_naive();
+    let today = today_in_tz(&timezone);
 
     // Group tasks by their due date
     let mut grouped: BTreeMap<DueDateGroup, Vec<TaskWithStatus>> = BTreeMap::new();
@@ -242,11 +249,13 @@ pub fn GroupedTaskList(
                     </div>
                 }.into_any()
             } else {
+                let tz = timezone.clone();
                 view! {
                     <div>
                         {groups.into_iter().map(|(group, group_tasks)| {
                             let title = group.title();
                             let is_today = matches!(group, DueDateGroup::Today);
+                            let tz_inner = tz.clone();
                             view! {
                                 <div class="task-group" style=if is_today { "margin-bottom: 1.5rem;" } else { "margin-bottom: 1rem;" }>
                                     <div style=if is_today {
@@ -258,7 +267,8 @@ pub fn GroupedTaskList(
                                     </div>
                                     <div style="margin-top: 0.5rem;">
                                         {group_tasks.into_iter().map(|task| {
-                                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete /> }
+                                            let tz_task = tz_inner.clone();
+                                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }
                                         }).collect_view()}
                                     </div>
                                 </div>

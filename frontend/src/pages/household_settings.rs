@@ -5,6 +5,7 @@ use shared::{HierarchyType, HouseholdSettings, Role, UpdateHouseholdSettingsRequ
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::utils::COMMON_TIMEZONES;
 
 #[component]
 pub fn HouseholdSettingsPage() -> impl IntoView {
@@ -26,6 +27,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let role_label_admin = create_rw_signal(String::new());
     let role_label_member = create_rw_signal(String::new());
     let hierarchy_type = create_rw_signal(HierarchyType::Organized);
+    let timezone = create_rw_signal("UTC".to_string());
 
     // Load settings and check permissions
     create_effect(move |_| {
@@ -46,6 +48,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     role_label_admin.set(s.role_label_admin.clone());
                     role_label_member.set(s.role_label_member.clone());
                     hierarchy_type.set(s.hierarchy_type);
+                    timezone.set(s.timezone.clone());
                     settings.set(Some(s));
                 }
                 Err(e) => error.set(Some(e)),
@@ -80,6 +83,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             role_label_admin: Some(role_label_admin.get()),
             role_label_member: Some(role_label_member.get()),
             hierarchy_type: Some(hierarchy_type.get()),
+            timezone: Some(timezone.get()),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -155,6 +159,33 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                 </option>
                             </select>
                             <small class="form-hint">"Controls who can manage tasks, rewards, and punishments, and who can be assigned tasks"</small>
+                        </div>
+
+                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+
+                        <div class="form-group">
+                            <label class="form-label" for="timezone">"Timezone"</label>
+                            <select
+                                id="timezone"
+                                class="form-select"
+                                on:change=move |ev| {
+                                    timezone.set(event_target_value(&ev));
+                                }
+                            >
+                                {COMMON_TIMEZONES.iter().map(|(tz_id, tz_name)| {
+                                    let tz_id = *tz_id;
+                                    let tz_name = *tz_name;
+                                    view! {
+                                        <option
+                                            value=tz_id
+                                            selected=move || timezone.get() == tz_id
+                                        >
+                                            {tz_name}
+                                        </option>
+                                    }
+                                }).collect_view()}
+                            </select>
+                            <small class="form-hint">"All dates and times will be displayed in this timezone"</small>
                         </div>
 
                         <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
