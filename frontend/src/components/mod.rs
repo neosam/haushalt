@@ -16,3 +16,4 @@ pub mod note_card;
 pub mod note_modal;
 pub mod announcement_banner;
 pub mod announcement_modal;
+pub mod category_modal;

@@ -4,6 +4,7 @@ pub mod auth;
 pub mod users;
 pub mod households;
 pub mod tasks;
+pub mod task_categories;
 pub mod rewards;
 pub mod punishments;
 pub mod point_conditions;

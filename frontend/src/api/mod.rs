@@ -524,6 +524,57 @@ impl ApiClient {
         .await
     }
 
+    // Task category endpoints
+    pub async fn list_categories(
+        household_id: &str,
+    ) -> Result<Vec<shared::TaskCategory>, String> {
+        let response: shared::TaskCategoriesResponse = Self::request(
+            "GET",
+            &format!("/households/{}/categories", household_id),
+            None::<()>,
+            true,
+        )
+        .await?;
+        Ok(response.categories)
+    }
+
+    pub async fn create_category(
+        household_id: &str,
+        request: shared::CreateTaskCategoryRequest,
+    ) -> Result<shared::TaskCategory, String> {
+        Self::request(
+            "POST",
+            &format!("/households/{}/categories", household_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_category(
+        household_id: &str,
+        category_id: &str,
+        request: shared::UpdateTaskCategoryRequest,
+    ) -> Result<shared::TaskCategory, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/categories/{}", household_id, category_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_category(household_id: &str, category_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/households/{}/categories/{}", household_id, category_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // Task review endpoints
     pub async fn get_pending_reviews(household_id: &str) -> Result<Vec<PendingReview>, String> {
         Self::request::<Vec<PendingReview>>(

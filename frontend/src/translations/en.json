@@ -474,6 +474,20 @@
   "buttons.assign_reward": "Assign Reward",
   "buttons.assign_punishment": "Assign Punishment",
 
+  "categories.manage": "Manage Categories",
+  "categories.name": "Name",
+  "categories.name_placeholder": "e.g., Housework",
+  "categories.color": "Color",
+  "categories.add": "Add",
+  "categories.no_categories": "No categories yet",
+  "categories.other": "Other",
+
+  "tasks.manage_categories": "Categories",
+
+  "task_modal.category": "Category",
+  "task_modal.no_category": "No category",
+  "task_modal.category_hint": "Optional: Tasks with a category are grouped together",
+
   "errors.network": "Network error. Please check your connection.",
   "errors.unauthorized": "Please sign in to continue.",
   "errors.forbidden": "You don't have permission to do that.",

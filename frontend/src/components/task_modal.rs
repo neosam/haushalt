@@ -1,5 +1,5 @@
 use leptos::*;
-use shared::{CreateTaskRequest, HabitType, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
+use shared::{CreateTaskRequest, HabitType, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
@@ -15,6 +15,7 @@ pub fn TaskModal(
     household_punishments: Vec<Punishment>,
     linked_rewards: Vec<TaskRewardLink>,
     linked_punishments: Vec<TaskPunishmentLink>,
+    #[prop(default = vec![])] categories: Vec<TaskCategory>,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
@@ -64,6 +65,14 @@ pub fn TaskModal(
             .map(|t| t.habit_type.as_str().to_string())
             .unwrap_or_else(|| "good".to_string())
     );
+
+    // Category signal
+    let selected_category_id = create_rw_signal(
+        task.as_ref()
+            .and_then(|t| t.category_id.map(|id| id.to_string()))
+            .unwrap_or_default()
+    );
+    let categories_stored = store_value(categories);
 
     // Direct points signals
     let points_reward = create_rw_signal(
@@ -223,6 +232,14 @@ pub fn TaskModal(
                         "bad" => HabitType::Bad,
                         _ => HabitType::Good,
                     };
+                    let category_id_val = {
+                        let cat_id = selected_category_id.get();
+                        if cat_id.is_empty() {
+                            Some(None) // Explicitly set to None to clear the category
+                        } else {
+                            Some(Uuid::parse_str(&cat_id).ok())
+                        }
+                    };
                     let request = UpdateTaskRequest {
                         title: Some(title.get()),
                         description: Some(description.get()),
@@ -237,6 +254,7 @@ pub fn TaskModal(
                         points_penalty: pts_penalty,
                         due_time: due_time_val,
                         habit_type: Some(habit_type_val),
+                        category_id: category_id_val,
                     };
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
@@ -306,6 +324,10 @@ pub fn TaskModal(
                         "bad" => HabitType::Bad,
                         _ => HabitType::Good,
                     };
+                    let category_id_val = {
+                        let cat_id = selected_category_id.get();
+                        if cat_id.is_empty() { None } else { Uuid::parse_str(&cat_id).ok() }
+                    };
                     let request = CreateTaskRequest {
                         title: title.get(),
                         description: Some(description.get()),
@@ -320,6 +342,7 @@ pub fn TaskModal(
                         points_penalty: pts_penalty,
                         due_time: due_time_val,
                         habit_type: Some(habit_type_val),
+                        category_id: category_id_val,
                     };
 
                     match ApiClient::create_task(&household_id, request).await {
@@ -422,6 +445,39 @@ pub fn TaskModal(
                                 on:input=move |ev| description.set(event_target_value(&ev))
                             />
                         </div>
+
+                        // Category selection
+                        <Show when=move || !categories_stored.get_value().is_empty() fallback=|| ()>
+                            {
+                                let category_label = i18n_stored.get_value().t("task_modal.category");
+                                let no_category_label = i18n_stored.get_value().t("task_modal.no_category");
+                                let category_hint = i18n_stored.get_value().t("task_modal.category_hint");
+                                view! {
+                                    <div class="form-group">
+                                        <label class="form-label" for="task-category">{category_label}</label>
+                                        <select
+                                            id="task-category"
+                                            class="form-select"
+                                            on:change=move |ev| selected_category_id.set(event_target_value(&ev))
+                                        >
+                                            <option value="" selected=move || selected_category_id.get().is_empty()>{no_category_label.clone()}</option>
+                                            {
+                                                categories_stored.get_value().into_iter().map(|cat| {
+                                                    let cat_id = cat.id.to_string();
+                                                    let cat_id_for_selected = cat_id.clone();
+                                                    view! {
+                                                        <option value=cat_id selected=move || selected_category_id.get() == cat_id_for_selected>
+                                                            {cat.name}
+                                                        </option>
+                                                    }
+                                                }).collect_view()
+                                            }
+                                        </select>
+                                        <small class="form-hint">{category_hint}</small>
+                                    </div>
+                                }
+                            }
+                        </Show>
 
                         <div class="form-group">
                             <label class="form-label" for="task-recurrence">{i18n_stored.get_value().t("task_modal.recurrence_label")}</label>

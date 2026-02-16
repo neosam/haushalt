@@ -474,6 +474,20 @@
   "buttons.assign_reward": "Belohnung zuweisen",
   "buttons.assign_punishment": "Strafe zuweisen",
 
+  "categories.manage": "Kategorien verwalten",
+  "categories.name": "Name",
+  "categories.name_placeholder": "z.B. Hausarbeit",
+  "categories.color": "Farbe",
+  "categories.add": "Hinzufügen",
+  "categories.no_categories": "Noch keine Kategorien",
+  "categories.other": "Sonstiges",
+
+  "tasks.manage_categories": "Kategorien",
+
+  "task_modal.category": "Kategorie",
+  "task_modal.no_category": "Keine Kategorie",
+  "task_modal.category_hint": "Optional: Aufgaben mit Kategorie werden gruppiert angezeigt",
+
   "errors.network": "Netzwerkfehler. Bitte überprüfen Sie Ihre Verbindung.",
   "errors.unauthorized": "Bitte melden Sie sich an, um fortzufahren.",
   "errors.forbidden": "Sie haben keine Berechtigung dafür.",

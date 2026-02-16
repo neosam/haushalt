@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::models::{TaskCompletionRow, TaskRow};
+use crate::models::{TaskCompletionRow, TaskRow, TaskRowWithCategory};
 use crate::services::{points as points_service, scheduler, task_consequences};
 use shared::{CompletionStatus, CreateTaskRequest, PendingReview, Task, TaskCompletion, TaskWithStatus, UpdateTaskRequest};
 
@@ -42,8 +42,8 @@ pub async fn create_task(
 
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, due_time, habit_type, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, due_time, habit_type, category_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -61,6 +61,7 @@ pub async fn create_task(
     .bind(request.points_penalty)
     .bind(&request.due_time)
     .bind(habit_type.as_str())
+    .bind(request.category_id.map(|c| c.to_string()))
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -82,13 +83,22 @@ pub async fn create_task(
         points_penalty: request.points_penalty,
         due_time: request.due_time.clone(),
         habit_type,
+        category_id: request.category_id,
+        category_name: None,
         created_at: now,
         updated_at: now,
     })
 }
 
 pub async fn get_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Option<Task>, TaskError> {
-    let task: Option<TaskRow> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+    let task: Option<TaskRowWithCategory> = sqlx::query_as(
+        r#"
+        SELECT t.*, tc.name as category_name
+        FROM tasks t
+        LEFT JOIN task_categories tc ON t.category_id = tc.id
+        WHERE t.id = ?
+        "#
+    )
         .bind(task_id.to_string())
         .fetch_optional(pool)
         .await?;
@@ -144,8 +154,14 @@ pub async fn get_task_with_status(
 }
 
 pub async fn list_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Task>, TaskError> {
-    let tasks: Vec<TaskRow> = sqlx::query_as(
-        "SELECT * FROM tasks WHERE household_id = ? ORDER BY created_at DESC",
+    let tasks: Vec<TaskRowWithCategory> = sqlx::query_as(
+        r#"
+        SELECT t.*, tc.name as category_name
+        FROM tasks t
+        LEFT JOIN task_categories tc ON t.category_id = tc.id
+        WHERE t.household_id = ?
+        ORDER BY t.created_at DESC
+        "#,
     )
     .bind(household_id.to_string())
     .fetch_all(pool)
@@ -159,8 +175,14 @@ pub async fn list_user_assigned_tasks(
     household_id: &Uuid,
     user_id: &Uuid,
 ) -> Result<Vec<Task>, TaskError> {
-    let tasks: Vec<TaskRow> = sqlx::query_as(
-        "SELECT * FROM tasks WHERE household_id = ? AND assigned_user_id = ? ORDER BY created_at DESC",
+    let tasks: Vec<TaskRowWithCategory> = sqlx::query_as(
+        r#"
+        SELECT t.*, tc.name as category_name
+        FROM tasks t
+        LEFT JOIN task_categories tc ON t.category_id = tc.id
+        WHERE t.household_id = ? AND t.assigned_user_id = ?
+        ORDER BY t.created_at DESC
+        "#,
     )
     .bind(household_id.to_string())
     .bind(user_id.to_string())
@@ -220,13 +242,16 @@ pub async fn update_task(
     if let Some(habit_type) = request.habit_type {
         task.habit_type = habit_type.as_str().to_string();
     }
+    if let Some(ref category_id_opt) = request.category_id {
+        task.category_id = category_id_opt.map(|id| id.to_string());
+    }
 
     let now = Utc::now();
     task.updated_at = now;
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -243,6 +268,7 @@ pub async fn update_task(
     .bind(task.points_penalty)
     .bind(&task.due_time)
     .bind(&task.habit_type)
+    .bind(&task.category_id)
     .bind(now)
     .bind(task_id.to_string())
     .execute(pool)
@@ -530,6 +556,8 @@ pub async fn list_pending_reviews(
                     points_penalty: row.t_points_penalty,
                     due_time: row.t_due_time,
                     habit_type: row.t_habit_type.parse().unwrap_or(shared::HabitType::Good),
+                    category_id: None,
+                    category_name: None,
                     created_at: row.t_created_at,
                     updated_at: row.t_updated_at,
                 },
@@ -875,6 +903,23 @@ mod tests {
 
         sqlx::query(
             r#"
+            CREATE TABLE IF NOT EXISTS task_categories (
+                id TEXT PRIMARY KEY NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                name TEXT NOT NULL,
+                color TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(household_id, name)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS tasks (
                 id TEXT PRIMARY KEY NOT NULL,
                 household_id TEXT NOT NULL REFERENCES households(id),
@@ -891,6 +936,7 @@ mod tests {
                 points_penalty INTEGER,
                 due_time TEXT,
                 habit_type TEXT NOT NULL DEFAULT 'good',
+                category_id TEXT REFERENCES task_categories(id),
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -1096,6 +1142,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: None,
+            category_id: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1133,6 +1180,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: None,
+            category_id: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1166,6 +1214,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: None,
+            category_id: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1203,6 +1252,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: None,
+            category_id: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1239,6 +1289,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: None, // Default to Good
+            category_id: None,
         };
         let task_good = create_task(&pool, &household_id, &request_good).await.unwrap();
         assert_eq!(task_good.habit_type, shared::HabitType::Good);
@@ -1259,6 +1310,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: Some(shared::HabitType::Bad),
+            category_id: None,
         };
         let task_bad = create_task(&pool, &household_id, &request_bad).await.unwrap();
         assert_eq!(task_bad.habit_type, shared::HabitType::Bad);
@@ -1295,6 +1347,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: None,
+            category_id: None,
         };
         let task = create_task(&pool, &household_id, &request).await.unwrap();
 
@@ -1332,6 +1385,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: None,
+            category_id: None,
         };
         let _task = create_task(&pool, &household_id, &request).await.unwrap();
 

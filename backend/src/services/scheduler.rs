@@ -372,6 +372,8 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: shared::HabitType::Good,
+            category_id: None,
+            category_name: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

@@ -293,6 +293,39 @@ pub struct AdjustPointsResponse {
 }
 
 // ============================================================================
+// Task Category Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskCategory {
+    pub id: Uuid,
+    pub household_id: Uuid,
+    pub name: String,
+    pub color: Option<String>,
+    pub sort_order: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateTaskCategoryRequest {
+    pub name: String,
+    pub color: Option<String>,
+    pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateTaskCategoryRequest {
+    pub name: Option<String>,
+    pub color: Option<String>,
+    pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskCategoriesResponse {
+    pub categories: Vec<TaskCategory>,
+}
+
+// ============================================================================
 // Task Types
 // ============================================================================
 
@@ -449,6 +482,10 @@ pub struct Task {
     pub due_time: Option<String>,
     /// Type of habit: Good (normal) or Bad (inverted consequences)
     pub habit_type: HabitType,
+    /// Optional category for grouping tasks
+    pub category_id: Option<Uuid>,
+    /// Category name (populated when loading task with category)
+    pub category_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -474,6 +511,8 @@ pub struct CreateTaskRequest {
     pub due_time: Option<String>,
     /// Type of habit: Good (normal) or Bad (inverted consequences)
     pub habit_type: Option<HabitType>,
+    /// Optional category for grouping tasks
+    pub category_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -495,6 +534,8 @@ pub struct UpdateTaskRequest {
     pub due_time: Option<String>,
     /// Type of habit: Good (normal) or Bad (inverted consequences)
     pub habit_type: Option<HabitType>,
+    /// Optional category for grouping tasks (use Some(None) to clear the category)
+    pub category_id: Option<Option<Uuid>>,
 }
 
 /// Status of a task completion
@@ -1404,6 +1445,8 @@ mod tests {
                 points_penalty: None,
                 due_time: None,
                 habit_type: HabitType::Good,
+                category_id: None,
+                category_name: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },

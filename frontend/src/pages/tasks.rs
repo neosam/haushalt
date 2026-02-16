@@ -1,8 +1,9 @@
 use leptos::*;
 use leptos_router::*;
-use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Reward, Role, Task, TaskPunishmentLink, TaskRewardLink};
+use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
 
 use crate::api::ApiClient;
+use crate::components::category_modal::CategoryModal;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::pending_reviews::PendingReviews;
@@ -33,6 +34,10 @@ pub fn TasksPage() -> impl IntoView {
     let editing_task = create_rw_signal(Option::<Task>::None);
     let task_linked_rewards = create_rw_signal(Vec::<TaskRewardLink>::new());
     let task_linked_punishments = create_rw_signal(Vec::<TaskPunishmentLink>::new());
+
+    // Category modal state
+    let show_category_modal = create_rw_signal(false);
+    let categories = create_rw_signal(Vec::<TaskCategory>::new());
 
     // Load tasks and supporting data
     create_effect(move |_| {
@@ -87,6 +92,14 @@ pub fn TasksPage() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(p) = ApiClient::list_punishments(&id_for_punishments).await {
                 punishments.set(p);
+            }
+        });
+
+        // Load categories
+        let id_for_categories = id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(cats) = ApiClient::list_categories(&id_for_categories).await {
+                categories.set(cats);
             }
         });
 
@@ -232,9 +245,12 @@ pub fn TasksPage() -> impl IntoView {
                 }
             </Show>
 
-            <div style="margin-bottom: 1rem;">
+            <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem;">
                 <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
                     "+ " {i18n_stored.get_value().t("tasks.create")}
+                </button>
+                <button class="btn btn-outline" on:click=move |_| show_category_modal.set(true)>
+                    {i18n_stored.get_value().t("tasks.manage_categories")}
                 </button>
             </div>
 
@@ -327,6 +343,7 @@ pub fn TasksPage() -> impl IntoView {
                         household_punishments=punishments.get()
                         linked_rewards=vec![]
                         linked_punishments=vec![]
+                        categories=categories.get()
                         on_close=move |_| show_create_modal.set(false)
                         on_save=on_save
                     />
@@ -358,6 +375,7 @@ pub fn TasksPage() -> impl IntoView {
                     household_punishments=punishments.get()
                     linked_rewards=task_linked_rewards.get()
                     linked_punishments=task_linked_punishments.get()
+                    categories=categories.get()
                     on_close=move |_| {
                         editing_task.set(None);
                         task_linked_rewards.set(vec![]);
@@ -367,6 +385,28 @@ pub fn TasksPage() -> impl IntoView {
                 />
             }
         })}
+
+        // Category Management Modal
+        <Show when=move || show_category_modal.get() fallback=|| ()>
+            {
+                let hid = household_id();
+                view! {
+                    <CategoryModal
+                        household_id=hid
+                        on_close=move |_| {
+                            show_category_modal.set(false);
+                            // Reload categories after modal closes
+                            let hid = household_id();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                if let Ok(cats) = ApiClient::list_categories(&hid).await {
+                                    categories.set(cats);
+                                }
+                            });
+                        }
+                    />
+                }
+            }
+        </Show>
     }
 }
 
@@ -409,6 +449,8 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: shared::HabitType::Good,
+            category_id: None,
+            category_name: None,
             assigned_user_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

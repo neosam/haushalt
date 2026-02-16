@@ -21,6 +21,32 @@ pub struct TaskRow {
     pub points_penalty: Option<i64>,
     pub due_time: Option<String>,
     pub habit_type: String,
+    pub category_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Database model for tasks with category name (from JOIN)
+#[allow(dead_code)]
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct TaskRowWithCategory {
+    pub id: String,
+    pub household_id: String,
+    pub title: String,
+    pub description: String,
+    pub recurrence_type: String,
+    pub recurrence_value: Option<String>,
+    pub assigned_user_id: Option<String>,
+    pub target_count: i32,
+    pub time_period: Option<String>,
+    pub allow_exceed_target: bool,
+    pub requires_review: bool,
+    pub points_reward: Option<i64>,
+    pub points_penalty: Option<i64>,
+    pub due_time: Option<String>,
+    pub habit_type: String,
+    pub category_id: Option<String>,
+    pub category_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -49,6 +75,41 @@ impl TaskRow {
             points_penalty: self.points_penalty,
             due_time: self.due_time.clone(),
             habit_type: self.habit_type.parse().unwrap_or(shared::HabitType::Good),
+            category_id: self.category_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
+            category_name: None,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl TaskRowWithCategory {
+    pub fn to_shared(&self) -> shared::Task {
+        let recurrence_value = self.recurrence_value.as_ref().and_then(|v| {
+            serde_json::from_str(v).ok()
+        });
+
+        let time_period = self.time_period.as_ref().and_then(|p| p.parse().ok());
+
+        shared::Task {
+            id: Uuid::parse_str(&self.id).unwrap(),
+            household_id: Uuid::parse_str(&self.household_id).unwrap(),
+            title: self.title.clone(),
+            description: self.description.clone(),
+            recurrence_type: self.recurrence_type.parse().unwrap_or(shared::RecurrenceType::Daily),
+            recurrence_value,
+            assigned_user_id: self.assigned_user_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
+            target_count: self.target_count,
+            time_period,
+            allow_exceed_target: self.allow_exceed_target,
+            requires_review: self.requires_review,
+            points_reward: self.points_reward,
+            points_penalty: self.points_penalty,
+            due_time: self.due_time.clone(),
+            habit_type: self.habit_type.parse().unwrap_or(shared::HabitType::Good),
+            category_id: self.category_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
+            category_name: self.category_name.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -82,6 +143,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: "good".to_string(),
+            category_id: None,
             created_at: now,
             updated_at: now,
         };
@@ -118,6 +180,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: "good".to_string(),
+            category_id: None,
             created_at: now,
             updated_at: now,
         };
@@ -151,6 +214,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: "good".to_string(),
+            category_id: None,
             created_at: now,
             updated_at: now,
         };
@@ -173,6 +237,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: "good".to_string(),
+            category_id: None,
             created_at: now,
             updated_at: now,
         };
@@ -200,6 +265,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: "good".to_string(),
+            category_id: None,
             created_at: now,
             updated_at: now,
         };
@@ -223,6 +289,7 @@ mod tests {
             points_penalty: None,
             due_time: None,
             habit_type: "bad".to_string(),
+            category_id: None,
             created_at: now,
             updated_at: now,
         };

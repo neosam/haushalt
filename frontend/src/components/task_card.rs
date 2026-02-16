@@ -291,6 +291,27 @@ impl DueDateGroup {
     }
 }
 
+/// Sub-group TaskWithStatus by category within a date group
+fn group_tasks_by_category(tasks: Vec<TaskWithStatus>, other_label: &str) -> Vec<(String, Vec<TaskWithStatus>)> {
+    let mut by_category: BTreeMap<String, Vec<TaskWithStatus>> = BTreeMap::new();
+    let mut uncategorized: Vec<TaskWithStatus> = Vec::new();
+
+    for task in tasks {
+        if let Some(ref cat_name) = task.task.category_name {
+            by_category.entry(cat_name.clone()).or_default().push(task);
+        } else {
+            uncategorized.push(task);
+        }
+    }
+
+    let mut result: Vec<(String, Vec<TaskWithStatus>)> = by_category.into_iter().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    if !uncategorized.is_empty() {
+        result.push((other_label.to_string(), uncategorized));
+    }
+    result
+}
+
 #[component]
 pub fn GroupedTaskList(
     tasks: Vec<TaskWithStatus>,
@@ -304,6 +325,7 @@ pub fn GroupedTaskList(
     let i18n_stored = store_value(i18n);
 
     let today = today_in_tz(&timezone);
+    let other_label = i18n_stored.get_value().t("categories.other");
 
     // Group tasks by their due date
     let mut grouped: BTreeMap<DueDateGroup, Vec<TaskWithStatus>> = BTreeMap::new();
@@ -329,6 +351,7 @@ pub fn GroupedTaskList(
             } else {
                 let tz = timezone.clone();
                 let dashboard_ids = dashboard_task_ids.clone();
+                let other_label_view = other_label.clone();
                 view! {
                     <div>
                         {groups.into_iter().map(|(group, group_tasks)| {
@@ -336,6 +359,10 @@ pub fn GroupedTaskList(
                             let is_today = matches!(group, DueDateGroup::Today);
                             let tz_inner = tz.clone();
                             let dashboard_ids_inner = dashboard_ids.clone();
+                            let other_label_inner = other_label_view.clone();
+                            // Sub-group by category
+                            let category_groups = group_tasks_by_category(group_tasks, &other_label_inner);
+                            let has_multiple_categories = category_groups.len() > 1 || (category_groups.len() == 1 && category_groups[0].0 != other_label_inner);
                             view! {
                                 <div class="task-group" style=if is_today { "margin-bottom: 1.5rem;" } else { "margin-bottom: 1rem;" }>
                                     <div style=if is_today {
@@ -346,15 +373,37 @@ pub fn GroupedTaskList(
                                         {title}
                                     </div>
                                     <div style="margin-top: 0.5rem;">
-                                        {group_tasks.into_iter().map(|task| {
-                                            let tz_task = tz_inner.clone();
-                                            let task_id = task.task.id.to_string();
-                                            // Only pass dashboard props if the feature is enabled
-                                            if let (Some(ids), Some(callback)) = (&dashboard_ids_inner, on_toggle_dashboard) {
-                                                let is_on_dashboard = ids.contains(&task_id);
-                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=callback /> }.into_view()
-                                            } else {
-                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }.into_view()
+                                        {category_groups.into_iter().map(|(cat_name, cat_tasks)| {
+                                            let tz_cat = tz_inner.clone();
+                                            let dashboard_ids_cat = dashboard_ids_inner.clone();
+                                            let show_category_header = has_multiple_categories;
+                                            view! {
+                                                <div class="category-group" style=if show_category_header {
+                                                    "border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 0.5rem; overflow: hidden;"
+                                                } else {
+                                                    ""
+                                                }>
+                                                    {if show_category_header {
+                                                        view! {
+                                                            <div style="font-weight: 500; font-size: 0.75rem; padding: 0.5rem 1rem; color: var(--text-muted); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
+                                                                {cat_name}
+                                                            </div>
+                                                        }.into_view()
+                                                    } else {
+                                                        ().into_view()
+                                                    }}
+                                                    {cat_tasks.into_iter().map(|task| {
+                                                        let tz_task = tz_cat.clone();
+                                                        let task_id = task.task.id.to_string();
+                                                        // Only pass dashboard props if the feature is enabled
+                                                        if let (Some(ids), Some(callback)) = (&dashboard_ids_cat, on_toggle_dashboard) {
+                                                            let is_on_dashboard = ids.contains(&task_id);
+                                                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=callback /> }.into_view()
+                                                        } else {
+                                                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }.into_view()
+                                                        }
+                                                    }).collect_view()}
+                                                </div>
                                             }
                                         }).collect_view()}
                                     </div>
@@ -376,6 +425,29 @@ pub struct TaskWithHousehold {
     pub household_id: String,
 }
 
+/// Sub-group tasks by category within a date group
+fn group_by_category(tasks: Vec<TaskWithHousehold>, other_label: &str) -> Vec<(String, Vec<TaskWithHousehold>)> {
+    let mut by_category: BTreeMap<String, Vec<TaskWithHousehold>> = BTreeMap::new();
+    let mut uncategorized: Vec<TaskWithHousehold> = Vec::new();
+
+    for task in tasks {
+        if let Some(ref cat_name) = task.task.task.category_name {
+            by_category.entry(cat_name.clone()).or_default().push(task);
+        } else {
+            uncategorized.push(task);
+        }
+    }
+
+    let mut result: Vec<(String, Vec<TaskWithHousehold>)> = by_category.into_iter().collect();
+    // Sort categories alphabetically
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    // Add uncategorized tasks at the end
+    if !uncategorized.is_empty() {
+        result.push((other_label.to_string(), uncategorized));
+    }
+    result
+}
+
 #[component]
 pub fn DashboardGroupedTaskList(
     tasks: Vec<TaskWithHousehold>,
@@ -387,6 +459,7 @@ pub fn DashboardGroupedTaskList(
     let i18n_stored = store_value(i18n);
 
     let today = today_in_tz(&timezone);
+    let other_label = i18n_stored.get_value().t("categories.other");
 
     // Group tasks by their due date
     let mut grouped: BTreeMap<DueDateGroup, Vec<TaskWithHousehold>> = BTreeMap::new();
@@ -411,12 +484,17 @@ pub fn DashboardGroupedTaskList(
                 }.into_any()
             } else {
                 let tz = timezone.clone();
+                let other_label_view = other_label.clone();
                 view! {
                     <div>
                         {groups.into_iter().map(|(group, group_tasks)| {
                             let title = group.title(&i18n_stored.get_value());
                             let is_today = matches!(group, DueDateGroup::Today);
                             let tz_inner = tz.clone();
+                            let other_label_inner = other_label_view.clone();
+                            // Sub-group by category
+                            let category_groups = group_by_category(group_tasks, &other_label_inner);
+                            let has_multiple_categories = category_groups.len() > 1 || (category_groups.len() == 1 && category_groups[0].0 != other_label_inner);
                             view! {
                                 <div class="task-group" style=if is_today { "margin-bottom: 1.5rem;" } else { "margin-bottom: 1rem;" }>
                                     <div style=if is_today {
@@ -427,9 +505,30 @@ pub fn DashboardGroupedTaskList(
                                         {title}
                                     </div>
                                     <div style="margin-top: 0.5rem;">
-                                        {group_tasks.into_iter().map(|twh| {
-                                            let tz_task = tz_inner.clone();
-                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name /> }
+                                        {category_groups.into_iter().map(|(cat_name, cat_tasks)| {
+                                            let tz_cat = tz_inner.clone();
+                                            let show_category_header = has_multiple_categories;
+                                            view! {
+                                                <div class="category-group" style=if show_category_header {
+                                                    "border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 0.5rem; overflow: hidden;"
+                                                } else {
+                                                    ""
+                                                }>
+                                                    {if show_category_header {
+                                                        view! {
+                                                            <div style="font-weight: 500; font-size: 0.75rem; padding: 0.5rem 1rem; color: var(--text-muted); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
+                                                                {cat_name}
+                                                            </div>
+                                                        }.into_view()
+                                                    } else {
+                                                        ().into_view()
+                                                    }}
+                                                    {cat_tasks.into_iter().map(|twh| {
+                                                        let tz_task = tz_cat.clone();
+                                                        view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name /> }
+                                                    }).collect_view()}
+                                                </div>
+                                            }
                                         }).collect_view()}
                                     </div>
                                 </div>
@@ -474,6 +573,8 @@ mod tests {
                 points_penalty: None,
                 due_time: None,
                 habit_type: HabitType::Good,
+                category_id: None,
+                category_name: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -579,6 +680,8 @@ mod tests {
                 points_penalty: None,
                 due_time: None,
                 habit_type: HabitType::Good,
+                category_id: None,
+                category_name: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
