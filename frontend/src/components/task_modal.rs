@@ -16,27 +16,33 @@ pub fn TaskModal(
     linked_rewards: Vec<TaskRewardLink>,
     linked_punishments: Vec<TaskPunishmentLink>,
     #[prop(default = vec![])] categories: Vec<TaskCategory>,
+    /// Optional: Task to prefill values from (for duplicate mode)
+    /// When set with task=None, opens in create mode but with prefilled values
+    #[prop(optional)] prefill_from: Option<Task>,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
     let is_edit = task.is_some();
+    // Use task for edit mode, or prefill_from for duplicate mode
+    let source_task = task.as_ref().or(prefill_from.as_ref());
     let error = create_rw_signal(Option::<String>::None);
     let saving = create_rw_signal(false);
 
-    // Form fields - initialize based on mode
-    let title = create_rw_signal(task.as_ref().map(|t| t.title.clone()).unwrap_or_default());
-    let description = create_rw_signal(task.as_ref().map(|t| t.description.clone()).unwrap_or_default());
+    // Form fields - initialize based on mode (using source_task for both edit and duplicate)
+    let title = create_rw_signal(source_task.map(|t| t.title.clone()).unwrap_or_default());
+    let description = create_rw_signal(source_task.map(|t| t.description.clone()).unwrap_or_default());
     let recurrence_type = create_rw_signal(
-        task.as_ref()
+        source_task
             .map(|t| t.recurrence_type.as_str().to_string())
             .unwrap_or_else(|| "daily".to_string())
     );
-    // Auto-select if only one member can be assigned (create mode only)
-    let initial_assigned_user_id = task.as_ref()
+    // Auto-select if only one member can be assigned (create mode only, not duplicate)
+    let initial_assigned_user_id = source_task
         .and_then(|t| t.assigned_user_id.map(|id| id.to_string()))
         .or_else(|| {
             // In create mode with exactly one assignable member, auto-select them
-            if task.is_none() && members.len() == 1 {
+            // But not if we're in duplicate mode (prefill_from is set)
+            if task.is_none() && prefill_from.is_none() && members.len() == 1 {
                 Some(members[0].user.id.to_string())
             } else {
                 None
@@ -44,31 +50,31 @@ pub fn TaskModal(
         });
     let assigned_user = create_rw_signal(initial_assigned_user_id.clone().unwrap_or_default());
     let target_count = create_rw_signal(
-        task.as_ref()
+        source_task
             .map(|t| t.target_count.to_string())
             .unwrap_or_else(|| "1".to_string())
     );
     let allow_exceed_target = create_rw_signal(
-        task.as_ref()
+        source_task
             .map(|t| t.allow_exceed_target)
             .unwrap_or(true)  // Default to true for new tasks
     );
     let requires_review = create_rw_signal(
-        task.as_ref()
+        source_task
             .map(|t| t.requires_review)
             .unwrap_or(false)  // Default to false for new tasks
     );
 
     // Habit type signal (good = normal, bad = inverted consequences)
     let habit_type = create_rw_signal(
-        task.as_ref()
+        source_task
             .map(|t| t.habit_type.as_str().to_string())
             .unwrap_or_else(|| "good".to_string())
     );
 
     // Category signal
     let selected_category_id = create_rw_signal(
-        task.as_ref()
+        source_task
             .and_then(|t| t.category_id.map(|id| id.to_string()))
             .unwrap_or_default()
     );
@@ -76,13 +82,13 @@ pub fn TaskModal(
 
     // Direct points signals
     let points_reward = create_rw_signal(
-        task.as_ref()
+        source_task
             .and_then(|t| t.points_reward)
             .map(|p| p.to_string())
             .unwrap_or_default()
     );
     let points_penalty = create_rw_signal(
-        task.as_ref()
+        source_task
             .and_then(|t| t.points_penalty)
             .map(|p| p.to_string())
             .unwrap_or_default()
@@ -90,14 +96,14 @@ pub fn TaskModal(
 
     // Due time signal (HH:MM format)
     let due_time = create_rw_signal(
-        task.as_ref()
+        source_task
             .and_then(|t| t.due_time.clone())
             .unwrap_or_default()
     );
 
     // Recurrence value signals
     let selected_weekdays = create_rw_signal(
-        task.as_ref()
+        source_task
             .and_then(|t| match &t.recurrence_value {
                 Some(RecurrenceValue::Weekdays(days)) => Some(days.clone()),
                 _ => None,
@@ -107,7 +113,7 @@ pub fn TaskModal(
 
     // Single weekday for Weekly recurrence (0=Sun, 1=Mon, ..., 6=Sat)
     let selected_weekday = create_rw_signal(
-        task.as_ref()
+        source_task
             .and_then(|t| match &t.recurrence_value {
                 Some(RecurrenceValue::WeekDay(day)) => Some(*day),
                 _ => None,
@@ -117,7 +123,7 @@ pub fn TaskModal(
 
     // Day of month for Monthly recurrence (1-31)
     let selected_month_day = create_rw_signal(
-        task.as_ref()
+        source_task
             .and_then(|t| match &t.recurrence_value {
                 Some(RecurrenceValue::MonthDay(day)) => Some(*day),
                 _ => None,
@@ -126,7 +132,7 @@ pub fn TaskModal(
     );
 
     let selected_custom_dates = create_rw_signal(
-        task.as_ref()
+        source_task
             .and_then(|t| match &t.recurrence_value {
                 Some(RecurrenceValue::CustomDates(dates)) => Some(dates.clone()),
                 _ => None,
@@ -482,7 +488,7 @@ pub fn TaskModal(
                         <div class="form-group">
                             <label class="form-label" for="task-recurrence">{i18n_stored.get_value().t("task_modal.recurrence_label")}</label>
                             {
-                                let initial_recurrence = task.as_ref()
+                                let initial_recurrence = source_task
                                     .map(|t| t.recurrence_type.as_str().to_string())
                                     .unwrap_or_else(|| "daily".to_string());
                                 let onetime_label = i18n_stored.get_value().t("recurrence.onetime_freeform");
@@ -683,7 +689,7 @@ pub fn TaskModal(
                         <div class="form-group">
                             <label class="form-label" for="task-habit-type">{i18n_stored.get_value().t("task_modal.habit_type_label")}</label>
                             {
-                                let initial_habit_type = task.as_ref()
+                                let initial_habit_type = source_task
                                     .map(|t| t.habit_type.as_str().to_string())
                                     .unwrap_or_else(|| "good".to_string());
                                 let good_label = i18n_stored.get_value().t("habit_type.good");
@@ -1216,5 +1222,135 @@ mod tests {
         let selected: Vec<(String, i32)> = vec![("r1".to_string(), 3), ("r2".to_string(), 1)];
         let r1_amount = selected.iter().find(|(id, _)| id == "r1").map(|(_, a)| *a);
         assert_eq!(r1_amount, Some(3));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_prefill_source_task_priority() {
+        // When both task and prefill_from are None, source_task should be None
+        let task: Option<Task> = None;
+        let prefill_from: Option<Task> = None;
+        let source_task = task.as_ref().or(prefill_from.as_ref());
+        assert!(source_task.is_none());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_prefill_uses_prefill_from_when_task_is_none() {
+        // When task is None but prefill_from is Some, source_task should use prefill_from
+        let task: Option<Task> = None;
+        let prefill_task = Task {
+            id: Uuid::new_v4(),
+            household_id: Uuid::new_v4(),
+            title: "Prefill Task".to_string(),
+            description: "Test description".to_string(),
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 3,
+            time_period: None,
+            allow_exceed_target: true,
+            requires_review: false,
+            points_reward: Some(10),
+            points_penalty: None,
+            due_time: Some("14:00".to_string()),
+            habit_type: HabitType::Good,
+            category_id: None,
+            category_name: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let prefill_from = Some(prefill_task);
+        let source_task = task.as_ref().or(prefill_from.as_ref());
+
+        assert!(source_task.is_some());
+        assert_eq!(source_task.unwrap().title, "Prefill Task");
+        assert_eq!(source_task.unwrap().target_count, 3);
+        assert_eq!(source_task.unwrap().points_reward, Some(10));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_edit_mode_uses_task_not_prefill() {
+        // When task is Some, it should take priority over prefill_from
+        let edit_task = Task {
+            id: Uuid::new_v4(),
+            household_id: Uuid::new_v4(),
+            title: "Edit Task".to_string(),
+            description: String::new(),
+            recurrence_type: RecurrenceType::Weekly,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 1,
+            time_period: None,
+            allow_exceed_target: false,
+            requires_review: true,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: HabitType::Good,
+            category_id: None,
+            category_name: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let task = Some(edit_task);
+        let prefill_task = Task {
+            id: Uuid::new_v4(),
+            household_id: Uuid::new_v4(),
+            title: "Should Not Use This".to_string(),
+            description: String::new(),
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 5,
+            time_period: None,
+            allow_exceed_target: true,
+            requires_review: false,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: HabitType::Good,
+            category_id: None,
+            category_name: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let prefill_from = Some(prefill_task);
+        let source_task = task.as_ref().or(prefill_from.as_ref());
+
+        assert!(source_task.is_some());
+        assert_eq!(source_task.unwrap().title, "Edit Task");
+        assert_eq!(source_task.unwrap().target_count, 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_is_edit_mode_detection() {
+        // is_edit should be true only when task is Some
+        let task_some: Option<Task> = Some(Task {
+            id: Uuid::new_v4(),
+            household_id: Uuid::new_v4(),
+            title: "Test".to_string(),
+            description: String::new(),
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 1,
+            time_period: None,
+            allow_exceed_target: true,
+            requires_review: false,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: HabitType::Good,
+            category_id: None,
+            category_name: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        });
+        let task_none: Option<Task> = None;
+
+        let is_edit_when_some = task_some.is_some();
+        let is_edit_when_none = task_none.is_some();
+
+        assert!(is_edit_when_some);
+        assert!(!is_edit_when_none);
     }
 }

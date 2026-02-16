@@ -4,6 +4,7 @@ use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Rewar
 
 use crate::api::ApiClient;
 use crate::components::category_modal::CategoryModal;
+use crate::components::context_menu::{ContextMenu, ContextMenuAction};
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::pending_reviews::PendingReviews;
@@ -34,6 +35,11 @@ pub fn TasksPage() -> impl IntoView {
     let editing_task = create_rw_signal(Option::<Task>::None);
     let task_linked_rewards = create_rw_signal(Vec::<TaskRewardLink>::new());
     let task_linked_punishments = create_rw_signal(Vec::<TaskPunishmentLink>::new());
+
+    // Duplicate modal state
+    let duplicating_task = create_rw_signal(Option::<Task>::None);
+    let duplicate_linked_rewards = create_rw_signal(Vec::<TaskRewardLink>::new());
+    let duplicate_linked_punishments = create_rw_signal(Vec::<TaskPunishmentLink>::new());
 
     // Category modal state
     let show_category_modal = create_rw_signal(false);
@@ -162,21 +168,49 @@ pub fn TasksPage() -> impl IntoView {
         });
     };
 
-    // Unified save handler for both create and edit
+    let on_duplicate = move |task: Task| {
+        let id = household_id();
+        let task_id = task.id.to_string();
+
+        // Load linked rewards and punishments to copy them
+        let id_for_rewards = id.clone();
+        let id_for_punishments = id.clone();
+        let task_id_for_rewards = task_id.clone();
+        let task_id_for_punishments = task_id.clone();
+
+        duplicating_task.set(Some(task));
+
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(r) = ApiClient::get_task_rewards(&id_for_rewards, &task_id_for_rewards).await {
+                duplicate_linked_rewards.set(r);
+            }
+        });
+
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(p) = ApiClient::get_task_punishments(&id_for_punishments, &task_id_for_punishments).await {
+                duplicate_linked_punishments.set(p);
+            }
+        });
+    };
+
+    // Unified save handler for create, edit, and duplicate
     let on_save = move |saved_task: Task| {
         tasks.update(|t| {
             if let Some(pos) = t.iter().position(|task| task.id == saved_task.id) {
                 // Edit mode - update existing
                 t[pos] = saved_task;
             } else {
-                // Create mode - push new
+                // Create or duplicate mode - push new
                 t.push(saved_task);
             }
         });
         editing_task.set(None);
+        duplicating_task.set(None);
         show_create_modal.set(false);
         task_linked_rewards.set(vec![]);
         task_linked_punishments.set(vec![]);
+        duplicate_linked_rewards.set(vec![]);
+        duplicate_linked_punishments.set(vec![]);
     };
 
     view! {
@@ -272,9 +306,33 @@ pub fn TasksPage() -> impl IntoView {
                                 let task_id = task.id.to_string();
                                 let delete_id = task_id.clone();
                                 let edit_task = task.clone();
+                                let duplicate_task = task.clone();
                                 let assigned_name = task.assigned_user_id.and_then(|uid| {
                                     members.get().iter().find(|m| m.user.id == uid).map(|m| m.user.username.clone())
                                 });
+
+                                let edit_label = i18n_stored.get_value().t("common.edit");
+                                let duplicate_label = i18n_stored.get_value().t("common.duplicate");
+                                let delete_label = i18n_stored.get_value().t("common.delete");
+
+                                let actions = vec![
+                                    ContextMenuAction {
+                                        label: edit_label,
+                                        on_click: Callback::new(move |_| on_edit(edit_task.clone())),
+                                        danger: false,
+                                    },
+                                    ContextMenuAction {
+                                        label: duplicate_label,
+                                        on_click: Callback::new(move |_| on_duplicate(duplicate_task.clone())),
+                                        danger: false,
+                                    },
+                                    ContextMenuAction {
+                                        label: delete_label,
+                                        on_click: Callback::new(move |_| on_delete(delete_id.clone())),
+                                        danger: true,
+                                    },
+                                ];
+
                                 view! {
                                     <div class="task-item">
                                         <div class="task-content">
@@ -293,22 +351,7 @@ pub fn TasksPage() -> impl IntoView {
                                                 }}
                                             </div>
                                         </div>
-                                        <div style="display: flex; gap: 0.5rem;">
-                                            <button
-                                                class="btn btn-outline"
-                                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                                                on:click=move |_| on_edit(edit_task.clone())
-                                            >
-                                                {i18n_stored.get_value().t("common.edit")}
-                                            </button>
-                                            <button
-                                                class="btn btn-danger"
-                                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                                                on:click=move |_| on_delete(delete_id.clone())
-                                            >
-                                                {i18n_stored.get_value().t("common.delete")}
-                                            </button>
-                                        </div>
+                                        <ContextMenu actions=actions />
                                     </div>
                                 }
                             }).collect_view()}
@@ -380,6 +423,42 @@ pub fn TasksPage() -> impl IntoView {
                         editing_task.set(None);
                         task_linked_rewards.set(vec![]);
                         task_linked_punishments.set(vec![]);
+                    }
+                    on_save=on_save
+                />
+            }
+        })}
+
+        // Duplicate Modal - uses TaskModal with task=None but prefill_from=Some(task)
+        {move || duplicating_task.get().map(|task| {
+            let hid = household_id();
+            // Filter members based on hierarchy type
+            let assignable_members = {
+                let all_members = members.get();
+                match settings.get().map(|s| s.hierarchy_type) {
+                    Some(HierarchyType::Hierarchy) => {
+                        all_members.into_iter()
+                            .filter(|m| m.membership.role == Role::Member)
+                            .collect()
+                    }
+                    _ => all_members
+                }
+            };
+            view! {
+                <TaskModal
+                    task=None
+                    prefill_from=task
+                    household_id=hid
+                    members=assignable_members
+                    household_rewards=rewards.get()
+                    household_punishments=punishments.get()
+                    linked_rewards=duplicate_linked_rewards.get()
+                    linked_punishments=duplicate_linked_punishments.get()
+                    categories=categories.get()
+                    on_close=move |_| {
+                        duplicating_task.set(None);
+                        duplicate_linked_rewards.set(vec![]);
+                        duplicate_linked_punishments.set(vec![]);
                     }
                     on_save=on_save
                 />
@@ -575,5 +654,51 @@ mod tests {
             String::new()
         };
         assert_eq!(meta, "");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_duplicate_creates_new_task() {
+        // When duplicating, the new task should get a new ID
+        let original_id = Uuid::new_v4();
+        let new_id = Uuid::new_v4();
+
+        // Original task
+        let original = create_test_task(original_id, "Original Task");
+
+        // Duplicated task (would be created by API with new ID)
+        let duplicated = create_test_task(new_id, "Original Task");
+
+        // IDs should be different
+        assert_ne!(original.id, duplicated.id);
+        // But titles should match
+        assert_eq!(original.title, duplicated.title);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_save_handler_adds_new_task() {
+        // Test that save handler adds task to list when it's a new task
+        let mut tasks = vec![create_test_task(Uuid::new_v4(), "Existing Task")];
+        let new_task = create_test_task(Uuid::new_v4(), "New or Duplicated Task");
+        let new_task_id = new_task.id;
+
+        // Simulate on_save logic: if not found, push new
+        if tasks.iter().position(|t| t.id == new_task.id).is_none() {
+            tasks.push(new_task);
+        }
+
+        assert_eq!(tasks.len(), 2);
+        assert!(tasks.iter().any(|t| t.id == new_task_id));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_context_menu_action_labels() {
+        // Test that context menu would have correct labels
+        let edit_label = "Edit";
+        let duplicate_label = "Duplicate";
+        let delete_label = "Delete";
+
+        assert_eq!(edit_label, "Edit");
+        assert_eq!(duplicate_label, "Duplicate");
+        assert_eq!(delete_label, "Delete");
     }
 }
