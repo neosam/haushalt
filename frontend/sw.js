@@ -1,5 +1,6 @@
 // Dynamic cache name based on app version - extracted from index.html
-let CACHE_NAME = 'household-v1';
+// Changed to v2 to force cache invalidation on existing devices
+let CACHE_NAME = 'household-v2';
 
 // Assets to always try to cache
 const SHELL_URLS = [
@@ -52,7 +53,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch: network-first for API, cache-first for assets
+// Fetch: network-first for app files, cache-first for static assets
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
@@ -61,11 +62,37 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Never cache the service worker itself
+  if (url.pathname.endsWith('sw.js')) {
+    return;
+  }
+
+  // Network-first for HTML and JS/WASM files (app updates)
+  if (url.pathname.endsWith('.html') ||
+      url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.wasm') ||
+      url.pathname === '/') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request)
+          .then(cached => cached || caches.match('/index.html'))
+        )
+    );
+    return;
+  }
+
+  // Cache-first for static assets (icons, manifest, css)
   event.respondWith(
     caches.match(event.request)
       .then(cached => cached || fetch(event.request)
         .then(response => {
-          // Cache successful responses
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
@@ -73,6 +100,6 @@ self.addEventListener('fetch', event => {
           return response;
         })
       )
-      .catch(() => caches.match('/index.html')) // Fallback to app shell
+      .catch(() => caches.match('/index.html'))
   );
 });
