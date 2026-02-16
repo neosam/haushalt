@@ -118,9 +118,14 @@ pub async fn get_task_with_status(
 
     let today = Utc::now().date_naive();
 
-    // Get completion count for today (or current period for weekly/monthly tasks)
-    // Count ALL household completions, not just the current user's
-    let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
+    // Calculate next due date first
+    let next_due_date = scheduler::get_next_due_date(&task, today);
+
+    // Get completion count for the current period
+    // Use next_due_date for period calculation to match how completions are stored
+    // This ensures completions made "early" for the next occurrence are counted correctly
+    let period_date = next_due_date.unwrap_or(today);
+    let (period_start, period_end) = scheduler::get_period_bounds(&task, period_date);
     let completions_today = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date >= ? AND due_date <= ?",
     )
@@ -140,9 +145,6 @@ pub async fn get_task_with_status(
 
     // Calculate streak
     let current_streak = calculate_streak(pool, &task, user_id).await?;
-
-    // Calculate next due date
-    let next_due_date = scheduler::get_next_due_date(&task, today);
 
     Ok(Some(TaskWithStatus {
         task,
@@ -336,15 +338,19 @@ pub async fn complete_task(
         }
         // else: free-form (target=0) or allow_exceed_target=true, always allow completion
     } else {
-        // Scheduled tasks: existing logic with period bounds
-        // Check if task is due today
-        if !scheduler::is_task_due_on_date(&task, today) {
+        // Scheduled tasks: allow completion within the current period
+        // Use next_due_date for period calculation to allow "early" completions
+        let next_due = scheduler::get_next_due_date(&task, today);
+
+        // If there's no next due date (e.g., Custom task with all dates passed), don't allow completion
+        if next_due.is_none() && task.recurrence_type == shared::RecurrenceType::Custom {
             return Err(TaskError::NotDueToday);
         }
 
         // Check if target completions already reached for this period (only if exceed is disabled)
         if !task.allow_exceed_target {
-            let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
+            let period_date = next_due.unwrap_or(today);
+            let (period_start, period_end) = scheduler::get_period_bounds(&task, period_date);
             let existing = sqlx::query_scalar::<_, i64>(
                 "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
             )
@@ -364,6 +370,15 @@ pub async fn complete_task(
     let id = Uuid::new_v4();
     let now = Utc::now();
 
+    // Determine the due_date for this completion
+    // For scheduled tasks, use the next due date (not today) so completions are counted correctly
+    // For OneTime tasks, use today (they have no schedule)
+    let completion_due_date = if task.recurrence_type == shared::RecurrenceType::OneTime {
+        today
+    } else {
+        scheduler::get_next_due_date(&task, today).unwrap_or(today)
+    };
+
     // Determine status based on task's requires_review setting
     let status = if task.requires_review {
         CompletionStatus::Pending
@@ -381,7 +396,7 @@ pub async fn complete_task(
     .bind(task_id.to_string())
     .bind(user_id.to_string())
     .bind(now)
-    .bind(today)
+    .bind(completion_due_date)
     .bind(status.as_str())
     .execute(pool)
     .await?;
@@ -415,7 +430,7 @@ pub async fn complete_task(
         task_id: *task_id,
         user_id: *user_id,
         completed_at: now,
-        due_date: today,
+        due_date: completion_due_date,
         status,
     })
 }
@@ -428,8 +443,9 @@ pub async fn uncomplete_task(
     let task = get_task(pool, task_id).await?.ok_or(TaskError::NotFound)?;
     let today = Utc::now().date_naive();
 
-    // Get the period bounds for this task
-    let (period_start, period_end) = scheduler::get_period_bounds(&task, today);
+    // Use next_due_date for period calculation to match how completions are stored
+    let period_date = scheduler::get_next_due_date(&task, today).unwrap_or(today);
+    let (period_start, period_end) = scheduler::get_period_bounds(&task, period_date);
 
     // Delete the most recent completion for this task/user in the current period
     let result = sqlx::query(
@@ -739,7 +755,8 @@ async fn calculate_streak(pool: &SqlitePool, task: &Task, _user_id: &Uuid) -> Re
 
     let today = Utc::now().date_naive();
     let mut streak = 0;
-    let mut expected_date = today;
+    // Start with next_due_date to match how completions are stored
+    let mut expected_date = scheduler::get_next_due_date(task, today).unwrap_or(today);
 
     for completion in completions {
         // For daily tasks, we expect consecutive days

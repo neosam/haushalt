@@ -252,8 +252,11 @@ pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate)
 
         TimePeriod::None => {
             // All-time for free-form/one-time tasks
-            // Use the full date range supported by NaiveDate
-            (NaiveDate::MIN, NaiveDate::MAX)
+            // Use a reasonable date range that SQLite/SQLx can handle properly
+            // (NaiveDate::MIN/MAX cause serialization issues)
+            let min_date = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+            let max_date = NaiveDate::from_ymd_opt(2100, 12, 31).unwrap();
+            (min_date, max_date)
         }
     }
 }
