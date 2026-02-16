@@ -799,6 +799,31 @@ pub async fn remove_task_from_dashboard(
     Ok(())
 }
 
+/// Get all tasks with status that are on the user's dashboard
+pub async fn get_dashboard_tasks_with_status(
+    pool: &SqlitePool,
+    user_id: &Uuid,
+) -> Result<Vec<(TaskWithStatus, Uuid)>, TaskError> {
+    let dashboard_task_ids = get_dashboard_task_ids(pool, &user_id.to_string()).await?;
+
+    if dashboard_task_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut results = Vec::new();
+
+    for task_id_str in dashboard_task_ids {
+        if let Ok(task_id) = Uuid::parse_str(&task_id_str) {
+            if let Some(task_with_status) = get_task_with_status(pool, &task_id, user_id).await? {
+                let household_id = task_with_status.task.household_id;
+                results.push((task_with_status, household_id));
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -982,6 +1007,22 @@ mod tests {
                 amount INTEGER NOT NULL DEFAULT 1,
                 completed_amount INTEGER NOT NULL DEFAULT 0,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS user_dashboard_tasks (
+                user_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, task_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
             "#,
         )
@@ -1222,5 +1263,80 @@ mod tests {
         let task_bad = create_task(&pool, &household_id, &request_bad).await.unwrap();
         assert_eq!(task_bad.habit_type, shared::HabitType::Bad);
         assert!(task_bad.habit_type.is_inverted());
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_tasks_with_status_empty() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+
+        let dashboard_tasks = get_dashboard_tasks_with_status(&pool, &user_id).await.unwrap();
+        assert!(dashboard_tasks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_tasks_with_status() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create a task
+        let request = CreateTaskRequest {
+            title: "Dashboard Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Add to dashboard
+        add_task_to_dashboard(&pool, &user_id.to_string(), &task.id.to_string())
+            .await
+            .unwrap();
+
+        // Get dashboard tasks
+        let dashboard_tasks = get_dashboard_tasks_with_status(&pool, &user_id).await.unwrap();
+
+        assert_eq!(dashboard_tasks.len(), 1);
+        assert_eq!(dashboard_tasks[0].0.task.id, task.id);
+        assert_eq!(dashboard_tasks[0].1, household_id);
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_tasks_includes_task_not_on_dashboard() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create a task but don't add it to dashboard
+        let request = CreateTaskRequest {
+            title: "Not on Dashboard".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+        };
+        let _task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Get dashboard tasks - should be empty since task is not on dashboard
+        let dashboard_tasks = get_dashboard_tasks_with_status(&pool, &user_id).await.unwrap();
+        assert!(dashboard_tasks.is_empty());
     }
 }

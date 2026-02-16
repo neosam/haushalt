@@ -1216,6 +1216,13 @@ impl ApiClient {
     pub async fn remove_task_from_dashboard(task_id: &str) -> Result<(), String> {
         Self::request::<()>("DELETE", &format!("/dashboard/tasks/{}", task_id), None::<()>, true).await
     }
+
+    pub async fn get_dashboard_tasks_with_status(
+    ) -> Result<Vec<shared::DashboardTaskWithHousehold>, String> {
+        let response: shared::DashboardTasksWithStatusResponse =
+            Self::request("GET", "/dashboard/tasks/details", None::<()>, true).await?;
+        Ok(response.tasks)
+    }
 }
 
 #[cfg(test)]

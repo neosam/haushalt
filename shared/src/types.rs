@@ -1256,6 +1256,20 @@ pub struct IsTaskOnDashboardResponse {
     pub on_dashboard: bool,
 }
 
+/// A dashboard task with its household information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardTaskWithHousehold {
+    pub task_with_status: TaskWithStatus,
+    pub household_id: Uuid,
+    pub household_name: String,
+}
+
+/// Response containing dashboard tasks with their full status information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardTasksWithStatusResponse {
+    pub tasks: Vec<DashboardTaskWithHousehold>,
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

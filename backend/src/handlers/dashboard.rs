@@ -1,14 +1,19 @@
 use actix_web::{web, HttpResponse, Result};
-use shared::{ApiError, ApiSuccess, DashboardTasksResponse, IsTaskOnDashboardResponse};
+use shared::{
+    ApiError, ApiSuccess, DashboardTaskWithHousehold, DashboardTasksResponse,
+    DashboardTasksWithStatusResponse, IsTaskOnDashboardResponse,
+};
 use uuid::Uuid;
 
 use crate::models::AppState;
+use crate::services::households as household_service;
 use crate::services::tasks as task_service;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/dashboard")
             .route("/tasks", web::get().to(get_dashboard_task_ids))
+            .route("/tasks/details", web::get().to(get_dashboard_tasks_with_status))
             .route("/tasks/{task_id}", web::get().to(is_task_on_dashboard))
             .route("/tasks/{task_id}", web::post().to(add_task_to_dashboard))
             .route("/tasks/{task_id}", web::delete().to(remove_task_from_dashboard)),
@@ -125,6 +130,46 @@ async fn remove_task_from_dashboard(
 
     match task_service::remove_task_from_dashboard(&state.db, &user_id_str, &task_id).await {
         Ok(()) => Ok(HttpResponse::Ok().json(ApiSuccess::new(()))),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiError {
+            error: "internal_error".to_string(),
+            message: e.to_string(),
+        })),
+    }
+}
+
+/// Get all dashboard tasks with their full status information
+async fn get_dashboard_tasks_with_status(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing authentication".to_string(),
+            }));
+        }
+    };
+
+    match task_service::get_dashboard_tasks_with_status(&state.db, &user_id).await {
+        Ok(tasks_with_households) => {
+            let mut response_tasks = Vec::new();
+            for (task_status, household_id) in tasks_with_households {
+                let household_name =
+                    match household_service::get_household(&state.db, &household_id).await {
+                        Ok(Some(h)) => h.name,
+                        _ => "Unknown".to_string(),
+                    };
+                response_tasks.push(DashboardTaskWithHousehold {
+                    task_with_status: task_status,
+                    household_id,
+                    household_name,
+                });
+            }
+            Ok(HttpResponse::Ok()
+                .json(ApiSuccess::new(DashboardTasksWithStatusResponse { tasks: response_tasks })))
+        }
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiError {
             error: "internal_error".to_string(),
             message: e.to_string(),

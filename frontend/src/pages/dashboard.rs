@@ -23,37 +23,27 @@ pub fn Dashboard() -> impl IntoView {
     // Load households, invitations, and tasks on mount
     create_effect(move |_| {
         wasm_bindgen_futures::spawn_local(async move {
-            // Load dashboard task whitelist
-            let dashboard_task_ids = ApiClient::get_dashboard_task_ids()
-                .await
-                .unwrap_or_default();
-
-            // Load households
-            match ApiClient::list_households().await {
-                Ok(data) => {
-                    households.set(data.clone());
-
-                    // Load tasks from all households
-                    let mut tasks_with_households = Vec::new();
-                    for household in data {
-                        if let Ok(tasks) = ApiClient::get_due_tasks(&household.id.to_string()).await {
-                            for task in tasks {
-                                // Only include tasks that are on the user's dashboard whitelist
-                                if dashboard_task_ids.contains(&task.task.id) {
-                                    tasks_with_households.push(TaskWithHousehold {
-                                        task,
-                                        household_name: household.name.clone(),
-                                        household_id: household.id.to_string(),
-                                    });
-                                }
-                            }
-                        }
-                    }
+            // Load dashboard tasks with status (all whitelist tasks, not just due)
+            match ApiClient::get_dashboard_tasks_with_status().await {
+                Ok(dashboard_tasks) => {
+                    let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
+                        .into_iter()
+                        .map(|t| TaskWithHousehold {
+                            task: t.task_with_status,
+                            household_name: t.household_name,
+                            household_id: t.household_id.to_string(),
+                        })
+                        .collect();
                     all_tasks.set(tasks_with_households);
                 }
                 Err(e) => {
                     error.set(Some(e));
                 }
+            }
+
+            // Load households
+            if let Ok(data) = ApiClient::list_households().await {
+                households.set(data);
             }
 
             // Load pending invitations
@@ -121,25 +111,16 @@ pub fn Dashboard() -> impl IntoView {
             let task_id_clone = task_id.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if ApiClient::complete_task(&household_id, &task_id_clone).await.is_ok() {
-                    // Reload dashboard whitelist and tasks from all households
-                    let dashboard_task_ids = ApiClient::get_dashboard_task_ids()
-                        .await
-                        .unwrap_or_default();
-                    if let Ok(hh) = ApiClient::list_households().await {
-                        let mut tasks_with_households = Vec::new();
-                        for household in hh {
-                            if let Ok(tasks) = ApiClient::get_due_tasks(&household.id.to_string()).await {
-                                for task in tasks {
-                                    if dashboard_task_ids.contains(&task.task.id) {
-                                        tasks_with_households.push(TaskWithHousehold {
-                                            task,
-                                            household_name: household.name.clone(),
-                                            household_id: household.id.to_string(),
-                                        });
-                                    }
-                                }
-                            }
-                        }
+                    // Reload dashboard tasks
+                    if let Ok(dashboard_tasks) = ApiClient::get_dashboard_tasks_with_status().await {
+                        let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
+                            .into_iter()
+                            .map(|t| TaskWithHousehold {
+                                task: t.task_with_status,
+                                household_name: t.household_name,
+                                household_id: t.household_id.to_string(),
+                            })
+                            .collect();
                         all_tasks.set(tasks_with_households);
                     }
                 }
@@ -156,25 +137,16 @@ pub fn Dashboard() -> impl IntoView {
             let task_id_clone = task_id.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if ApiClient::uncomplete_task(&household_id, &task_id_clone).await.is_ok() {
-                    // Reload dashboard whitelist and tasks from all households
-                    let dashboard_task_ids = ApiClient::get_dashboard_task_ids()
-                        .await
-                        .unwrap_or_default();
-                    if let Ok(hh) = ApiClient::list_households().await {
-                        let mut tasks_with_households = Vec::new();
-                        for household in hh {
-                            if let Ok(tasks) = ApiClient::get_due_tasks(&household.id.to_string()).await {
-                                for task in tasks {
-                                    if dashboard_task_ids.contains(&task.task.id) {
-                                        tasks_with_households.push(TaskWithHousehold {
-                                            task,
-                                            household_name: household.name.clone(),
-                                            household_id: household.id.to_string(),
-                                        });
-                                    }
-                                }
-                            }
-                        }
+                    // Reload dashboard tasks
+                    if let Ok(dashboard_tasks) = ApiClient::get_dashboard_tasks_with_status().await {
+                        let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
+                            .into_iter()
+                            .map(|t| TaskWithHousehold {
+                                task: t.task_with_status,
+                                household_name: t.household_name,
+                                household_id: t.household_id.to_string(),
+                            })
+                            .collect();
                         all_tasks.set(tasks_with_households);
                     }
                 }
