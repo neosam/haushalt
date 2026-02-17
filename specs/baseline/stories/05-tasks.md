@@ -228,5 +228,8 @@
 - Archived tasks are excluded from dashboard
 - Archived tasks are excluded from due tasks
 - Task completion history is preserved
-- Archived tasks can be viewed in a separate archived tasks list
-- Archived tasks can be unarchived to restore them to active status
+- Archived tasks are viewable in a collapsible "Archived Tasks" section at the bottom of the tasks page
+- Archived tasks can be unarchived via context menu to restore them to active status
+
+### Design Decisions
+- **Archive UI location**: Collapsible section at bottom of tasks page (decided over toggle or tabs)

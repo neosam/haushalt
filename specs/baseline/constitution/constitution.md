@@ -108,6 +108,7 @@ Database Layer (SQLx + SQLite)
 | `assigned_user_id` | Optional: Assigned user |
 | `category_id` | Optional: Category |
 | `due_time` | Optional: Due time (HH:MM) |
+| `archived` | Is task archived? (hidden from active lists) |
 
 ### 4.2 Recurrence Types
 
@@ -253,6 +254,7 @@ points_penalty INTEGER,
 due_time TEXT,
 habit_type TEXT,
 category_id TEXT REFERENCES task_categories(id),
+archived BOOLEAN DEFAULT 0,
 created_at DATETIME,
 updated_at DATETIME
 ```
@@ -323,6 +325,9 @@ UNIQUE(task_id, user_id, due_date)
 | POST | `/tasks/{id}/complete` | Complete |
 | POST | `/tasks/{id}/uncomplete` | Undo |
 | GET | `/households/{id}/tasks/pending-reviews` | Pending reviews |
+| POST | `/tasks/{id}/archive` | Archive task |
+| POST | `/tasks/{id}/unarchive` | Unarchive task |
+| GET | `/households/{id}/tasks/archived` | Archived tasks |
 
 ### 8.4 Rewards & Punishments
 
@@ -405,6 +410,7 @@ UNIQUE(task_id, user_id, due_date)
 ### 11.1 Data Integrity
 
 - **Soft Deletes**: Chat messages only
+- **Archiving**: Tasks (preserves history, can be unarchived)
 - **Hard Deletes**: All other entities
 - **Cascade Deletes**: Delete household → delete all data
 - **Activity Logs**: Immutable
