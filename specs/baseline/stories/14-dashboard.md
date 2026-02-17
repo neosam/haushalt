@@ -10,6 +10,7 @@
 - Shows whitelisted tasks from all households
 - Groups tasks by household
 - Shows completion status and progress
+- Tasks are ordered alphabetically by title within each category
 
 ---
 

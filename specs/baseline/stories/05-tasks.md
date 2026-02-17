@@ -38,6 +38,7 @@
 - Shows assigned user if any
 - Shows recurrence information
 - Shows points value
+- Tasks are ordered alphabetically by title
 
 ---
 

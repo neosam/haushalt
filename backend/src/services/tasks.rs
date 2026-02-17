@@ -162,7 +162,7 @@ pub async fn list_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Ta
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.household_id = ?
-        ORDER BY t.created_at DESC
+        ORDER BY t.title COLLATE NOCASE ASC
         "#,
     )
     .bind(household_id.to_string())
@@ -183,7 +183,7 @@ pub async fn list_user_assigned_tasks(
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.household_id = ? AND t.assigned_user_id = ?
-        ORDER BY t.created_at DESC
+        ORDER BY t.title COLLATE NOCASE ASC
         "#,
     )
     .bind(household_id.to_string())
@@ -711,12 +711,15 @@ pub async fn get_all_tasks_with_status(
     }
 
     // Sort by next_due_date: tasks with dates first (ascending), then tasks without dates
+    // Secondary sort by title (alphabetical, case-insensitive)
     tasks_with_status.sort_by(|a, b| {
         match (&a.next_due_date, &b.next_due_date) {
-            (Some(date_a), Some(date_b)) => date_a.cmp(date_b),
+            (Some(date_a), Some(date_b)) => date_a
+                .cmp(date_b)
+                .then_with(|| a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase())),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
+            (None, None) => a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase()),
         }
     });
 
@@ -865,6 +868,18 @@ pub async fn get_dashboard_tasks_with_status(
             }
         }
     }
+
+    // Sort by next_due_date (primary), then by title (secondary, case-insensitive)
+    results.sort_by(|(a, _), (b, _)| {
+        match (&a.next_due_date, &b.next_due_date) {
+            (Some(date_a), Some(date_b)) => date_a
+                .cmp(date_b)
+                .then_with(|| a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase())),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase()),
+        }
+    });
 
     Ok(results)
 }
@@ -1409,5 +1424,112 @@ mod tests {
         // Get dashboard tasks - should be empty since task is not on dashboard
         let dashboard_tasks = get_dashboard_tasks_with_status(&pool, &user_id).await.unwrap();
         assert!(dashboard_tasks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_alphabetical_order() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create tasks with titles in non-alphabetical order
+        for title in ["Zebra Task", "Apple Task", "Mango Task"] {
+            let request = CreateTaskRequest {
+                title: title.to_string(),
+                description: None,
+                recurrence_type: RecurrenceType::Daily,
+                recurrence_value: None,
+                assigned_user_id: None,
+                target_count: Some(1),
+                time_period: None,
+                allow_exceed_target: None,
+                requires_review: None,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
+                habit_type: None,
+                category_id: None,
+            };
+            create_task(&pool, &household_id, &request).await.unwrap();
+        }
+
+        let tasks = list_tasks(&pool, &household_id).await.unwrap();
+
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].title, "Apple Task");
+        assert_eq!(tasks[1].title, "Mango Task");
+        assert_eq!(tasks[2].title, "Zebra Task");
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_case_insensitive_order() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create tasks with mixed case titles
+        for title in ["banana Task", "Apple Task", "CHERRY Task"] {
+            let request = CreateTaskRequest {
+                title: title.to_string(),
+                description: None,
+                recurrence_type: RecurrenceType::Daily,
+                recurrence_value: None,
+                assigned_user_id: None,
+                target_count: Some(1),
+                time_period: None,
+                allow_exceed_target: None,
+                requires_review: None,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
+                habit_type: None,
+                category_id: None,
+            };
+            create_task(&pool, &household_id, &request).await.unwrap();
+        }
+
+        let tasks = list_tasks(&pool, &household_id).await.unwrap();
+
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].title, "Apple Task");
+        assert_eq!(tasks[1].title, "banana Task");
+        assert_eq!(tasks[2].title, "CHERRY Task");
+    }
+
+    #[tokio::test]
+    async fn test_get_all_tasks_with_status_secondary_sort() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create multiple daily tasks (same due date) with different titles
+        for title in ["Zebra Daily", "Apple Daily", "Mango Daily"] {
+            let request = CreateTaskRequest {
+                title: title.to_string(),
+                description: None,
+                recurrence_type: RecurrenceType::Daily,
+                recurrence_value: None,
+                assigned_user_id: None,
+                target_count: Some(1),
+                time_period: None,
+                allow_exceed_target: None,
+                requires_review: None,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
+                habit_type: None,
+                category_id: None,
+            };
+            create_task(&pool, &household_id, &request).await.unwrap();
+        }
+
+        let tasks = get_all_tasks_with_status(&pool, &household_id, &user_id).await.unwrap();
+
+        // All tasks have the same due date (today for daily tasks)
+        // Should be sorted alphabetically as secondary sort
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].task.title, "Apple Daily");
+        assert_eq!(tasks[1].task.title, "Mango Daily");
+        assert_eq!(tasks[2].task.title, "Zebra Daily");
     }
 }

@@ -305,8 +305,15 @@ fn group_tasks_by_category(tasks: Vec<TaskWithStatus>, other_label: &str) -> Vec
     }
 
     let mut result: Vec<(String, Vec<TaskWithStatus>)> = by_category.into_iter().collect();
+    // Sort categories alphabetically
     result.sort_by(|a, b| a.0.cmp(&b.0));
+    // Sort tasks alphabetically within each category
+    for (_, category_tasks) in &mut result {
+        category_tasks.sort_by(|a, b| a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase()));
+    }
     if !uncategorized.is_empty() {
+        // Sort uncategorized tasks alphabetically
+        uncategorized.sort_by(|a, b| a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase()));
         result.push((other_label.to_string(), uncategorized));
     }
     result
@@ -441,8 +448,14 @@ fn group_by_category(tasks: Vec<TaskWithHousehold>, other_label: &str) -> Vec<(S
     let mut result: Vec<(String, Vec<TaskWithHousehold>)> = by_category.into_iter().collect();
     // Sort categories alphabetically
     result.sort_by(|a, b| a.0.cmp(&b.0));
+    // Sort tasks alphabetically within each category
+    for (_, category_tasks) in &mut result {
+        category_tasks.sort_by(|a, b| a.task.task.title.to_lowercase().cmp(&b.task.task.title.to_lowercase()));
+    }
     // Add uncategorized tasks at the end
     if !uncategorized.is_empty() {
+        // Sort uncategorized tasks alphabetically
+        uncategorized.sort_by(|a, b| a.task.task.title.to_lowercase().cmp(&b.task.task.title.to_lowercase()));
         result.push((other_label.to_string(), uncategorized));
     }
     result
