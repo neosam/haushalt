@@ -65,8 +65,13 @@ Leptos CSR (client-side rendered) WASM app:
 
 **SQLx offline mode**: Backend compiles against `sqlx-data.json` snapshots. Run `cargo sqlx prepare` after schema changes.
 
+## Specifications
+
+This project uses speckit structure for managing specifications and requirements.
+
 ## Code Quality Requirements
 
 - Project must build without warnings (workspace denies warnings)
 - No clippy warnings allowed
 - Always include tests for changes
+- Always use jujutsu vcs to create commits.  Basically use jj commit -m "commit message"
