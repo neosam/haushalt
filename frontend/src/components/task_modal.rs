@@ -261,6 +261,7 @@ pub fn TaskModal(
                         due_time: due_time_val,
                         habit_type: Some(habit_type_val),
                         category_id: category_id_val,
+                        archived: None,
                     };
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
@@ -1255,6 +1256,7 @@ mod tests {
             habit_type: HabitType::Good,
             category_id: None,
             category_name: None,
+            archived: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -1288,6 +1290,7 @@ mod tests {
             habit_type: HabitType::Good,
             category_id: None,
             category_name: None,
+            archived: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -1310,6 +1313,7 @@ mod tests {
             habit_type: HabitType::Good,
             category_id: None,
             category_name: None,
+            archived: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -1342,6 +1346,7 @@ mod tests {
             habit_type: HabitType::Good,
             category_id: None,
             category_name: None,
+            archived: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         });

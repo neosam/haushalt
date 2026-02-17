@@ -31,11 +31,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/all", web::get().to(get_all_tasks_with_status))
             .route("/assigned-to-me", web::get().to(get_assigned_tasks))
             .route("/pending-reviews", web::get().to(get_pending_reviews))
+            .route("/archived", web::get().to(list_archived_tasks))
             .route("/{task_id}", web::get().to(get_task))
             .route("/{task_id}", web::put().to(update_task))
             .route("/{task_id}", web::delete().to(delete_task))
             .route("/{task_id}/complete", web::post().to(complete_task))
             .route("/{task_id}/uncomplete", web::post().to(uncomplete_task))
+            .route("/{task_id}/archive", web::post().to(archive_task))
+            .route("/{task_id}/unarchive", web::post().to(unarchive_task))
             // Task rewards endpoints
             .route("/{task_id}/rewards", web::get().to(get_task_rewards))
             .route("/{task_id}/rewards/{reward_id}", web::post().to(add_task_reward))
@@ -476,6 +479,233 @@ async fn delete_task(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to delete task".to_string(),
+            }))
+        }
+    }
+}
+
+async fn list_archived_tasks(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check membership
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match task_service::list_archived_tasks(&state.db, &household_id).await {
+        Ok(tasks) => Ok(HttpResponse::Ok().json(ApiSuccess::new(tasks))),
+        Err(e) => {
+            log::error!("Error listing archived tasks: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to list archived tasks".to_string(),
+            }))
+        }
+    }
+}
+
+async fn archive_task(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to archive tasks".to_string(),
+        }));
+    }
+
+    match task_service::archive_task(&state.db, &task_id).await {
+        Ok(task) => {
+            // Log activity
+            let details = serde_json::json!({ "title": task.title }).to_string();
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::TaskUpdated,
+                Some("task"),
+                Some(&task.id),
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(task)))
+        }
+        Err(task_service::TaskError::NotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Task not found".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error archiving task: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to archive task".to_string(),
+            }))
+        }
+    }
+}
+
+async fn unarchive_task(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to unarchive tasks".to_string(),
+        }));
+    }
+
+    match task_service::unarchive_task(&state.db, &task_id).await {
+        Ok(task) => {
+            // Log activity
+            let details = serde_json::json!({ "title": task.title }).to_string();
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::TaskUpdated,
+                Some("task"),
+                Some(&task.id),
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(task)))
+        }
+        Err(task_service::TaskError::NotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Task not found".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error unarchiving task: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to unarchive task".to_string(),
             }))
         }
     }

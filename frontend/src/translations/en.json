@@ -116,6 +116,9 @@
   "tasks.pending_review": "Pending Review",
   "tasks.approve": "Approve",
   "tasks.reject": "Reject",
+  "tasks.archive": "Archive",
+  "tasks.unarchive": "Unarchive",
+  "tasks.archived_tasks": "Archived Tasks",
 
   "task_card.add_to_dashboard": "Add to dashboard",
   "task_card.remove_from_dashboard": "Remove from dashboard",

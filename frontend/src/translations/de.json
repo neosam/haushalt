@@ -116,6 +116,9 @@
   "tasks.pending_review": "Überprüfung ausstehend",
   "tasks.approve": "Genehmigen",
   "tasks.reject": "Ablehnen",
+  "tasks.archive": "Archivieren",
+  "tasks.unarchive": "Wiederherstellen",
+  "tasks.archived_tasks": "Archivierte Aufgaben",
 
   "task_card.add_to_dashboard": "Zum Dashboard hinzufügen",
   "task_card.remove_from_dashboard": "Vom Dashboard entfernen",

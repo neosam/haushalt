@@ -430,6 +430,36 @@ impl ApiClient {
         .await
     }
 
+    pub async fn archive_task(household_id: &str, task_id: &str) -> Result<Task, String> {
+        Self::request::<Task>(
+            "POST",
+            &format!("/households/{}/tasks/{}/archive", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn unarchive_task(household_id: &str, task_id: &str) -> Result<Task, String> {
+        Self::request::<Task>(
+            "POST",
+            &format!("/households/{}/tasks/{}/unarchive", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn list_archived_tasks(household_id: &str) -> Result<Vec<Task>, String> {
+        Self::request::<Vec<Task>>(
+            "GET",
+            &format!("/households/{}/tasks/archived", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // Task rewards/punishments endpoints
     pub async fn get_task_rewards(household_id: &str, task_id: &str) -> Result<Vec<TaskRewardLink>, String> {
         Self::request::<Vec<TaskRewardLink>>(

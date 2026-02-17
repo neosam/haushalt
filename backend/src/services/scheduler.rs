@@ -377,6 +377,7 @@ mod tests {
             habit_type: shared::HabitType::Good,
             category_id: None,
             category_name: None,
+            archived: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

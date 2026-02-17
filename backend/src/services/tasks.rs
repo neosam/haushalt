@@ -85,6 +85,7 @@ pub async fn create_task(
         habit_type,
         category_id: request.category_id,
         category_name: None,
+        archived: false,
         created_at: now,
         updated_at: now,
     })
@@ -161,7 +162,24 @@ pub async fn list_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Ta
         SELECT t.*, tc.name as category_name
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
-        WHERE t.household_id = ?
+        WHERE t.household_id = ? AND t.archived = 0
+        ORDER BY t.title COLLATE NOCASE ASC
+        "#,
+    )
+    .bind(household_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tasks.into_iter().map(|t| t.to_shared()).collect())
+}
+
+pub async fn list_archived_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Task>, TaskError> {
+    let tasks: Vec<TaskRowWithCategory> = sqlx::query_as(
+        r#"
+        SELECT t.*, tc.name as category_name
+        FROM tasks t
+        LEFT JOIN task_categories tc ON t.category_id = tc.id
+        WHERE t.household_id = ? AND t.archived = 1
         ORDER BY t.title COLLATE NOCASE ASC
         "#,
     )
@@ -182,7 +200,7 @@ pub async fn list_user_assigned_tasks(
         SELECT t.*, tc.name as category_name
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
-        WHERE t.household_id = ? AND t.assigned_user_id = ?
+        WHERE t.household_id = ? AND t.assigned_user_id = ? AND t.archived = 0
         ORDER BY t.title COLLATE NOCASE ASC
         "#,
     )
@@ -247,13 +265,16 @@ pub async fn update_task(
     if let Some(ref category_id_opt) = request.category_id {
         task.category_id = category_id_opt.map(|id| id.to_string());
     }
+    if let Some(archived) = request.archived {
+        task.archived = archived;
+    }
 
     let now = Utc::now();
     task.updated_at = now;
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, archived = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -271,12 +292,47 @@ pub async fn update_task(
     .bind(&task.due_time)
     .bind(&task.habit_type)
     .bind(&task.category_id)
+    .bind(task.archived)
     .bind(now)
     .bind(task_id.to_string())
     .execute(pool)
     .await?;
 
     Ok(task.to_shared())
+}
+
+pub async fn archive_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Task, TaskError> {
+    let now = Utc::now();
+    let result = sqlx::query(
+        "UPDATE tasks SET archived = 1, updated_at = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(task_id.to_string())
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(TaskError::NotFound);
+    }
+
+    get_task(pool, task_id).await?.ok_or(TaskError::NotFound)
+}
+
+pub async fn unarchive_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Task, TaskError> {
+    let now = Utc::now();
+    let result = sqlx::query(
+        "UPDATE tasks SET archived = 0, updated_at = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(task_id.to_string())
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(TaskError::NotFound);
+    }
+
+    get_task(pool, task_id).await?.ok_or(TaskError::NotFound)
 }
 
 pub async fn delete_task(pool: &SqlitePool, task_id: &Uuid) -> Result<(), TaskError> {
@@ -574,6 +630,7 @@ pub async fn list_pending_reviews(
                     habit_type: row.t_habit_type.parse().unwrap_or(shared::HabitType::Good),
                     category_id: None,
                     category_name: None,
+                    archived: false, // Pending reviews are for active tasks
                     created_at: row.t_created_at,
                     updated_at: row.t_updated_at,
                 },
@@ -969,6 +1026,7 @@ mod tests {
                 due_time TEXT,
                 habit_type TEXT NOT NULL DEFAULT 'good',
                 category_id TEXT REFERENCES task_categories(id),
+                archived BOOLEAN NOT NULL DEFAULT 0,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -1531,5 +1589,149 @@ mod tests {
         assert_eq!(tasks[0].task.title, "Apple Daily");
         assert_eq!(tasks[1].task.title, "Mango Daily");
         assert_eq!(tasks[2].task.title, "Zebra Daily");
+    }
+
+    #[tokio::test]
+    async fn test_archive_task() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        let request = CreateTaskRequest {
+            title: "Task to Archive".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        assert!(!task.archived);
+
+        let archived_task = archive_task(&pool, &task.id).await.unwrap();
+        assert!(archived_task.archived);
+        assert_eq!(archived_task.id, task.id);
+    }
+
+    #[tokio::test]
+    async fn test_unarchive_task() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        let request = CreateTaskRequest {
+            title: "Task to Unarchive".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Archive the task first
+        let archived_task = archive_task(&pool, &task.id).await.unwrap();
+        assert!(archived_task.archived);
+
+        // Unarchive the task
+        let unarchived_task = unarchive_task(&pool, &task.id).await.unwrap();
+        assert!(!unarchived_task.archived);
+        assert_eq!(unarchived_task.id, task.id);
+    }
+
+    #[tokio::test]
+    async fn test_list_archived_tasks() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create two tasks
+        for title in ["Active Task", "Archived Task"] {
+            let request = CreateTaskRequest {
+                title: title.to_string(),
+                description: None,
+                recurrence_type: RecurrenceType::Daily,
+                recurrence_value: None,
+                assigned_user_id: None,
+                target_count: Some(1),
+                time_period: None,
+                allow_exceed_target: None,
+                requires_review: None,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
+                habit_type: None,
+                category_id: None,
+            };
+            create_task(&pool, &household_id, &request).await.unwrap();
+        }
+
+        let tasks = list_tasks(&pool, &household_id).await.unwrap();
+        assert_eq!(tasks.len(), 2);
+
+        // Archive one task
+        let task_to_archive = tasks.iter().find(|t| t.title == "Archived Task").unwrap();
+        archive_task(&pool, &task_to_archive.id).await.unwrap();
+
+        // Verify archived tasks list
+        let archived = list_archived_tasks(&pool, &household_id).await.unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].title, "Archived Task");
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_excludes_archived() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create two tasks
+        for title in ["Active Task", "Archived Task"] {
+            let request = CreateTaskRequest {
+                title: title.to_string(),
+                description: None,
+                recurrence_type: RecurrenceType::Daily,
+                recurrence_value: None,
+                assigned_user_id: None,
+                target_count: Some(1),
+                time_period: None,
+                allow_exceed_target: None,
+                requires_review: None,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
+                habit_type: None,
+                category_id: None,
+            };
+            create_task(&pool, &household_id, &request).await.unwrap();
+        }
+
+        let tasks = list_tasks(&pool, &household_id).await.unwrap();
+        assert_eq!(tasks.len(), 2);
+
+        // Archive one task
+        let task_to_archive = tasks.iter().find(|t| t.title == "Archived Task").unwrap();
+        archive_task(&pool, &task_to_archive.id).await.unwrap();
+
+        // Verify list_tasks excludes archived
+        let active_tasks = list_tasks(&pool, &household_id).await.unwrap();
+        assert_eq!(active_tasks.len(), 1);
+        assert_eq!(active_tasks[0].title, "Active Task");
     }
 }

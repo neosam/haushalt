@@ -20,6 +20,8 @@ pub fn TasksPage() -> impl IntoView {
     let household_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
 
     let tasks = create_rw_signal(Vec::<Task>::new());
+    let archived_tasks = create_rw_signal(Vec::<Task>::new());
+    let show_archived = create_rw_signal(false);
     let my_assigned_tasks = create_rw_signal(Vec::<Task>::new());
     let members = create_rw_signal(Vec::<MemberWithUser>::new());
     let rewards = create_rw_signal(Vec::<Reward>::new());
@@ -109,6 +111,14 @@ pub fn TasksPage() -> impl IntoView {
             }
         });
 
+        // Load archived tasks
+        let id_for_archived = id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(t) = ApiClient::list_archived_tasks(&id_for_archived).await {
+                archived_tasks.set(t);
+            }
+        });
+
         // Load settings for hierarchy-aware member filtering and dark mode
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(s) = ApiClient::get_household_settings(&id_for_settings).await {
@@ -139,6 +149,30 @@ pub fn TasksPage() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             if ApiClient::delete_task(&id, &task_id).await.is_ok() {
                 tasks.update(|t| t.retain(|task| task.id.to_string() != task_id));
+            }
+        });
+    };
+
+    let on_archive = move |task_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(archived) = ApiClient::archive_task(&id, &task_id).await {
+                // Remove from active tasks
+                tasks.update(|t| t.retain(|task| task.id.to_string() != task_id));
+                // Add to archived tasks
+                archived_tasks.update(|t| t.push(archived));
+            }
+        });
+    };
+
+    let on_unarchive = move |task_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(unarchived) = ApiClient::unarchive_task(&id, &task_id).await {
+                // Remove from archived tasks
+                archived_tasks.update(|t| t.retain(|task| task.id.to_string() != task_id));
+                // Add to active tasks
+                tasks.update(|t| t.push(unarchived));
             }
         });
     };
@@ -313,7 +347,9 @@ pub fn TasksPage() -> impl IntoView {
 
                                 let edit_label = i18n_stored.get_value().t("common.edit");
                                 let duplicate_label = i18n_stored.get_value().t("common.duplicate");
+                                let archive_label = i18n_stored.get_value().t("tasks.archive");
                                 let delete_label = i18n_stored.get_value().t("common.delete");
+                                let archive_id = task_id.clone();
 
                                 let actions = vec![
                                     ContextMenuAction {
@@ -324,6 +360,11 @@ pub fn TasksPage() -> impl IntoView {
                                     ContextMenuAction {
                                         label: duplicate_label,
                                         on_click: Callback::new(move |_| on_duplicate(duplicate_task.clone())),
+                                        danger: false,
+                                    },
+                                    ContextMenuAction {
+                                        label: archive_label,
+                                        on_click: Callback::new(move |_| on_archive(archive_id.clone())),
                                         danger: false,
                                     },
                                     ContextMenuAction {
@@ -359,6 +400,85 @@ pub fn TasksPage() -> impl IntoView {
                     }.into_view()
                 }
             }}
+            // Archived Tasks Section (collapsible)
+            <Show when=move || !archived_tasks.get().is_empty() fallback=|| ()>
+                <div class="card" style="margin-top: 1.5rem; opacity: 0.8;">
+                    <div
+                        class="card-header"
+                        style="cursor: pointer; user-select: none;"
+                        on:click=move |_| show_archived.update(|v| *v = !*v)
+                    >
+                        <h3 class="card-title" style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="transition: transform 0.2s;">
+                                {move || if show_archived.get() { "▼" } else { "▶" }}
+                            </span>
+                            {i18n_stored.get_value().t("tasks.archived_tasks")}
+                            <span style="font-weight: normal; color: var(--text-muted);">
+                                {move || format!("({})", archived_tasks.get().len())}
+                            </span>
+                        </h3>
+                    </div>
+                    <Show when=move || show_archived.get() fallback=|| ()>
+                        {move || {
+                            archived_tasks.get().into_iter().map(|task| {
+                                let task_id = task.id.to_string();
+                                let unarchive_id = task_id.clone();
+                                let delete_id = task_id.clone();
+                                let assigned_name = task.assigned_user_id.and_then(|uid| {
+                                    members.get().iter().find(|m| m.user.id == uid).map(|m| m.user.username.clone())
+                                });
+
+                                let unarchive_label = i18n_stored.get_value().t("tasks.unarchive");
+                                let delete_label = i18n_stored.get_value().t("common.delete");
+
+                                let on_delete_archived = move |task_id: String| {
+                                    let id = household_id();
+                                    wasm_bindgen_futures::spawn_local(async move {
+                                        if ApiClient::delete_task(&id, &task_id).await.is_ok() {
+                                            archived_tasks.update(|t| t.retain(|task| task.id.to_string() != task_id));
+                                        }
+                                    });
+                                };
+
+                                let actions = vec![
+                                    ContextMenuAction {
+                                        label: unarchive_label,
+                                        on_click: Callback::new(move |_| on_unarchive(unarchive_id.clone())),
+                                        danger: false,
+                                    },
+                                    ContextMenuAction {
+                                        label: delete_label,
+                                        on_click: Callback::new(move |_| on_delete_archived(delete_id.clone())),
+                                        danger: true,
+                                    },
+                                ];
+
+                                view! {
+                                    <div class="task-item" style="opacity: 0.7;">
+                                        <div class="task-content">
+                                            <div class="task-title">{task.title.clone()}</div>
+                                            <div class="task-meta">
+                                                {format!("{:?}", task.recurrence_type)}
+                                                {if let Some(name) = assigned_name {
+                                                    format!(" | Assigned to: {}", name)
+                                                } else {
+                                                    String::new()
+                                                }}
+                                                {if !task.description.is_empty() {
+                                                    format!(" | {}", task.description)
+                                                } else {
+                                                    String::new()
+                                                }}
+                                            </div>
+                                        </div>
+                                        <ContextMenu actions=actions />
+                                    </div>
+                                }
+                            }).collect_view()
+                        }}
+                    </Show>
+                </div>
+            </Show>
         </Show>
 
         // Create Modal - uses TaskModal with task=None
@@ -530,6 +650,7 @@ mod tests {
             habit_type: shared::HabitType::Good,
             category_id: None,
             category_name: None,
+            archived: false,
             assigned_user_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

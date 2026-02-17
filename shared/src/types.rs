@@ -486,6 +486,8 @@ pub struct Task {
     pub category_id: Option<Uuid>,
     /// Category name (populated when loading task with category)
     pub category_name: Option<String>,
+    /// Whether the task is archived (hidden from active lists)
+    pub archived: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -536,6 +538,8 @@ pub struct UpdateTaskRequest {
     pub habit_type: Option<HabitType>,
     /// Optional category for grouping tasks (use Some(None) to clear the category)
     pub category_id: Option<Option<Uuid>>,
+    /// Whether the task is archived
+    pub archived: Option<bool>,
 }
 
 /// Status of a task completion
@@ -1447,6 +1451,7 @@ mod tests {
                 habit_type: HabitType::Good,
                 category_id: None,
                 category_name: None,
+                archived: false,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
