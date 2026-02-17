@@ -30,11 +30,11 @@
 ## US-TASK-002: List Household Tasks
 
 **As a** household member
-**I want to** see all tasks in the household
+**I want to** see all active tasks in the household
 **So that** I know what needs to be done
 
 ### Acceptance Criteria
-- Returns all tasks with full details
+- Returns all active (non-archived) tasks with full details
 - Shows assigned user if any
 - Shows recurrence information
 - Shows points value
@@ -213,3 +213,20 @@
 ### Acceptance Criteria
 - Completing a bad habit task = penalty/punishment
 - Resisting a bad habit task = reward/points
+
+---
+
+## US-TASK-016: Archive Task
+
+**As a** household Owner or Admin
+**I want to** archive a task
+**So that** it is hidden from active task lists but preserved for history
+
+### Acceptance Criteria
+- Task can be archived via context menu in the UI
+- Archived tasks are excluded from the main task list
+- Archived tasks are excluded from dashboard
+- Archived tasks are excluded from due tasks
+- Task completion history is preserved
+- Archived tasks can be viewed in a separate archived tasks list
+- Archived tasks can be unarchived to restore them to active status
