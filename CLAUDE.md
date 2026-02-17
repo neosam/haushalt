@@ -69,6 +69,12 @@ Leptos CSR (client-side rendered) WASM app:
 
 This project uses speckit structure for managing specifications and requirements.
 
+- **specs/baseline/stories/**: User stories with acceptance criteria (e.g., `05-tasks.md`)
+- **specs/baseline/constitution/**: Core project principles
+- **specs/architecture/**: Technical architecture documentation
+
+When implementing features, check the relevant spec file for acceptance criteria. When adding new features, update or create spec files first.
+
 ## Code Quality Requirements
 
 - Project must build without warnings (workspace denies warnings)
