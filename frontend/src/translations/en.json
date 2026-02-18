@@ -121,6 +121,9 @@
   "tasks.archive": "Archive",
   "tasks.unarchive": "Unarchive",
   "tasks.archived_tasks": "Archived Tasks",
+  "tasks.pause": "Pause",
+  "tasks.unpause": "Unpause",
+  "tasks.paused_badge": "Paused",
 
   "task_card.add_to_dashboard": "Add to dashboard",
   "task_card.remove_from_dashboard": "Remove from dashboard",
@@ -441,6 +444,13 @@
   "settings.rewards_hint": "Allow members to earn and redeem rewards",
   "settings.punishments_hint": "Allow assigning punishments for missed tasks",
   "settings.chat_hint": "Enable real-time chat for household members",
+  "settings.vacation_mode": "Vacation Mode",
+  "settings.enable_vacation_mode": "Enable Vacation Mode",
+  "settings.vacation_mode_hint": "When enabled, no automated punishments will be given for missed tasks during the vacation period",
+  "settings.vacation_start": "Vacation Start Date",
+  "settings.vacation_start_hint": "Leave empty to start immediately when vacation mode is enabled",
+  "settings.vacation_end": "Vacation End Date",
+  "settings.vacation_end_hint": "Leave empty for an indefinite vacation period",
 
   "hierarchy.equals": "Equals",
   "hierarchy.equals_desc": "Everyone can manage tasks, rewards, and punishments",

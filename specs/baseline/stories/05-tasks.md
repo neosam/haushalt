@@ -259,3 +259,55 @@
 - **FAB placement**: Fixed position, lower-right corner (follows Material Design conventions)
 - **Single household optimization**: Skips selection step when only one option exists
 - **Global visibility**: Available on all authenticated pages for quick access
+
+---
+
+## US-TASK-018: Pause Task
+
+**As a** household Owner or Admin
+**I want to** pause individual tasks
+**So that** no automated punishments are given while the task is temporarily inactive
+
+### Acceptance Criteria
+- Task can be paused via context menu or task edit modal
+- Paused tasks are visually distinguished (e.g., muted/grayed appearance, pause indicator)
+- While paused:
+  - Task does not appear in due tasks
+  - No automated punishments are triggered for missed completions
+  - No streak penalties are applied
+  - Task remains visible in the task list (not hidden like archived)
+- Paused tasks can still be manually completed if desired
+- Task can be unpaused to resume normal behavior
+- Pause/unpause actions are logged in activity
+
+### Design Decisions
+- **Pause vs Archive**: Paused tasks remain visible and can be completed; archived tasks are hidden entirely
+- **Punishment handling**: Only automated punishments are suppressed; manual actions still work
+
+---
+
+## US-TASK-019: Household Vacation Mode
+
+**As a** household Owner
+**I want to** put the entire household in vacation mode
+**So that** all tasks are paused during the vacation period without manual intervention
+
+### Acceptance Criteria
+- Vacation mode can be enabled/disabled in household settings
+- Optional: Set vacation start and end dates for automatic activation/deactivation
+- When vacation mode is active:
+  - All tasks in the household are effectively paused
+  - No automated punishments are triggered for any task
+  - No streak penalties are applied
+  - Tasks do not appear in due tasks
+  - A banner or indicator shows the household is in vacation mode
+- When vacation mode ends:
+  - Tasks resume normal behavior
+  - Streaks continue from where they left off (no reset)
+- Vacation mode status is visible to all household members
+- Enabling/disabling vacation mode is logged in activity
+
+### Design Decisions
+- **Scope**: Affects all tasks in the household uniformly
+- **Streak handling**: Streaks are preserved, not reset, when vacation ends
+- **Override**: Individual task pause (US-TASK-018) and vacation mode are independent; a task paused before vacation remains paused after vacation ends

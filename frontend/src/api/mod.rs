@@ -491,6 +491,26 @@ impl ApiClient {
         .await
     }
 
+    pub async fn pause_task(household_id: &str, task_id: &str) -> Result<Task, String> {
+        Self::request::<Task>(
+            "POST",
+            &format!("/households/{}/tasks/{}/pause", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn unpause_task(household_id: &str, task_id: &str) -> Result<Task, String> {
+        Self::request::<Task>(
+            "POST",
+            &format!("/households/{}/tasks/{}/unpause", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     pub async fn list_archived_tasks(household_id: &str) -> Result<Vec<Task>, String> {
         Self::request::<Vec<Task>>(
             "GET",

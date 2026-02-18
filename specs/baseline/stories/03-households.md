@@ -141,6 +141,7 @@
 - Shows hierarchy type (Equals, Organized, Hierarchy)
 - Shows timezone configuration
 - Shows feature flags (rewards_enabled, punishments_enabled, chat_enabled)
+- Shows vacation mode status and dates
 
 ---
 
@@ -161,6 +162,8 @@
 - Can enable/disable rewards feature
 - Can enable/disable punishments feature
 - Can enable/disable chat feature
+- Can enable/disable vacation mode
+- Can set vacation start and end dates
 
 ---
 

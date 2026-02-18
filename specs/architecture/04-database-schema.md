@@ -94,6 +94,8 @@ erDiagram
         TEXT due_time
         TEXT habit_type
         TEXT category_id FK
+        BOOLEAN archived
+        BOOLEAN paused
         DATETIME created_at
         DATETIME updated_at
     }
@@ -221,6 +223,9 @@ erDiagram
         BOOLEAN rewards_enabled
         BOOLEAN punishments_enabled
         BOOLEAN chat_enabled
+        BOOLEAN vacation_mode
+        DATE vacation_start
+        DATE vacation_end
         DATETIME updated_at
     }
 

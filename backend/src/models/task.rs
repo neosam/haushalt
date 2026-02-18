@@ -23,6 +23,7 @@ pub struct TaskRow {
     pub habit_type: String,
     pub category_id: Option<String>,
     pub archived: bool,
+    pub paused: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -49,6 +50,7 @@ pub struct TaskRowWithCategory {
     pub category_id: Option<String>,
     pub category_name: Option<String>,
     pub archived: bool,
+    pub paused: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -80,6 +82,7 @@ impl TaskRow {
             category_id: self.category_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
             category_name: None,
             archived: self.archived,
+            paused: self.paused,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -114,6 +117,7 @@ impl TaskRowWithCategory {
             category_id: self.category_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
             category_name: self.category_name.clone(),
             archived: self.archived,
+            paused: self.paused,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -149,6 +153,7 @@ mod tests {
             habit_type: "good".to_string(),
             category_id: None,
             archived: false,
+            paused: false,
             created_at: now,
             updated_at: now,
         };
@@ -163,6 +168,7 @@ mod tests {
         assert_eq!(shared.target_count, 1);
         assert!(shared.allow_exceed_target);
         assert!(!shared.archived);
+        assert!(!shared.paused);
     }
 
     #[test]
@@ -188,6 +194,7 @@ mod tests {
             habit_type: "good".to_string(),
             category_id: None,
             archived: false,
+            paused: false,
             created_at: now,
             updated_at: now,
         };
@@ -223,6 +230,7 @@ mod tests {
             habit_type: "good".to_string(),
             category_id: None,
             archived: false,
+            paused: false,
             created_at: now,
             updated_at: now,
         };
@@ -247,6 +255,7 @@ mod tests {
             habit_type: "good".to_string(),
             category_id: None,
             archived: false,
+            paused: false,
             created_at: now,
             updated_at: now,
         };
@@ -276,6 +285,7 @@ mod tests {
             habit_type: "good".to_string(),
             category_id: None,
             archived: false,
+            paused: false,
             created_at: now,
             updated_at: now,
         };
@@ -301,6 +311,7 @@ mod tests {
             habit_type: "bad".to_string(),
             category_id: None,
             archived: false,
+            paused: false,
             created_at: now,
             updated_at: now,
         };

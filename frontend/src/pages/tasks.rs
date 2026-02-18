@@ -178,6 +178,34 @@ pub fn TasksPage() -> impl IntoView {
         });
     };
 
+    let on_pause = move |task_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(paused_task) = ApiClient::pause_task(&id, &task_id).await {
+                // Update task in list
+                tasks.update(|t| {
+                    if let Some(pos) = t.iter().position(|task| task.id.to_string() == task_id) {
+                        t[pos] = paused_task;
+                    }
+                });
+            }
+        });
+    };
+
+    let on_unpause = move |task_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(unpaused_task) = ApiClient::unpause_task(&id, &task_id).await {
+                // Update task in list
+                tasks.update(|t| {
+                    if let Some(pos) = t.iter().position(|task| task.id.to_string() == task_id) {
+                        t[pos] = unpaused_task;
+                    }
+                });
+            }
+        });
+    };
+
     let on_edit = move |task: Task| {
         let id = household_id();
         let task_id = task.id.to_string();
@@ -342,6 +370,7 @@ pub fn TasksPage() -> impl IntoView {
                                 let delete_id = task_id.clone();
                                 let edit_task = task.clone();
                                 let duplicate_task = task.clone();
+                                let is_paused = task.paused;
                                 let assigned_name = task.assigned_user_id.and_then(|uid| {
                                     members.get().iter().find(|m| m.user.id == uid).map(|m| m.user.username.clone())
                                 });
@@ -349,10 +378,13 @@ pub fn TasksPage() -> impl IntoView {
                                 let edit_label = i18n_stored.get_value().t("common.edit");
                                 let duplicate_label = i18n_stored.get_value().t("common.duplicate");
                                 let archive_label = i18n_stored.get_value().t("tasks.archive");
+                                let pause_label = i18n_stored.get_value().t("tasks.pause");
+                                let unpause_label = i18n_stored.get_value().t("tasks.unpause");
                                 let delete_label = i18n_stored.get_value().t("common.delete");
                                 let archive_id = task_id.clone();
+                                let pause_id = task_id.clone();
 
-                                let actions = vec![
+                                let mut actions = vec![
                                     ContextMenuAction {
                                         label: edit_label,
                                         on_click: Callback::new(move |_| on_edit(edit_task.clone())),
@@ -363,22 +395,52 @@ pub fn TasksPage() -> impl IntoView {
                                         on_click: Callback::new(move |_| on_duplicate(duplicate_task.clone())),
                                         danger: false,
                                     },
-                                    ContextMenuAction {
-                                        label: archive_label,
-                                        on_click: Callback::new(move |_| on_archive(archive_id.clone())),
-                                        danger: false,
-                                    },
-                                    ContextMenuAction {
-                                        label: delete_label,
-                                        on_click: Callback::new(move |_| on_delete(delete_id.clone())),
-                                        danger: true,
-                                    },
                                 ];
 
+                                // Add pause or unpause action based on current state
+                                if is_paused {
+                                    actions.push(ContextMenuAction {
+                                        label: unpause_label,
+                                        on_click: Callback::new(move |_| on_unpause(pause_id.clone())),
+                                        danger: false,
+                                    });
+                                } else {
+                                    actions.push(ContextMenuAction {
+                                        label: pause_label,
+                                        on_click: Callback::new(move |_| on_pause(pause_id.clone())),
+                                        danger: false,
+                                    });
+                                }
+
+                                actions.push(ContextMenuAction {
+                                    label: archive_label,
+                                    on_click: Callback::new(move |_| on_archive(archive_id.clone())),
+                                    danger: false,
+                                });
+                                actions.push(ContextMenuAction {
+                                    label: delete_label,
+                                    on_click: Callback::new(move |_| on_delete(delete_id.clone())),
+                                    danger: true,
+                                });
+
+                                let task_style = if is_paused { "opacity: 0.6;" } else { "" };
+                                let paused_badge = i18n_stored.get_value().t("tasks.paused_badge");
+
                                 view! {
-                                    <div class="task-item">
+                                    <div class="task-item" style=task_style>
                                         <div class="task-content">
-                                            <div class="task-title">{task.title.clone()}</div>
+                                            <div class="task-title">
+                                                {task.title.clone()}
+                                                {if is_paused {
+                                                    view! {
+                                                        <span class="badge badge-warning" style="margin-left: 0.5rem; font-size: 0.7em;">
+                                                            {paused_badge}
+                                                        </span>
+                                                    }.into_view()
+                                                } else {
+                                                    ().into_view()
+                                                }}
+                                            </div>
                                             <div class="task-meta">
                                                 {format!("{:?}", task.recurrence_type)}
                                                 {if let Some(name) = assigned_name {
@@ -652,6 +714,7 @@ mod tests {
             category_id: None,
             category_name: None,
             archived: false,
+            paused: false,
             assigned_user_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

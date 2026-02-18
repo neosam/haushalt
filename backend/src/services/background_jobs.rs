@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::models::{MembershipRow, TaskRow};
 use crate::services::{household_settings, points as points_service, scheduler, task_consequences};
+use shared::HouseholdSettings;
 
 #[derive(Debug, Error)]
 pub enum BackgroundJobError {
@@ -107,8 +108,9 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
         .fetch_all(pool)
         .await?;
 
-    // Cache household timezones to avoid repeated lookups
-    let mut timezone_cache: std::collections::HashMap<Uuid, String> = std::collections::HashMap::new();
+    // Cache household settings to avoid repeated lookups
+    let mut settings_cache: std::collections::HashMap<Uuid, HouseholdSettings> =
+        std::collections::HashMap::new();
 
     for task_row in tasks {
         let task = task_row.to_shared();
@@ -118,21 +120,38 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
             continue;
         }
 
-        // Get household timezone (cached)
-        let timezone = if let Some(tz) = timezone_cache.get(&task.household_id) {
-            tz.clone()
+        // Skip paused tasks - no punishments while paused
+        if task.paused {
+            continue;
+        }
+
+        // Skip archived tasks - they are no longer active
+        if task.archived {
+            continue;
+        }
+
+        // Get household settings (cached)
+        let settings = if let Some(s) = settings_cache.get(&task.household_id) {
+            s.clone()
         } else {
-            let tz = household_settings::get_household_timezone(pool, &task.household_id)
+            let s = household_settings::get_or_create_settings(pool, &task.household_id)
                 .await
-                .unwrap_or_else(|_| "UTC".to_string());
-            timezone_cache.insert(task.household_id, tz.clone());
-            tz
+                .unwrap_or_default();
+            settings_cache.insert(task.household_id, s.clone());
+            s
         };
+
+        let timezone = settings.timezone.clone();
 
         // Get "yesterday" in the household's timezone
         let tz = scheduler::parse_timezone(&timezone);
         let today_local = scheduler::today_in_timezone(tz);
         let yesterday_local = today_local - Duration::days(1);
+
+        // Skip if household is on vacation - no punishments during vacation
+        if household_settings::is_household_on_vacation(&settings, today_local) {
+            continue;
+        }
 
         // Check if task was due yesterday
         if !scheduler::is_task_due_on_date(&task, yesterday_local) {

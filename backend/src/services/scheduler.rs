@@ -378,6 +378,7 @@ mod tests {
             category_id: None,
             category_name: None,
             archived: false,
+            paused: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

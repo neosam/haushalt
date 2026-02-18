@@ -86,6 +86,7 @@ pub async fn create_task(
         category_id: request.category_id,
         category_name: None,
         archived: false,
+        paused: false,
         created_at: now,
         updated_at: now,
     })
@@ -268,13 +269,16 @@ pub async fn update_task(
     if let Some(archived) = request.archived {
         task.archived = archived;
     }
+    if let Some(paused) = request.paused {
+        task.paused = paused;
+    }
 
     let now = Utc::now();
     task.updated_at = now;
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, archived = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, archived = ?, paused = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -293,6 +297,7 @@ pub async fn update_task(
     .bind(&task.habit_type)
     .bind(&task.category_id)
     .bind(task.archived)
+    .bind(task.paused)
     .bind(now)
     .bind(task_id.to_string())
     .execute(pool)
@@ -322,6 +327,40 @@ pub async fn unarchive_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Task, T
     let now = Utc::now();
     let result = sqlx::query(
         "UPDATE tasks SET archived = 0, updated_at = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(task_id.to_string())
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(TaskError::NotFound);
+    }
+
+    get_task(pool, task_id).await?.ok_or(TaskError::NotFound)
+}
+
+pub async fn pause_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Task, TaskError> {
+    let now = Utc::now();
+    let result = sqlx::query(
+        "UPDATE tasks SET paused = 1, updated_at = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(task_id.to_string())
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(TaskError::NotFound);
+    }
+
+    get_task(pool, task_id).await?.ok_or(TaskError::NotFound)
+}
+
+pub async fn unpause_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Task, TaskError> {
+    let now = Utc::now();
+    let result = sqlx::query(
+        "UPDATE tasks SET paused = 0, updated_at = ? WHERE id = ?",
     )
     .bind(now)
     .bind(task_id.to_string())
@@ -631,6 +670,7 @@ pub async fn list_pending_reviews(
                     category_id: None,
                     category_name: None,
                     archived: false, // Pending reviews are for active tasks
+                    paused: false, // Pending reviews are for active tasks
                     created_at: row.t_created_at,
                     updated_at: row.t_updated_at,
                 },
@@ -1065,6 +1105,7 @@ mod tests {
                 habit_type TEXT NOT NULL DEFAULT 'good',
                 category_id TEXT REFERENCES task_categories(id),
                 archived BOOLEAN NOT NULL DEFAULT 0,
+                paused BOOLEAN NOT NULL DEFAULT 0,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

@@ -139,6 +139,12 @@ pub struct HouseholdSettings {
     pub rewards_enabled: bool,
     pub punishments_enabled: bool,
     pub chat_enabled: bool,
+    /// Whether the household is in vacation mode (all tasks paused)
+    pub vacation_mode: bool,
+    /// Optional start date for vacation mode (None = immediate)
+    pub vacation_start: Option<NaiveDate>,
+    /// Optional end date for vacation mode (None = indefinite)
+    pub vacation_end: Option<NaiveDate>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -155,6 +161,9 @@ impl Default for HouseholdSettings {
             rewards_enabled: false,
             punishments_enabled: false,
             chat_enabled: false,
+            vacation_mode: false,
+            vacation_start: None,
+            vacation_end: None,
             updated_at: Utc::now(),
         }
     }
@@ -171,6 +180,12 @@ pub struct UpdateHouseholdSettingsRequest {
     pub rewards_enabled: Option<bool>,
     pub punishments_enabled: Option<bool>,
     pub chat_enabled: Option<bool>,
+    /// Enable/disable vacation mode
+    pub vacation_mode: Option<bool>,
+    /// Set vacation start date (Some(None) to clear)
+    pub vacation_start: Option<Option<NaiveDate>>,
+    /// Set vacation end date (Some(None) to clear)
+    pub vacation_end: Option<Option<NaiveDate>>,
 }
 
 // ============================================================================
@@ -488,6 +503,8 @@ pub struct Task {
     pub category_name: Option<String>,
     /// Whether the task is archived (hidden from active lists)
     pub archived: bool,
+    /// Whether the task is paused (no automated punishments while paused)
+    pub paused: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -540,6 +557,8 @@ pub struct UpdateTaskRequest {
     pub category_id: Option<Option<Uuid>>,
     /// Whether the task is archived
     pub archived: Option<bool>,
+    /// Whether the task is paused (no automated punishments while paused)
+    pub paused: Option<bool>,
 }
 
 /// Status of a task completion
@@ -1611,6 +1630,7 @@ mod tests {
                 category_id: None,
                 category_name: None,
                 archived: false,
+                paused: false,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },

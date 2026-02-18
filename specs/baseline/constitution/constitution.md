@@ -109,6 +109,7 @@ Database Layer (SQLx + SQLite)
 | `category_id` | Optional: Category |
 | `due_time` | Optional: Due time (HH:MM) |
 | `archived` | Is task archived? (hidden from active lists) |
+| `paused` | Is task paused? (no automated punishments) |
 
 ### 4.2 Recurrence Types
 
@@ -293,6 +294,7 @@ due_time TEXT,
 habit_type TEXT,
 category_id TEXT REFERENCES task_categories(id),
 archived BOOLEAN DEFAULT 0,
+paused BOOLEAN DEFAULT 0,
 created_at DATETIME,
 updated_at DATETIME
 ```
@@ -368,6 +370,8 @@ UNIQUE(task_id, user_id, due_date)
 | POST | `/tasks/{id}/archive` | Archive task |
 | POST | `/tasks/{id}/unarchive` | Unarchive task |
 | GET | `/households/{id}/tasks/archived` | Archived tasks |
+| POST | `/tasks/{id}/pause` | Pause task |
+| POST | `/tasks/{id}/unpause` | Unpause task |
 
 ### 8.4 Rewards & Punishments
 
@@ -450,6 +454,9 @@ UNIQUE(task_id, user_id, due_date)
 | `rewards_enabled` | Enable rewards |
 | `punishments_enabled` | Enable punishments |
 | `chat_enabled` | Enable chat |
+| `vacation_mode` | Enable vacation mode (pauses all tasks) |
+| `vacation_start` | Optional: Vacation start date |
+| `vacation_end` | Optional: Vacation end date |
 
 ### 10.2 User Settings
 

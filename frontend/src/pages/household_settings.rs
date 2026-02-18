@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use leptos::*;
 use leptos_router::*;
 use shared::{HierarchyType, HouseholdSettings, Role, UpdateHouseholdSettingsRequest};
@@ -35,6 +36,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let rewards_enabled = create_rw_signal(false);
     let punishments_enabled = create_rw_signal(false);
     let chat_enabled = create_rw_signal(false);
+    let vacation_mode = create_rw_signal(false);
+    let vacation_start = create_rw_signal(Option::<NaiveDate>::None);
+    let vacation_end = create_rw_signal(Option::<NaiveDate>::None);
 
     // Load settings and check permissions
     create_effect(move |_| {
@@ -59,6 +63,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     rewards_enabled.set(s.rewards_enabled);
                     punishments_enabled.set(s.punishments_enabled);
                     chat_enabled.set(s.chat_enabled);
+                    vacation_mode.set(s.vacation_mode);
+                    vacation_start.set(s.vacation_start);
+                    vacation_end.set(s.vacation_end);
                     settings.set(Some(s));
                 }
                 Err(e) => error.set(Some(e)),
@@ -97,6 +104,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             rewards_enabled: Some(rewards_enabled.get()),
             punishments_enabled: Some(punishments_enabled.get()),
             chat_enabled: Some(chat_enabled.get()),
+            vacation_mode: Some(vacation_mode.get()),
+            vacation_start: Some(vacation_start.get()),
+            vacation_end: Some(vacation_end.get()),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -270,6 +280,67 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                             </div>
                             <small class="form-hint">{i18n_stored.get_value().t("settings.chat_hint")}</small>
                         </div>
+
+                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+
+                        <h3 style="margin-bottom: 1rem;">{i18n_stored.get_value().t("settings.vacation_mode")}</h3>
+
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input
+                                    type="checkbox"
+                                    id="vacation-mode"
+                                    prop:checked=move || vacation_mode.get()
+                                    on:change=move |ev| {
+                                        vacation_mode.set(event_target_checked(&ev));
+                                    }
+                                />
+                                <label for="vacation-mode">{i18n_stored.get_value().t("settings.enable_vacation_mode")}</label>
+                            </div>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.vacation_mode_hint")}</small>
+                        </div>
+
+                        <Show when=move || vacation_mode.get() fallback=|| ()>
+                            <div style="margin-left: 1.5rem; padding-left: 1rem; border-left: 2px solid var(--border-color);">
+                                <div class="form-group">
+                                    <label class="form-label" for="vacation-start">{i18n_stored.get_value().t("settings.vacation_start")}</label>
+                                    <input
+                                        type="date"
+                                        id="vacation-start"
+                                        class="form-input"
+                                        prop:value=move || vacation_start.get().map(|d| d.to_string()).unwrap_or_default()
+                                        on:input=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if value.is_empty() {
+                                                vacation_start.set(None);
+                                            } else if let Ok(date) = NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
+                                                vacation_start.set(Some(date));
+                                            }
+                                        }
+                                    />
+                                    <small class="form-hint">{i18n_stored.get_value().t("settings.vacation_start_hint")}</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" for="vacation-end">{i18n_stored.get_value().t("settings.vacation_end")}</label>
+                                    <input
+                                        type="date"
+                                        id="vacation-end"
+                                        class="form-input"
+                                        prop:value=move || vacation_end.get().map(|d| d.to_string()).unwrap_or_default()
+                                        on:input=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if value.is_empty() {
+                                                vacation_end.set(None);
+                                            } else if let Ok(date) = NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
+                                                vacation_end.set(Some(date));
+                                            }
+                                        }
+                                    />
+                                    <small class="form-hint">{i18n_stored.get_value().t("settings.vacation_end_hint")}</small>
+                                </div>
+                            </div>
+                        </Show>
 
                         <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
 

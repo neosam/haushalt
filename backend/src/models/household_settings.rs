@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use shared::HierarchyType;
 use sqlx::FromRow;
@@ -17,6 +17,9 @@ pub struct HouseholdSettingsRow {
     pub rewards_enabled: bool,
     pub punishments_enabled: bool,
     pub chat_enabled: bool,
+    pub vacation_mode: bool,
+    pub vacation_start: Option<NaiveDate>,
+    pub vacation_end: Option<NaiveDate>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -34,6 +37,9 @@ impl HouseholdSettingsRow {
             rewards_enabled: self.rewards_enabled,
             punishments_enabled: self.punishments_enabled,
             chat_enabled: self.chat_enabled,
+            vacation_mode: self.vacation_mode,
+            vacation_start: self.vacation_start,
+            vacation_end: self.vacation_end,
             updated_at: self.updated_at,
         }
     }
@@ -59,6 +65,9 @@ mod tests {
             rewards_enabled: true,
             punishments_enabled: false,
             chat_enabled: true,
+            vacation_mode: false,
+            vacation_start: None,
+            vacation_end: None,
             updated_at: now,
         };
 
@@ -74,6 +83,9 @@ mod tests {
         assert!(shared.rewards_enabled);
         assert!(!shared.punishments_enabled);
         assert!(shared.chat_enabled);
+        assert!(!shared.vacation_mode);
+        assert!(shared.vacation_start.is_none());
+        assert!(shared.vacation_end.is_none());
     }
 
     #[test]
@@ -92,6 +104,9 @@ mod tests {
             rewards_enabled: false,
             punishments_enabled: false,
             chat_enabled: false,
+            vacation_mode: false,
+            vacation_start: None,
+            vacation_end: None,
             updated_at: now,
         };
 

@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use sqlx::SqlitePool;
 use thiserror::Error;
 use uuid::Uuid;
@@ -35,8 +35,8 @@ pub async fn get_or_create_settings(
     let default_timezone = "UTC";
     sqlx::query(
         r#"
-        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, updated_at)
-        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, ?)
+        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, updated_at)
+        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, ?)
         "#,
     )
     .bind(household_id.to_string())
@@ -57,17 +57,11 @@ pub async fn get_or_create_settings(
         rewards_enabled: false,
         punishments_enabled: false,
         chat_enabled: false,
+        vacation_mode: false,
+        vacation_start: None,
+        vacation_end: None,
         updated_at: now,
     })
-}
-
-/// Get timezone for a household (returns "UTC" if not set)
-pub async fn get_household_timezone(
-    pool: &SqlitePool,
-    household_id: &Uuid,
-) -> Result<String, SettingsError> {
-    let settings = get_or_create_settings(pool, household_id).await?;
-    Ok(settings.timezone)
 }
 
 /// Update household settings
@@ -107,6 +101,15 @@ pub async fn update_settings(
     if let Some(chat_enabled) = request.chat_enabled {
         settings.chat_enabled = chat_enabled;
     }
+    if let Some(vacation_mode) = request.vacation_mode {
+        settings.vacation_mode = vacation_mode;
+    }
+    if let Some(ref vacation_start) = request.vacation_start {
+        settings.vacation_start = *vacation_start;
+    }
+    if let Some(ref vacation_end) = request.vacation_end {
+        settings.vacation_end = *vacation_end;
+    }
 
     let now = Utc::now();
     settings.updated_at = now;
@@ -114,7 +117,7 @@ pub async fn update_settings(
     sqlx::query(
         r#"
         UPDATE household_settings
-        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, rewards_enabled = ?, punishments_enabled = ?, chat_enabled = ?, updated_at = ?
+        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, rewards_enabled = ?, punishments_enabled = ?, chat_enabled = ?, vacation_mode = ?, vacation_start = ?, vacation_end = ?, updated_at = ?
         WHERE household_id = ?
         "#,
     )
@@ -127,12 +130,33 @@ pub async fn update_settings(
     .bind(settings.rewards_enabled)
     .bind(settings.punishments_enabled)
     .bind(settings.chat_enabled)
+    .bind(settings.vacation_mode)
+    .bind(settings.vacation_start)
+    .bind(settings.vacation_end)
     .bind(now)
     .bind(household_id.to_string())
     .execute(pool)
     .await?;
 
     Ok(settings)
+}
+
+/// Check if a household is currently on vacation
+///
+/// Returns true if vacation_mode is enabled AND the current date falls within
+/// the vacation period (if dates are specified).
+pub fn is_household_on_vacation(settings: &HouseholdSettings, today: NaiveDate) -> bool {
+    if !settings.vacation_mode {
+        return false;
+    }
+
+    // If dates are set, check if we're within the range
+    match (settings.vacation_start, settings.vacation_end) {
+        (Some(start), Some(end)) => today >= start && today <= end,
+        (Some(start), None) => today >= start,
+        (None, Some(end)) => today <= end,
+        (None, None) => true, // vacation_mode on with no dates = indefinite
+    }
 }
 
 #[cfg(test)]
@@ -143,5 +167,103 @@ mod tests {
     fn test_settings_error_display() {
         let error = SettingsError::DatabaseError(sqlx::Error::RowNotFound);
         assert!(error.to_string().contains("Database error"));
+    }
+
+    #[test]
+    fn test_is_household_on_vacation_mode_off() {
+        let settings = HouseholdSettings {
+            vacation_mode: false,
+            vacation_start: None,
+            vacation_end: None,
+            ..Default::default()
+        };
+        let today = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+        assert!(!is_household_on_vacation(&settings, today));
+    }
+
+    #[test]
+    fn test_is_household_on_vacation_mode_on_no_dates() {
+        let settings = HouseholdSettings {
+            vacation_mode: true,
+            vacation_start: None,
+            vacation_end: None,
+            ..Default::default()
+        };
+        let today = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+        assert!(is_household_on_vacation(&settings, today));
+    }
+
+    #[test]
+    fn test_is_household_on_vacation_within_range() {
+        let settings = HouseholdSettings {
+            vacation_mode: true,
+            vacation_start: Some(NaiveDate::from_ymd_opt(2025, 1, 10).unwrap()),
+            vacation_end: Some(NaiveDate::from_ymd_opt(2025, 1, 20).unwrap()),
+            ..Default::default()
+        };
+
+        // Before range
+        let before = NaiveDate::from_ymd_opt(2025, 1, 5).unwrap();
+        assert!(!is_household_on_vacation(&settings, before));
+
+        // Within range
+        let within = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+        assert!(is_household_on_vacation(&settings, within));
+
+        // On start date
+        let start = NaiveDate::from_ymd_opt(2025, 1, 10).unwrap();
+        assert!(is_household_on_vacation(&settings, start));
+
+        // On end date
+        let end = NaiveDate::from_ymd_opt(2025, 1, 20).unwrap();
+        assert!(is_household_on_vacation(&settings, end));
+
+        // After range
+        let after = NaiveDate::from_ymd_opt(2025, 1, 25).unwrap();
+        assert!(!is_household_on_vacation(&settings, after));
+    }
+
+    #[test]
+    fn test_is_household_on_vacation_start_only() {
+        let settings = HouseholdSettings {
+            vacation_mode: true,
+            vacation_start: Some(NaiveDate::from_ymd_opt(2025, 1, 10).unwrap()),
+            vacation_end: None,
+            ..Default::default()
+        };
+
+        // Before start
+        let before = NaiveDate::from_ymd_opt(2025, 1, 5).unwrap();
+        assert!(!is_household_on_vacation(&settings, before));
+
+        // On start date
+        let start = NaiveDate::from_ymd_opt(2025, 1, 10).unwrap();
+        assert!(is_household_on_vacation(&settings, start));
+
+        // After start (indefinite)
+        let after = NaiveDate::from_ymd_opt(2025, 6, 15).unwrap();
+        assert!(is_household_on_vacation(&settings, after));
+    }
+
+    #[test]
+    fn test_is_household_on_vacation_end_only() {
+        let settings = HouseholdSettings {
+            vacation_mode: true,
+            vacation_start: None,
+            vacation_end: Some(NaiveDate::from_ymd_opt(2025, 1, 20).unwrap()),
+            ..Default::default()
+        };
+
+        // Before end
+        let before = NaiveDate::from_ymd_opt(2025, 1, 5).unwrap();
+        assert!(is_household_on_vacation(&settings, before));
+
+        // On end date
+        let end = NaiveDate::from_ymd_opt(2025, 1, 20).unwrap();
+        assert!(is_household_on_vacation(&settings, end));
+
+        // After end
+        let after = NaiveDate::from_ymd_opt(2025, 1, 25).unwrap();
+        assert!(!is_household_on_vacation(&settings, after));
     }
 }

@@ -264,6 +264,7 @@ pub fn TaskModal(
                         habit_type: Some(habit_type_val),
                         category_id: category_id_val,
                         archived: None,
+                        paused: None,
                     };
 
                     match ApiClient::update_task(&household_id, &task_id, request).await {
@@ -1257,6 +1258,7 @@ mod tests {
             category_id: None,
             category_name: None,
             archived: false,
+            paused: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -1291,6 +1293,7 @@ mod tests {
             category_id: None,
             category_name: None,
             archived: false,
+            paused: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -1314,6 +1317,7 @@ mod tests {
             category_id: None,
             category_name: None,
             archived: false,
+            paused: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -1347,6 +1351,7 @@ mod tests {
             category_id: None,
             category_name: None,
             archived: false,
+            paused: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         });

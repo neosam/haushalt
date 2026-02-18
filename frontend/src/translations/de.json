@@ -121,6 +121,9 @@
   "tasks.archive": "Archivieren",
   "tasks.unarchive": "Wiederherstellen",
   "tasks.archived_tasks": "Archivierte Aufgaben",
+  "tasks.pause": "Pausieren",
+  "tasks.unpause": "Fortsetzen",
+  "tasks.paused_badge": "Pausiert",
 
   "task_card.add_to_dashboard": "Zum Dashboard hinzufügen",
   "task_card.remove_from_dashboard": "Vom Dashboard entfernen",
@@ -441,6 +444,13 @@
   "settings.rewards_hint": "Ermöglicht Mitgliedern, Belohnungen zu verdienen und einzulösen",
   "settings.punishments_hint": "Ermöglicht das Zuweisen von Strafen für verpasste Aufgaben",
   "settings.chat_hint": "Aktiviert Echtzeit-Chat für Haushaltsmitglieder",
+  "settings.vacation_mode": "Urlaubsmodus",
+  "settings.enable_vacation_mode": "Urlaubsmodus aktivieren",
+  "settings.vacation_mode_hint": "Wenn aktiviert, werden keine automatischen Strafen für verpasste Aufgaben während des Urlaubszeitraums vergeben",
+  "settings.vacation_start": "Urlaubs-Startdatum",
+  "settings.vacation_start_hint": "Leer lassen, um sofort bei aktiviertem Urlaubsmodus zu starten",
+  "settings.vacation_end": "Urlaubs-Enddatum",
+  "settings.vacation_end_hint": "Leer lassen für einen unbefristeten Urlaubszeitraum",
 
   "hierarchy.equals": "Gleichberechtigt",
   "hierarchy.equals_desc": "Jeder kann Aufgaben, Belohnungen und Strafen verwalten",
