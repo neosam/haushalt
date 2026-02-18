@@ -22,10 +22,19 @@ Defines the app's identity and appearance when installed:
   "orientation": "any",
   "icons": [
     {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
       "src": "/icons/icon.svg",
       "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "type": "image/svg+xml"
     },
     {
       "src": "/icons/icon-maskable.svg",
@@ -40,7 +49,8 @@ Defines the app's identity and appearance when installed:
 **Key settings:**
 - `display: standalone` - App runs without browser UI (address bar, etc.)
 - `theme_color` - Colors the browser chrome and status bar
-- SVG icons with `any` size for scalability
+- **PNG icons at 192x192 and 512x512 are required** for Chrome/Chromium installability
+- SVG icons for scalability (fallback)
 - Maskable icon variant for adaptive icon support on Android
 
 ### 2. Service Worker (`frontend/sw.js`)
@@ -224,7 +234,10 @@ frontend/
 ├── sw.js              # Service worker
 ├── favicon.svg        # Browser tab icon
 └── icons/
-    ├── icon.svg           # Standard app icon
+    ├── icon-192.png       # Required for Chrome installability
+    ├── icon-512.png       # Required for Chrome installability
+    ├── apple-touch-icon.png  # iOS home screen icon (180x180)
+    ├── icon.svg           # Source SVG icon
     └── icon-maskable.svg  # Adaptive icon for Android
 ```
 
@@ -237,8 +250,21 @@ frontend/
 | API requests | Fail (network required) |
 | Navigation to any route | Falls back to cached index.html (SPA handles routing) |
 
+## Browser Support
+
+| Browser | Desktop Install | Mobile Install |
+|---------|-----------------|----------------|
+| Chrome/Chromium | ✓ | ✓ |
+| Vivaldi | ✓ | ✓ |
+| Edge | ✓ | ✓ |
+| Firefox | ✗ (removed in 2021) | ✓ (Android) |
+| Safari | ✗ | ✓ (iOS only, via Share → Add to Home Screen) |
+
+**Note:** On iOS, only Safari can install PWAs. Third-party browsers (Chrome, Firefox, Vivaldi) on iOS cannot install PWAs due to Apple restrictions.
+
 ## Limitations
 
 1. **No offline data sync** - API requests require network; no background sync implemented
 2. **No push notifications** - Not implemented
 3. **Cache size not managed** - No automatic cache eviction beyond version-based cleanup
+4. **Firefox desktop** - Does not support PWA installation
