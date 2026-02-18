@@ -78,10 +78,10 @@ sequenceDiagram
         BE->>DB: Find refresh token by hash
         alt Token valid
             DB-->>BE: Token record
-            BE->>DB: Delete old refresh token
+            BE->>DB: Update refresh token (rotate)
             BE->>BE: Generate new access token
-            BE->>BE: Generate new refresh token
-            BE->>DB: Store new refresh token hash
+            BE->>BE: Generate new refresh token hash
+            BE->>DB: Update token record with new hash
             BE-->>FE: {access_token, refresh_token}
             FE->>FE: Update stored tokens
             FE->>BE: Retry original request
@@ -95,6 +95,56 @@ sequenceDiagram
     else Token valid
         BE-->>FE: Success response
     end
+```
+
+## Multi-Device Support
+
+Each device/browser session gets its own independent refresh token. This allows users to be logged in on multiple devices simultaneously without conflicts.
+
+```mermaid
+flowchart TB
+    subgraph User
+        U[User Account]
+    end
+
+    subgraph "Device Tokens"
+        D1[Phone<br/>Token: abc123]
+        D2[Laptop<br/>Token: def456]
+        D3[Tablet<br/>Token: ghi789]
+    end
+
+    subgraph Database
+        DB[(refresh_tokens table)]
+    end
+
+    U --> D1 & D2 & D3
+    D1 & D2 & D3 --> DB
+```
+
+**Key behaviors:**
+
+1. **Login creates new token** - Each login (on any device) creates a new refresh token record
+2. **Refresh updates only that token** - Token rotation updates only the device's own token record
+3. **Logout removes only that token** - Logging out on one device doesn't affect other devices
+4. **Multiple tokens per user** - Database stores multiple refresh tokens per user (one per device)
+
+**Database schema:**
+```sql
+refresh_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,      -- Multiple tokens can have same user_id
+    token_hash TEXT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL
+)
+```
+
+**Token refresh (per-device):**
+```
+Phone refreshes token "abc123":
+  → Only token "abc123" is rotated to new value
+  → Laptop token "def456" remains unchanged
+  → Tablet token "ghi789" remains unchanged
 ```
 
 ## Logout Flow
