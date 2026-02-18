@@ -90,6 +90,44 @@ flowchart TB
     PendingApproval --> Reject
 ```
 
+## Random Choice Punishment Flow
+
+```mermaid
+flowchart TB
+    subgraph "Assignment"
+        Assign[Random Choice Punishment<br/>Assigned to User]
+    end
+
+    subgraph "User Action"
+        View[User views punishment]
+        Pick[User clicks 'Pick one']
+    end
+
+    subgraph "Random Selection"
+        GetOptions[Get linked punishment options]
+        Random[System randomly selects one]
+        CheckNested{Selected is<br/>random choice?}
+    end
+
+    subgraph "Resolution"
+        AssignSelected[Assign selected punishment<br/>to user]
+        MarkResolved[Mark original assignment<br/>as resolved]
+        LogActivity[Log activity:<br/>PunishmentRandomPicked]
+        PickAgain[User must pick again<br/>from nested options]
+    end
+
+    Assign --> View
+    View --> Pick
+    Pick --> GetOptions
+    GetOptions --> Random
+    Random --> CheckNested
+    CheckNested -->|No| AssignSelected
+    CheckNested -->|Yes| PickAgain
+    PickAgain --> View
+    AssignSelected --> MarkResolved
+    MarkResolved --> LogActivity
+```
+
 ## Habit Types
 
 ```mermaid

@@ -165,6 +165,41 @@ pub fn PunishmentsPage() -> impl IntoView {
         });
     };
 
+    let on_pick_random = move |user_punishment_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::pick_random_punishment(&id, &user_punishment_id).await {
+                Ok(result) => {
+                    // Remove or update the original random choice assignment
+                    my_punishments.update(|p| {
+                        if let Some(pos) = p.iter().position(|up| up.id.to_string() == user_punishment_id) {
+                            if p[pos].amount <= 1 {
+                                p.remove(pos);
+                            } else {
+                                p[pos].amount -= 1;
+                            }
+                        }
+                    });
+
+                    // Add the newly assigned punishment
+                    let picked_name = result.picked_punishment.name.clone();
+                    let new_up = result.user_punishment;
+                    let existing_idx = my_punishments.get().iter().position(|up| up.punishment_id == new_up.punishment_id);
+                    if let Some(idx) = existing_idx {
+                        my_punishments.update(|p| p[idx] = new_up);
+                    } else {
+                        my_punishments.update(|p| p.push(new_up));
+                    }
+
+                    // Show notification with picked punishment name
+                    let msg = format!("{}: {}", i18n_stored.get_value().t("punishments.picked_success"), picked_name);
+                    success.set(Some(msg));
+                }
+                Err(e) => error.set(Some(e)),
+            }
+        });
+    };
+
     view! {
         {move || {
             let hid = household_id();
@@ -200,22 +235,37 @@ pub fn PunishmentsPage() -> impl IntoView {
                             // Only show punishments that have remaining or pending completions
                             .filter(|up| up.amount > up.completed_amount)
                             .map(|user_punishment| {
-                                let punishment_name = all_punishments.iter()
-                                    .find(|p| p.id == user_punishment.punishment_id)
+                                let punishment_info = all_punishments.iter()
+                                    .find(|p| p.id == user_punishment.punishment_id);
+                                let punishment_name = punishment_info
                                     .map(|p| p.name.clone())
                                     .unwrap_or_else(|| i18n_stored.get_value().t("punishments.unknown_punishment"));
-                                let punishment_desc = all_punishments.iter()
-                                    .find(|p| p.id == user_punishment.punishment_id)
+                                let punishment_desc = punishment_info
                                     .map(|p| p.description.clone())
                                     .unwrap_or_default();
+                                let is_random_choice = punishment_info
+                                    .map(|p| p.punishment_type.is_random_choice())
+                                    .unwrap_or(false);
                                 let up_id = user_punishment.id.to_string();
                                 let complete_id = up_id.clone();
+                                let pick_id = up_id.clone();
                                 let available = user_punishment.amount - user_punishment.completed_amount - user_punishment.pending_completion;
                                 let pending_conf = user_punishment.pending_completion;
                                 view! {
                                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
                                         <div>
-                                            <div style="font-weight: 600;">{punishment_name}</div>
+                                            <div style="font-weight: 600;">
+                                                {punishment_name}
+                                                {if is_random_choice {
+                                                    view! {
+                                                        <span class="badge" style="margin-left: 0.5rem; background: var(--primary-color); color: white; font-size: 0.65rem;">
+                                                            {i18n_stored.get_value().t("punishments.random_choice")}
+                                                        </span>
+                                                    }.into_view()
+                                                } else {
+                                                    view! { <span></span> }.into_view()
+                                                }}
+                                            </div>
                                             <div style="font-size: 0.75rem; color: var(--text-muted);">
                                                 {format!("{} remaining, {} completed", available, user_punishment.completed_amount)}
                                                 {if pending_conf > 0 { format!(", {} pending confirmation", pending_conf) } else { String::new() }}
@@ -225,6 +275,16 @@ pub fn PunishmentsPage() -> impl IntoView {
                                         {if pending_conf > 0 {
                                             view! {
                                                 <span class="badge" style="background: var(--warning-color); color: white;">{i18n_stored.get_value().t("punishments.awaiting_confirmation")}</span>
+                                            }.into_view()
+                                        } else if is_random_choice {
+                                            view! {
+                                                <button
+                                                    class="btn btn-primary"
+                                                    style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                                    on:click=move |_| on_pick_random(pick_id.clone())
+                                                >
+                                                    {i18n_stored.get_value().t("punishments.pick_one")}
+                                                </button>
                                             }.into_view()
                                         } else {
                                             view! {
@@ -294,7 +354,18 @@ pub fn PunishmentsPage() -> impl IntoView {
 
                                 view! {
                                     <div class="card">
-                                        <h3 class="card-title">{punishment.name.clone()}</h3>
+                                        <h3 class="card-title">
+                                            {punishment.name.clone()}
+                                            {if punishment.punishment_type.is_random_choice() {
+                                                view! {
+                                                    <span class="badge" style="margin-left: 0.5rem; background: var(--primary-color); color: white; font-size: 0.65rem;">
+                                                        {i18n_stored.get_value().t("punishments.random_choice")}
+                                                    </span>
+                                                }.into_view()
+                                            } else {
+                                                view! { <span></span> }.into_view()
+                                            }}
+                                        </h3>
                                         <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;">
                                             {punishment.description.clone()}
                                         </p>
@@ -407,10 +478,12 @@ pub fn PunishmentsPage() -> impl IntoView {
 
         {move || modal_punishment.get().map(|punishment_opt| {
             let hh_id = household_id();
+            let all_puns = punishments.get();
             view! {
                 <PunishmentModal
                     punishment=punishment_opt
                     household_id=hh_id
+                    all_punishments=all_puns
                     on_close=move |_| modal_punishment.set(None)
                     on_save=move |saved_punishment: Punishment| {
                         // Check if this is an existing punishment (edit) or new (create)

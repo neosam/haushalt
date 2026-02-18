@@ -746,6 +746,42 @@ pub struct UserRewardWithUser {
 // Punishment Types
 // ============================================================================
 
+/// Type of punishment determining its behavior
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PunishmentType {
+    /// Standard punishment: describes what the punishment is
+    #[default]
+    Standard,
+    /// Random choice: links to multiple punishments, user picks one randomly
+    RandomChoice,
+}
+
+impl PunishmentType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PunishmentType::Standard => "standard",
+            PunishmentType::RandomChoice => "random_choice",
+        }
+    }
+
+    pub fn is_random_choice(&self) -> bool {
+        matches!(self, PunishmentType::RandomChoice)
+    }
+}
+
+impl FromStr for PunishmentType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "standard" => Ok(PunishmentType::Standard),
+            "random_choice" => Ok(PunishmentType::RandomChoice),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Punishment {
     pub id: Uuid,
@@ -753,6 +789,7 @@ pub struct Punishment {
     pub name: String,
     pub description: String,
     pub requires_confirmation: bool,
+    pub punishment_type: PunishmentType,
     pub created_at: DateTime<Utc>,
 }
 
@@ -761,6 +798,8 @@ pub struct CreatePunishmentRequest {
     pub name: String,
     pub description: Option<String>,
     pub requires_confirmation: Option<bool>,
+    pub punishment_type: Option<PunishmentType>,
+    pub option_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -768,6 +807,9 @@ pub struct UpdatePunishmentRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub requires_confirmation: Option<bool>,
+    pub punishment_type: Option<PunishmentType>,
+    /// None = no change, Some(None) = clear all options, Some(vec) = set options
+    pub option_ids: Option<Option<Vec<Uuid>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -792,6 +834,21 @@ pub struct UserPunishmentWithDetails {
 pub struct UserPunishmentWithUser {
     pub user_punishment: UserPunishment,
     pub user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PunishmentOption {
+    pub id: Uuid,
+    pub parent_punishment_id: Uuid,
+    pub option_punishment_id: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Result of picking a random punishment option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RandomPickResult {
+    pub picked_punishment: Punishment,
+    pub user_punishment: UserPunishment,
 }
 
 // ============================================================================
@@ -993,6 +1050,7 @@ pub enum ActivityType {
     PunishmentCompleted,
     PunishmentCompletionApproved,
     PunishmentCompletionRejected,
+    PunishmentRandomPicked,
 
     // Points events
     PointsAdjusted,
@@ -1031,6 +1089,7 @@ impl ActivityType {
             ActivityType::PunishmentCompleted => "punishment_completed",
             ActivityType::PunishmentCompletionApproved => "punishment_completion_approved",
             ActivityType::PunishmentCompletionRejected => "punishment_completion_rejected",
+            ActivityType::PunishmentRandomPicked => "punishment_random_picked",
             ActivityType::PointsAdjusted => "points_adjusted",
             ActivityType::MemberJoined => "member_joined",
             ActivityType::MemberLeft => "member_left",
@@ -1067,6 +1126,7 @@ impl FromStr for ActivityType {
             "punishment_completed" => Ok(ActivityType::PunishmentCompleted),
             "punishment_completion_approved" => Ok(ActivityType::PunishmentCompletionApproved),
             "punishment_completion_rejected" => Ok(ActivityType::PunishmentCompletionRejected),
+            "punishment_random_picked" => Ok(ActivityType::PunishmentRandomPicked),
             "points_adjusted" => Ok(ActivityType::PointsAdjusted),
             "member_joined" => Ok(ActivityType::MemberJoined),
             "member_left" => Ok(ActivityType::MemberLeft),
@@ -1573,5 +1633,31 @@ mod tests {
     #[test]
     fn test_habit_type_default() {
         assert_eq!(HabitType::default(), HabitType::Good);
+    }
+
+    #[test]
+    fn test_punishment_type_from_str() {
+        assert_eq!("standard".parse(), Ok(PunishmentType::Standard));
+        assert_eq!("STANDARD".parse(), Ok(PunishmentType::Standard));
+        assert_eq!("random_choice".parse(), Ok(PunishmentType::RandomChoice));
+        assert_eq!("RANDOM_CHOICE".parse(), Ok(PunishmentType::RandomChoice));
+        assert!("invalid".parse::<PunishmentType>().is_err());
+    }
+
+    #[test]
+    fn test_punishment_type_as_str() {
+        assert_eq!(PunishmentType::Standard.as_str(), "standard");
+        assert_eq!(PunishmentType::RandomChoice.as_str(), "random_choice");
+    }
+
+    #[test]
+    fn test_punishment_type_is_random_choice() {
+        assert!(!PunishmentType::Standard.is_random_choice());
+        assert!(PunishmentType::RandomChoice.is_random_choice());
+    }
+
+    #[test]
+    fn test_punishment_type_default() {
+        assert_eq!(PunishmentType::default(), PunishmentType::Standard);
     }
 }

@@ -198,3 +198,62 @@
 ### Acceptance Criteria
 - Shows all punishments linked to the task
 - Shows the amount for each
+
+---
+
+## US-PUN-017: Create Random Choice Punishment
+
+**As a** household Owner or Admin
+**I want to** create a punishment that references multiple other punishments
+**So that** one is randomly selected when the user needs to fulfill it
+
+### Acceptance Criteria
+- Punishment has `punishment_type` set to `random_choice`
+- Can link multiple other punishments as options
+- At least 2 punishment options must be linked
+- Options can include other random choice punishments (nesting allowed)
+- Self-reference is allowed (punishment can include itself as an option)
+- Shows linked punishments when viewing the punishment
+- Punishment type is selected via dropdown (extensible for future types)
+
+---
+
+## US-PUN-018: Link Punishment Option
+
+**As a** household Owner or Admin
+**I want to** add a punishment as an option to a random choice punishment
+**So that** it can be randomly selected
+
+### Acceptance Criteria
+- Target punishment must have `punishment_type = random_choice`
+- Option can be any punishment (including self and other random choice punishments)
+- Creates link between random choice punishment and option
+
+---
+
+## US-PUN-019: Unlink Punishment Option
+
+**As a** household Owner or Admin
+**I want to** remove a punishment option from a random choice punishment
+**So that** it's no longer a possible selection
+
+### Acceptance Criteria
+- Link is removed
+- Random choice punishment must still have at least 2 options after removal
+
+---
+
+## US-PUN-020: Pick Random Punishment
+
+**As a** household member with an assigned random choice punishment
+**I want to** click "Pick one" to have the system randomly select a punishment
+**So that** I receive a concrete punishment to complete
+
+### Acceptance Criteria
+- Only available when user has a random choice punishment assigned
+- System randomly selects one of the linked punishment options
+- Selected punishment is assigned to the user
+- If selected punishment is also a random choice, user must pick again
+- Random choice punishment assignment is marked as resolved
+- Activity is logged showing which punishment was selected
+- Success notification displays which punishment was selected (e.g., "You got: Extra Chores")

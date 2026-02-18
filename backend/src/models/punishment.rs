@@ -11,6 +11,7 @@ pub struct PunishmentRow {
     pub name: String,
     pub description: String,
     pub requires_confirmation: bool,
+    pub punishment_type: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -22,6 +23,7 @@ impl PunishmentRow {
             name: self.name.clone(),
             description: self.description.clone(),
             requires_confirmation: self.requires_confirmation,
+            punishment_type: self.punishment_type.parse().unwrap_or_default(),
             created_at: self.created_at,
         }
     }
@@ -35,6 +37,7 @@ pub struct TaskPunishmentRow {
     pub name: String,
     pub description: String,
     pub requires_confirmation: bool,
+    pub punishment_type: String,
     pub created_at: DateTime<Utc>,
     pub amount: i32,
 }
@@ -48,6 +51,7 @@ impl TaskPunishmentRow {
                 name: self.name.clone(),
                 description: self.description.clone(),
                 requires_confirmation: self.requires_confirmation,
+                punishment_type: self.punishment_type.parse().unwrap_or_default(),
                 created_at: self.created_at,
             },
             amount: self.amount,
@@ -83,6 +87,28 @@ impl UserPunishmentRow {
     }
 }
 
+/// Database model for punishment options (links random choice punishment to its options)
+#[allow(dead_code)]
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct PunishmentOptionRow {
+    pub id: String,
+    pub parent_punishment_id: String,
+    pub option_punishment_id: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl PunishmentOptionRow {
+    #[allow(dead_code)]
+    pub fn to_shared(&self) -> shared::PunishmentOption {
+        shared::PunishmentOption {
+            id: Uuid::parse_str(&self.id).unwrap(),
+            parent_punishment_id: Uuid::parse_str(&self.parent_punishment_id).unwrap(),
+            option_punishment_id: Uuid::parse_str(&self.option_punishment_id).unwrap(),
+            created_at: self.created_at,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,6 +125,7 @@ mod tests {
             name: "Extra Chores".to_string(),
             description: "Do an extra chore as punishment".to_string(),
             requires_confirmation: true,
+            punishment_type: "standard".to_string(),
             created_at: now,
         };
 
@@ -109,6 +136,50 @@ mod tests {
         assert_eq!(shared.name, "Extra Chores");
         assert_eq!(shared.description, "Do an extra chore as punishment");
         assert!(shared.requires_confirmation);
+        assert_eq!(shared.punishment_type, shared::PunishmentType::Standard);
+    }
+
+    #[test]
+    fn test_punishment_row_random_choice_to_shared() {
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+        let household_id = Uuid::new_v4();
+
+        let row = PunishmentRow {
+            id: id.to_string(),
+            household_id: household_id.to_string(),
+            name: "Random Punishment".to_string(),
+            description: "Pick one randomly".to_string(),
+            requires_confirmation: false,
+            punishment_type: "random_choice".to_string(),
+            created_at: now,
+        };
+
+        let shared = row.to_shared();
+
+        assert_eq!(shared.punishment_type, shared::PunishmentType::RandomChoice);
+        assert!(shared.punishment_type.is_random_choice());
+    }
+
+    #[test]
+    fn test_punishment_option_row_to_shared() {
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+        let parent_id = Uuid::new_v4();
+        let option_id = Uuid::new_v4();
+
+        let row = PunishmentOptionRow {
+            id: id.to_string(),
+            parent_punishment_id: parent_id.to_string(),
+            option_punishment_id: option_id.to_string(),
+            created_at: now,
+        };
+
+        let shared = row.to_shared();
+
+        assert_eq!(shared.id, id);
+        assert_eq!(shared.parent_punishment_id, parent_id);
+        assert_eq!(shared.option_punishment_id, option_id);
     }
 
     #[test]

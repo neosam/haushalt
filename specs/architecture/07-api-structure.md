@@ -87,6 +87,10 @@ flowchart TB
                 PUM[GET /users/me]
                 PUA[GET /users]
                 PPE[GET /pending]
+                PO[GET /{id}/options]
+                POA[POST /{id}/options/{option_id}]
+                POD[DELETE /{id}/options/{option_id}]
+                PPK[POST /user-punishments/{id}/pick]
             end
 
             subgraph "/invitations"

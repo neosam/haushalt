@@ -17,6 +17,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/user-punishments/{id}/complete", web::post().to(complete_punishment))
             .route("/user-punishments/{id}/approve", web::post().to(approve_completion))
             .route("/user-punishments/{id}/reject", web::post().to(reject_completion))
+            .route("/user-punishments/{id}/pick", web::post().to(pick_random_punishment))
             .route("/pending-confirmations", web::get().to(list_pending_completions))
             // Dynamic routes after static routes
             .route("/{punishment_id}", web::get().to(get_punishment))
@@ -24,6 +25,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{punishment_id}", web::delete().to(delete_punishment))
             .route("/{punishment_id}/assign/{user_id}", web::post().to(assign_punishment))
             .route("/{punishment_id}/unassign/{user_id}", web::post().to(unassign_punishment))
+            .route("/{punishment_id}/options", web::get().to(get_punishment_options))
     );
 }
 
@@ -1181,6 +1183,190 @@ async fn reject_completion(
             Ok(HttpResponse::BadRequest().json(ApiError {
                 error: "reject_error".to_string(),
                 message: e.to_string(),
+            }))
+        }
+    }
+}
+
+async fn get_punishment_options(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, punishment_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let punishment_id = match Uuid::parse_str(&punishment_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid punishment ID format".to_string(),
+            }));
+        }
+    };
+
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if punishments feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.punishments_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Punishments are not enabled for this household".to_string(),
+        }));
+    }
+
+    match punishment_service::get_punishment_options(&state.db, &punishment_id).await {
+        Ok(options) => Ok(HttpResponse::Ok().json(ApiSuccess::new(options))),
+        Err(e) => {
+            log::error!("Error fetching punishment options: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch punishment options".to_string(),
+            }))
+        }
+    }
+}
+
+async fn pick_random_punishment(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, user_punishment_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let user_punishment_id = match Uuid::parse_str(&user_punishment_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user punishment ID format".to_string(),
+            }));
+        }
+    };
+
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if punishments feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.punishments_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Punishments are not enabled for this household".to_string(),
+        }));
+    }
+
+    match punishment_service::pick_random_option(&state.db, &user_punishment_id, &user_id).await {
+        Ok(result) => {
+            // Log activity
+            let details = serde_json::json!({
+                "picked_name": result.picked_punishment.name
+            }).to_string();
+
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                Some(&user_id),
+                ActivityType::PunishmentRandomPicked,
+                Some("punishment"),
+                Some(&result.picked_punishment.id),
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(result)))
+        }
+        Err(punishment_service::PunishmentError::NotRandomChoice) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "not_random_choice".to_string(),
+                message: "This punishment is not a random choice punishment".to_string(),
+            }))
+        }
+        Err(punishment_service::PunishmentError::NoOptions) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "no_options".to_string(),
+                message: "This random choice punishment has no options configured".to_string(),
+            }))
+        }
+        Err(punishment_service::PunishmentError::UserPunishmentNotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "User punishment not found".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error picking random punishment: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to pick random punishment".to_string(),
             }))
         }
     }

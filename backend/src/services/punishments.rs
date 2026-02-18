@@ -1,10 +1,11 @@
 use chrono::Utc;
+use rand::seq::SliceRandom;
 use sqlx::SqlitePool;
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{PunishmentRow, UserPunishmentRow};
-use shared::{CreatePunishmentRequest, PendingPunishmentCompletion, Punishment, UpdatePunishmentRequest, User, UserPunishment, UserPunishmentWithUser};
+use shared::{CreatePunishmentRequest, PendingPunishmentCompletion, Punishment, PunishmentType, RandomPickResult, UpdatePunishmentRequest, User, UserPunishment, UserPunishmentWithUser};
 
 #[derive(Debug, Error)]
 pub enum PunishmentError {
@@ -16,6 +17,14 @@ pub enum PunishmentError {
     NothingToComplete,
     #[error("No pending completions")]
     NothingPending,
+    #[error("Random choice punishment requires at least 2 options")]
+    InsufficientOptions,
+    #[error("Option punishment not found")]
+    OptionNotFound,
+    #[error("Punishment is not a random choice punishment")]
+    NotRandomChoice,
+    #[error("No options available for random selection")]
+    NoOptions,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 }
@@ -28,11 +37,23 @@ pub async fn create_punishment(
     let id = Uuid::new_v4();
     let now = Utc::now();
     let requires_confirmation = request.requires_confirmation.unwrap_or(false);
+    let punishment_type = request.punishment_type.unwrap_or_default();
+
+    // Validate option_ids if random_choice
+    if punishment_type.is_random_choice() {
+        if let Some(ref option_ids) = request.option_ids {
+            if option_ids.len() < 2 {
+                return Err(PunishmentError::InsufficientOptions);
+            }
+        } else {
+            return Err(PunishmentError::InsufficientOptions);
+        }
+    }
 
     sqlx::query(
         r#"
-        INSERT INTO punishments (id, household_id, name, description, requires_confirmation, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO punishments (id, household_id, name, description, requires_confirmation, punishment_type, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -40,9 +61,24 @@ pub async fn create_punishment(
     .bind(&request.name)
     .bind(request.description.as_deref().unwrap_or(""))
     .bind(requires_confirmation)
+    .bind(punishment_type.as_str())
     .bind(now)
     .execute(pool)
     .await?;
+
+    // Add options if provided
+    if let Some(ref option_ids) = request.option_ids {
+        for option_id in option_ids {
+            // Verify option exists and is in same household
+            let option = get_punishment(pool, option_id).await?;
+            match option {
+                Some(p) if p.household_id == *household_id => {
+                    add_punishment_option(pool, &id, option_id).await?;
+                }
+                _ => return Err(PunishmentError::OptionNotFound),
+            }
+        }
+    }
 
     Ok(Punishment {
         id,
@@ -50,6 +86,7 @@ pub async fn create_punishment(
         name: request.name.clone(),
         description: request.description.clone().unwrap_or_default(),
         requires_confirmation,
+        punishment_type,
         created_at: now,
     })
 }
@@ -102,11 +139,54 @@ pub async fn update_punishment(
     if let Some(requires_confirmation) = request.requires_confirmation {
         punishment.requires_confirmation = requires_confirmation;
     }
+    if let Some(punishment_type) = request.punishment_type {
+        punishment.punishment_type = punishment_type.as_str().to_string();
+    }
 
-    sqlx::query("UPDATE punishments SET name = ?, description = ?, requires_confirmation = ? WHERE id = ?")
+    let punishment_type: PunishmentType = punishment.punishment_type.parse().unwrap_or_default();
+
+    // Handle option_ids update
+    if let Some(ref option_ids_opt) = request.option_ids {
+        match option_ids_opt {
+            None => {
+                // Clear all options
+                sqlx::query("DELETE FROM punishment_options WHERE parent_punishment_id = ?")
+                    .bind(punishment_id.to_string())
+                    .execute(pool)
+                    .await?;
+            }
+            Some(option_ids) => {
+                // Validate minimum options if random_choice
+                if punishment_type.is_random_choice() && option_ids.len() < 2 {
+                    return Err(PunishmentError::InsufficientOptions);
+                }
+
+                // Replace all options
+                sqlx::query("DELETE FROM punishment_options WHERE parent_punishment_id = ?")
+                    .bind(punishment_id.to_string())
+                    .execute(pool)
+                    .await?;
+
+                let household_id = Uuid::parse_str(&punishment.household_id).unwrap();
+                for option_id in option_ids {
+                    // Verify option exists and is in same household
+                    let option = get_punishment(pool, option_id).await?;
+                    match option {
+                        Some(p) if p.household_id == household_id => {
+                            add_punishment_option(pool, punishment_id, option_id).await?;
+                        }
+                        _ => return Err(PunishmentError::OptionNotFound),
+                    }
+                }
+            }
+        }
+    }
+
+    sqlx::query("UPDATE punishments SET name = ?, description = ?, requires_confirmation = ?, punishment_type = ? WHERE id = ?")
         .bind(&punishment.name)
         .bind(&punishment.description)
         .bind(punishment.requires_confirmation)
+        .bind(&punishment.punishment_type)
         .bind(punishment_id.to_string())
         .execute(pool)
         .await?;
@@ -123,6 +203,13 @@ pub async fn delete_punishment(pool: &SqlitePool, punishment_id: &Uuid) -> Resul
 
     // Delete task associations
     sqlx::query("DELETE FROM task_punishments WHERE punishment_id = ?")
+        .bind(punishment_id.to_string())
+        .execute(pool)
+        .await?;
+
+    // Delete punishment options (both as parent and as option)
+    sqlx::query("DELETE FROM punishment_options WHERE parent_punishment_id = ? OR option_punishment_id = ?")
+        .bind(punishment_id.to_string())
         .bind(punishment_id.to_string())
         .execute(pool)
         .await?;
@@ -411,6 +498,7 @@ pub async fn list_pending_completions(
         p_name: String,
         p_description: String,
         p_requires_confirmation: bool,
+        p_punishment_type: String,
         p_created_at: chrono::DateTime<chrono::Utc>,
         // user fields
         u_id: String,
@@ -429,7 +517,7 @@ pub async fn list_pending_completions(
             up.updated_at as up_updated_at,
             p.id as p_id, p.household_id as p_household_id, p.name as p_name,
             p.description as p_description, p.requires_confirmation as p_requires_confirmation,
-            p.created_at as p_created_at,
+            p.punishment_type as p_punishment_type, p.created_at as p_created_at,
             u.id as u_id, u.username as u_username, u.email as u_email,
             u.created_at as u_created_at, u.updated_at as u_updated_at
         FROM user_punishments up
@@ -462,6 +550,7 @@ pub async fn list_pending_completions(
                 name: row.p_name,
                 description: row.p_description,
                 requires_confirmation: row.p_requires_confirmation,
+                punishment_type: row.p_punishment_type.parse().unwrap_or_default(),
                 created_at: row.p_created_at,
             },
             user: User {
@@ -540,6 +629,175 @@ pub async fn reject_completion(
     Ok(result)
 }
 
+// ============================================================================
+// Random Choice Punishment Functions
+// ============================================================================
+
+/// Add a punishment option to a random choice punishment
+pub async fn add_punishment_option(
+    pool: &SqlitePool,
+    parent_punishment_id: &Uuid,
+    option_punishment_id: &Uuid,
+) -> Result<(), PunishmentError> {
+    // Self-reference is allowed - user can include themselves as an option
+    let id = Uuid::new_v4();
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        INSERT INTO punishment_options (id, parent_punishment_id, option_punishment_id, created_at)
+        VALUES (?, ?, ?, ?)
+        "#,
+    )
+    .bind(id.to_string())
+    .bind(parent_punishment_id.to_string())
+    .bind(option_punishment_id.to_string())
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Get all punishment options for a random choice punishment
+pub async fn get_punishment_options(
+    pool: &SqlitePool,
+    punishment_id: &Uuid,
+) -> Result<Vec<Punishment>, PunishmentError> {
+    let rows: Vec<PunishmentRow> = sqlx::query_as(
+        r#"
+        SELECT p.*
+        FROM punishments p
+        JOIN punishment_options po ON p.id = po.option_punishment_id
+        WHERE po.parent_punishment_id = ?
+        ORDER BY p.name
+        "#,
+    )
+    .bind(punishment_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| r.to_shared()).collect())
+}
+
+/// Remove a punishment option from a random choice punishment
+#[allow(dead_code)]
+pub async fn remove_punishment_option(
+    pool: &SqlitePool,
+    parent_punishment_id: &Uuid,
+    option_punishment_id: &Uuid,
+) -> Result<(), PunishmentError> {
+    // Check if parent is a random choice punishment
+    let punishment = get_punishment(pool, parent_punishment_id).await?.ok_or(PunishmentError::NotFound)?;
+
+    if punishment.punishment_type.is_random_choice() {
+        // Count current options
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM punishment_options WHERE parent_punishment_id = ?"
+        )
+        .bind(parent_punishment_id.to_string())
+        .fetch_one(pool)
+        .await?;
+
+        // Ensure at least 2 options remain after deletion
+        if count.0 <= 2 {
+            return Err(PunishmentError::InsufficientOptions);
+        }
+    }
+
+    sqlx::query(
+        "DELETE FROM punishment_options WHERE parent_punishment_id = ? AND option_punishment_id = ?"
+    )
+    .bind(parent_punishment_id.to_string())
+    .bind(option_punishment_id.to_string())
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Pick a random punishment from a user's random choice punishment assignment
+pub async fn pick_random_option(
+    pool: &SqlitePool,
+    user_punishment_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<RandomPickResult, PunishmentError> {
+    // Get the user punishment
+    let user_punishment: UserPunishmentRow =
+        sqlx::query_as("SELECT * FROM user_punishments WHERE id = ?")
+            .bind(user_punishment_id.to_string())
+            .fetch_optional(pool)
+            .await?
+            .ok_or(PunishmentError::UserPunishmentNotFound)?;
+
+    // Verify user owns this punishment
+    if user_punishment.user_id != user_id.to_string() {
+        return Err(PunishmentError::UserPunishmentNotFound);
+    }
+
+    // Get the punishment
+    let punishment_id = Uuid::parse_str(&user_punishment.punishment_id).unwrap();
+    let punishment = get_punishment(pool, &punishment_id).await?.ok_or(PunishmentError::NotFound)?;
+
+    // Verify it's a random choice punishment
+    if !punishment.punishment_type.is_random_choice() {
+        return Err(PunishmentError::NotRandomChoice);
+    }
+
+    // Get options
+    let options = get_punishment_options(pool, &punishment_id).await?;
+    if options.is_empty() {
+        return Err(PunishmentError::NoOptions);
+    }
+
+    // Randomly select one
+    let mut rng = rand::thread_rng();
+    let picked = options.choose(&mut rng).unwrap();
+
+    // Assign the picked punishment to the user
+    let household_id = Uuid::parse_str(&user_punishment.household_id).unwrap();
+    let new_user_punishment = assign_punishment(pool, &picked.id, user_id, &household_id).await?;
+
+    // Mark the original random choice assignment as completed (decrement amount)
+    let now = Utc::now();
+    if user_punishment.amount <= 1 {
+        // Delete the record
+        sqlx::query("DELETE FROM user_punishments WHERE id = ?")
+            .bind(user_punishment_id.to_string())
+            .execute(pool)
+            .await?;
+    } else {
+        // Decrement amount
+        sqlx::query(
+            "UPDATE user_punishments SET amount = amount - 1, updated_at = ? WHERE id = ?"
+        )
+        .bind(now)
+        .bind(user_punishment_id.to_string())
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(RandomPickResult {
+        picked_punishment: picked.clone(),
+        user_punishment: new_user_punishment,
+    })
+}
+
+/// Get user punishment by ID
+#[allow(dead_code)]
+pub async fn get_user_punishment(
+    pool: &SqlitePool,
+    user_punishment_id: &Uuid,
+) -> Result<Option<UserPunishment>, PunishmentError> {
+    let row: Option<UserPunishmentRow> =
+        sqlx::query_as("SELECT * FROM user_punishments WHERE id = ?")
+            .bind(user_punishment_id.to_string())
+            .fetch_optional(pool)
+            .await?;
+
+    Ok(row.map(|r| r.to_shared()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,6 +808,14 @@ mod tests {
         assert_eq!(
             PunishmentError::NothingToComplete.to_string(),
             "No punishments to complete"
+        );
+        assert_eq!(
+            PunishmentError::InsufficientOptions.to_string(),
+            "Random choice punishment requires at least 2 options"
+        );
+        assert_eq!(
+            PunishmentError::NotRandomChoice.to_string(),
+            "Punishment is not a random choice punishment"
         );
     }
 }

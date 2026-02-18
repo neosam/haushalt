@@ -11,8 +11,8 @@ use shared::{
     CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
     HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
     LeaderboardEntry, LoginRequest, MemberWithUser, Note, NoteWithUser, PendingPunishmentCompletion,
-    PendingReview, PendingRewardRedemption, PointCondition, Punishment, RefreshTokenRequest, Reward,
-    Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest,
+    PendingReview, PendingRewardRedemption, PointCondition, Punishment, RandomPickResult, RefreshTokenRequest,
+    Reward, Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest,
     UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest,
     UpdateRewardRequest, UpdateRoleRequest, UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment,
     UserPunishmentWithUser, UserReward, UserRewardWithUser, UserSettings,
@@ -1067,6 +1067,28 @@ impl ApiClient {
         Self::request::<UserPunishment>(
             "POST",
             &format!("/households/{}/punishments/user-punishments/{}/reject", household_id, user_punishment_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    /// Get the options linked to a random choice punishment
+    pub async fn get_punishment_options(household_id: &str, punishment_id: &str) -> Result<Vec<Punishment>, String> {
+        Self::request::<Vec<Punishment>>(
+            "GET",
+            &format!("/households/{}/punishments/{}/options", household_id, punishment_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    /// Pick a random punishment from a user's random choice punishment assignment
+    pub async fn pick_random_punishment(household_id: &str, user_punishment_id: &str) -> Result<RandomPickResult, String> {
+        Self::request::<RandomPickResult>(
+            "POST",
+            &format!("/households/{}/punishments/user-punishments/{}/pick", household_id, user_punishment_id),
             None::<()>,
             true,
         )

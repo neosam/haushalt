@@ -338,6 +338,26 @@ fn format_activity_description(activity: &ActivityLogWithUsers, i18n: &I18nConte
                 replace_placeholders(&i18n.t("activity.punishment_completion_rejected_no_user"), &[("{actor}", actor)])
             }
         }
+        ActivityType::PunishmentRandomPicked => {
+            // Extract picked_name from details
+            let picked_name = activity.log.details.as_ref()
+                .and_then(|d| {
+                    if let Some(start) = d.find("\"picked_name\":\"") {
+                        let start = start + 15;
+                        if let Some(end) = d[start..].find('"') {
+                            return Some(&d[start..start + end]);
+                        }
+                    }
+                    None
+                })
+                .unwrap_or("");
+
+            if picked_name.is_empty() {
+                replace_placeholders(&i18n.t("activity.punishment_random_picked_no_name"), &[("{actor}", actor)])
+            } else {
+                replace_placeholders(&i18n.t("activity.punishment_random_picked"), &[("{actor}", actor), ("{picked_name}", picked_name)])
+            }
+        }
 
         // Points events
         ActivityType::PointsAdjusted => {

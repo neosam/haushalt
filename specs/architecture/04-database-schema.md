@@ -42,6 +42,8 @@ erDiagram
 
     punishments ||--o{ task_punishments : linked_to
     punishments ||--o{ user_punishments : assigned_to
+    punishments ||--o{ punishment_options : has_options
+    punishment_options }o--|| punishments : option_is
 
     users {
         TEXT id PK
@@ -144,6 +146,14 @@ erDiagram
         TEXT name
         TEXT description
         BOOLEAN requires_confirmation
+        TEXT punishment_type
+        DATETIME created_at
+    }
+
+    punishment_options {
+        TEXT id PK
+        TEXT parent_punishment_id FK
+        TEXT option_punishment_id FK
         DATETIME created_at
     }
 
@@ -301,6 +311,7 @@ flowchart TB
     subgraph "Gamification Domain"
         R[Rewards]
         P[Punishments]
+        PO[Punishment Options]
         PC[Point Conditions]
         UR[User Rewards]
         UP[User Punishments]
@@ -327,6 +338,7 @@ flowchart TB
     T --> TCmp
     T --> TR --> R
     T --> TP --> P
+    P --> PO
     R --> UR --> U
     P --> UP --> U
     H --> CM & N & A

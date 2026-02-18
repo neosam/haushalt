@@ -169,8 +169,27 @@ Database Layer (SQLx + SQLite)
 
 - Name, description
 - `requires_confirmation`: Approval required?
+- `punishment_type`: Type of punishment (extensible enum)
 - Linkable to tasks (automatic assignment on miss)
 - Not purchasable (admin assignment only)
+
+#### Punishment Types
+
+| Type | Description |
+|------|-------------|
+| Standard | Default type - describes what the punishment is |
+| RandomChoice | Container for other punishments, user picks randomly |
+
+#### Random Choice Punishments
+
+- `punishment_type = random_choice`: Punishment is a container for other punishments
+- Links to multiple other punishments as options (minimum 2)
+- Self-reference is allowed (punishment can include itself as an option)
+- When assigned, user sees "Pick one" button
+- Clicking randomly selects one option and assigns it to the user
+- Options can include other random choice punishments (nesting allowed)
+- If nested random choice is selected, user picks again
+- Success notification shows which punishment was selected
 
 ---
 
@@ -276,6 +295,7 @@ UNIQUE(task_id, user_id, due_date)
 - `point_conditions`: Point rules
 - `rewards`, `user_rewards`: Rewards
 - `punishments`, `user_punishments`: Punishments
+- `punishment_options`: Random choice punishment options
 - `task_rewards`, `task_punishments`: Linkages
 - `invitations`: Invitations
 - `chat_messages`: Chat messages
@@ -339,6 +359,10 @@ UNIQUE(task_id, user_id, due_date)
 | POST | `/households/{id}/punishments` | Create |
 | POST | `/rewards/{id}/redeem` | Redeem |
 | POST | `/punishments/{id}/complete` | Complete |
+| GET | `/punishments/{id}/options` | Get punishment options |
+| POST | `/punishments/{id}/options/{option_id}` | Add punishment option |
+| DELETE | `/punishments/{id}/options/{option_id}` | Remove punishment option |
+| POST | `/user-punishments/{id}/pick` | Pick random punishment |
 
 ### 8.5 Communication
 
