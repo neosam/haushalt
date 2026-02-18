@@ -161,3 +161,24 @@
 - Can enable/disable rewards feature
 - Can enable/disable punishments feature
 - Can enable/disable chat feature
+
+---
+
+## US-HH-013: View Household Overview Page
+
+**As a** household member
+**I want to** see an overview of the household
+**So that** I can quickly see status and pending items
+
+### Acceptance Criteria
+- Shows household name and navigation tabs
+- Shows active announcement banner (if any)
+- Shows today's tasks grouped by household
+- Shows leaderboard section
+- Shows Pending Reviews section (task completions awaiting approval)
+  - Only visible to managers (Owner/Admin)
+  - **Hidden when there are no pending reviews**
+- Shows Pending Confirmations section (reward redemptions and punishment completions awaiting confirmation)
+  - Only visible to managers (Owner/Admin)
+  - **Hidden when there are no pending confirmations**
+  - **Hidden when rewards/punishments features are disabled** (treats "feature not enabled" errors as empty)

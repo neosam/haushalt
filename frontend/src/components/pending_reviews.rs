@@ -87,24 +87,36 @@ pub fn PendingReviews(
         }
     };
 
+    let approve_completion = std::rc::Rc::new(approve_completion);
+    let reject_completion = std::rc::Rc::new(reject_completion);
+
     view! {
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">{i18n_stored.get_value().t("pending_reviews.title")}</h3>
-            </div>
+        {
+            let approve_completion = approve_completion.clone();
+            let reject_completion = reject_completion.clone();
+            move || {
+            // Hide entire component when not loading and empty (no pending reviews)
+            if !loading.get() && reviews.get().is_empty() && error.get().is_none() {
+                return ().into_view();
+            }
 
-            {move || error.get().map(|e| view! {
-                <div class="alert alert-error" style="margin: 1rem;">{e}</div>
-            })}
+            let approve_completion = approve_completion.clone();
+            let reject_completion = reject_completion.clone();
+            view! {
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">{i18n_stored.get_value().t("pending_reviews.title")}</h3>
+                    </div>
 
-            {move || {
-                if loading.get() {
-                    view! { <div class="empty-state"><p>{i18n_stored.get_value().t("common.loading")}</p></div> }.into_view()
-                } else {
-                    let current_reviews = reviews.get();
-                    if current_reviews.is_empty() {
-                        view! { <div class="empty-state"><p>{i18n_stored.get_value().t("pending_reviews.empty")}</p></div> }.into_view()
-                    } else {
+                    {move || error.get().map(|e| view! {
+                        <div class="alert alert-error" style="margin: 1rem;">{e}</div>
+                    })}
+
+                    {move || {
+                        if loading.get() {
+                            view! { <div class="empty-state"><p>{i18n_stored.get_value().t("common.loading")}</p></div> }.into_view()
+                        } else {
+                            let current_reviews = reviews.get();
                         let completed_by_label = i18n_stored.get_value().t("pending_reviews.completed_by");
                         let approve_label = i18n_stored.get_value().t("pending_reviews.approve");
                         let reject_label = i18n_stored.get_value().t("pending_reviews.reject");
@@ -161,9 +173,10 @@ pub fn PendingReviews(
                                 </div>
                             }
                         }).collect_view().into_view()
-                    }
-                }
-            }}
-        </div>
+                        }
+                    }}
+                </div>
+            }.into_view()
+        }}
     }
 }

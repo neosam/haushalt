@@ -167,26 +167,46 @@ pub fn PendingConfirmations(
         }
     };
 
+    let approve_reward = std::rc::Rc::new(approve_reward);
+    let reject_reward = std::rc::Rc::new(reject_reward);
+    let approve_punishment = std::rc::Rc::new(approve_punishment);
+    let reject_punishment = std::rc::Rc::new(reject_punishment);
+
     view! {
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">{i18n_stored.get_value().t("pending_confirmations.title")}</h3>
-            </div>
+        {
+            let approve_reward = approve_reward.clone();
+            let reject_reward = reject_reward.clone();
+            let approve_punishment = approve_punishment.clone();
+            let reject_punishment = reject_punishment.clone();
+            move || {
+            // Hide entire component when not loading and empty (no pending confirmations)
+            // Also hide when features are disabled ("not enabled" errors)
+            let is_feature_disabled = error.get().as_ref().is_some_and(|e| e.contains("not enabled"));
+            if !loading.get() && pending_rewards.get().is_empty() && pending_punishments.get().is_empty()
+                && (error.get().is_none() || is_feature_disabled) {
+                return ().into_view();
+            }
 
-            {move || error.get().map(|e| view! {
-                <div class="alert alert-error" style="margin: 1rem;">{e}</div>
-            })}
+            let approve_reward = approve_reward.clone();
+            let reject_reward = reject_reward.clone();
+            let approve_punishment = approve_punishment.clone();
+            let reject_punishment = reject_punishment.clone();
+            view! {
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">{i18n_stored.get_value().t("pending_confirmations.title")}</h3>
+                    </div>
 
-            {move || {
-                if loading.get() {
-                    view! { <div class="empty-state"><p>{i18n_stored.get_value().t("common.loading")}</p></div> }.into_view()
-                } else {
-                    let rewards = pending_rewards.get();
-                    let punishments = pending_punishments.get();
+                    {move || error.get().filter(|e| !e.contains("not enabled")).map(|e| view! {
+                        <div class="alert alert-error" style="margin: 1rem;">{e}</div>
+                    })}
 
-                    if rewards.is_empty() && punishments.is_empty() {
-                        view! { <div class="empty-state"><p>{i18n_stored.get_value().t("pending_confirmations.empty")}</p></div> }.into_view()
-                    } else {
+                    {move || {
+                        if loading.get() {
+                            view! { <div class="empty-state"><p>{i18n_stored.get_value().t("common.loading")}</p></div> }.into_view()
+                        } else {
+                            let rewards = pending_rewards.get();
+                            let punishments = pending_punishments.get();
                         let reward_label = i18n_stored.get_value().t("pending_confirmations.reward");
                         let punishment_label = i18n_stored.get_value().t("pending_confirmations.punishment");
                         let redemption_by_label = i18n_stored.get_value().t("pending_confirmations.redemption_requested_by");
@@ -317,9 +337,10 @@ pub fn PendingConfirmations(
                                 }).collect_view()}
                             </div>
                         }.into_view()
-                    }
-                }
-            }}
-        </div>
+                        }
+                    }}
+                </div>
+            }.into_view()
+        }}
     }
 }
