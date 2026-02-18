@@ -35,6 +35,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{task_id}", web::get().to(get_task))
             .route("/{task_id}", web::put().to(update_task))
             .route("/{task_id}", web::delete().to(delete_task))
+            .route("/{task_id}/details", web::get().to(get_task_details))
             .route("/{task_id}/complete", web::post().to(complete_task))
             .route("/{task_id}/uncomplete", web::post().to(uncomplete_task))
             .route("/{task_id}/archive", web::post().to(archive_task))
@@ -265,6 +266,77 @@ async fn get_task(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to fetch task".to_string(),
+            }))
+        }
+    }
+}
+
+/// Get full task details including statistics for the detail view
+async fn get_task_details(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check membership
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match task_service::get_task_with_details(&state.db, &task_id, &user_id).await {
+        Ok(Some(details)) => {
+            // Verify task belongs to this household
+            if details.task.household_id != household_id {
+                return Ok(HttpResponse::NotFound().json(ApiError {
+                    error: "not_found".to_string(),
+                    message: "Task not found in this household".to_string(),
+                }));
+            }
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(details)))
+        }
+        Ok(None) => Ok(HttpResponse::NotFound().json(ApiError {
+            error: "not_found".to_string(),
+            message: "Task not found".to_string(),
+        })),
+        Err(e) => {
+            log::error!("Error fetching task details: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch task details".to_string(),
             }))
         }
     }

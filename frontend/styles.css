@@ -332,6 +332,16 @@ body {
     font-weight: 500;
 }
 
+.task-title-clickable {
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.task-title-clickable:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
 .task-meta {
     font-size: 0.75rem;
     color: var(--text-muted);
@@ -617,6 +627,128 @@ body {
     justify-content: flex-end;
     gap: 0.5rem;
     margin-top: 1.5rem;
+}
+
+/* Task Detail Modal */
+.task-detail-modal {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.task-detail-modal .detail-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.task-detail-modal .detail-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.task-detail-modal .detail-section h4 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+}
+
+.task-detail-modal .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.task-detail-modal .detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.task-detail-modal .detail-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.task-detail-modal .detail-value {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.task-detail-modal .stats-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.task-detail-modal .stat-card {
+    background-color: var(--bg-secondary);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    text-align: center;
+}
+
+.task-detail-modal .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.task-detail-modal .stat-value {
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.task-detail-modal .streak-value {
+    color: var(--primary-color);
+}
+
+.task-detail-modal .points-display {
+    display: flex;
+    gap: 2rem;
+}
+
+.task-detail-modal .point-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.task-detail-modal .points-positive {
+    color: #10b981;
+    font-weight: 600;
+}
+
+.task-detail-modal .points-negative {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.task-detail-modal .linked-items {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.task-detail-modal .linked-item {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.task-detail-modal .linked-item:last-child {
+    border-bottom: none;
+}
+
+.task-detail-modal .item-name {
+    font-weight: 500;
+}
+
+.task-detail-modal .item-amount {
+    color: var(--text-muted);
+    font-size: 0.875rem;
 }
 
 /* Badge */

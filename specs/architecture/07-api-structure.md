@@ -45,6 +45,7 @@ flowchart TB
                 TG[GET /{task_id}]
                 TU[PUT /{task_id}]
                 TDD[DELETE /{task_id}]
+                TDT[GET /{task_id}/details]
                 TS[GET /status]
                 TD[GET /due]
                 TA[GET /assigned]

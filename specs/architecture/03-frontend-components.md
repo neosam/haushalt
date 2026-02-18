@@ -28,6 +28,7 @@ flowchart TB
             Nav[Navigation]
             TaskList[TaskList]
             TaskForm[TaskForm]
+            TaskDetailModal[TaskDetailModal]
             RewardCard[RewardCard]
             MemberList[MemberList]
             Leaderboard[Leaderboard]

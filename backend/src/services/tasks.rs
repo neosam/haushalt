@@ -1,11 +1,11 @@
-use chrono::Utc;
+use chrono::{Datelike, NaiveDate, Utc};
 use sqlx::SqlitePool;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::models::{TaskCompletionRow, TaskRow, TaskRowWithCategory};
+use crate::models::{TaskCompletionRow, TaskRow, TaskRowWithCategory, UserRow};
 use crate::services::{households as household_service, points as points_service, scheduler, task_consequences};
-use shared::{CompletionStatus, CreateTaskRequest, PendingReview, Task, TaskCompletion, TaskWithStatus, UpdateTaskRequest};
+use shared::{CompletionStatus, CreateTaskRequest, PendingReview, Task, TaskCompletion, TaskStatistics, TaskWithDetails, TaskWithStatus, UpdateTaskRequest};
 
 #[derive(Debug, Error)]
 pub enum TaskError {
@@ -155,6 +155,241 @@ pub async fn get_task_with_status(
         last_completion: last_completion.map(|c| c.completed_at),
         next_due_date,
     }))
+}
+
+/// Get full task details including statistics for the detail view
+pub async fn get_task_with_details(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<Option<TaskWithDetails>, TaskError> {
+    let task = match get_task(pool, task_id).await? {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+
+    let today = Utc::now().date_naive();
+
+    // Get all completions for this task (ordered by due_date)
+    let completions: Vec<TaskCompletionRow> = sqlx::query_as(
+        "SELECT * FROM task_completions WHERE task_id = ? ORDER BY due_date ASC",
+    )
+    .bind(task_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    // Calculate statistics
+    let statistics = calculate_task_statistics(pool, &task, &completions, today, user_id).await?;
+
+    // Get assigned user if any
+    let assigned_user = if let Some(assigned_id) = task.assigned_user_id {
+        let user_row: Option<UserRow> = sqlx::query_as(
+            "SELECT * FROM users WHERE id = ?"
+        )
+        .bind(assigned_id.to_string())
+        .fetch_optional(pool)
+        .await?;
+        user_row.map(|u| u.to_shared())
+    } else {
+        None
+    };
+
+    // Get linked rewards and punishments
+    let linked_rewards = task_consequences::get_task_rewards(pool, task_id)
+        .await
+        .unwrap_or_default();
+    let linked_punishments = task_consequences::get_task_punishments(pool, task_id)
+        .await
+        .unwrap_or_default();
+
+    Ok(Some(TaskWithDetails {
+        task,
+        statistics,
+        assigned_user,
+        linked_rewards,
+        linked_punishments,
+    }))
+}
+
+/// Calculate task statistics for the detail view
+async fn calculate_task_statistics(
+    pool: &SqlitePool,
+    task: &Task,
+    completions: &[TaskCompletionRow],
+    today: NaiveDate,
+    user_id: &Uuid,
+) -> Result<TaskStatistics, TaskError> {
+    // Get last completion
+    let last_completed = completions.last().map(|c| c.completed_at);
+
+    // Calculate next due date
+    let next_due = scheduler::get_next_due_date(task, today);
+
+    // Get current streak
+    let current_streak = calculate_streak(pool, task, user_id).await?;
+
+    // Calculate best streak
+    let best_streak = calculate_best_streak(task, completions);
+
+    // Total completions
+    let total_completions = completions.len() as i64;
+
+    // Calculate completion rates for different periods
+    let (rate_week, completed_week, total_week) = calculate_completion_rate_for_period(
+        task,
+        completions,
+        get_week_start(today),
+        today,
+    );
+
+    let (rate_month, completed_month, total_month) = calculate_completion_rate_for_period(
+        task,
+        completions,
+        get_month_start(today),
+        today,
+    );
+
+    let (rate_all_time, completed_all_time, total_all_time) = calculate_completion_rate_for_period(
+        task,
+        completions,
+        task.created_at.date_naive(),
+        today,
+    );
+
+    Ok(TaskStatistics {
+        completion_rate_week: rate_week,
+        completion_rate_month: rate_month,
+        completion_rate_all_time: rate_all_time,
+        periods_completed_week: completed_week,
+        periods_total_week: total_week,
+        periods_completed_month: completed_month,
+        periods_total_month: total_month,
+        periods_completed_all_time: completed_all_time,
+        periods_total_all_time: total_all_time,
+        current_streak,
+        best_streak,
+        total_completions,
+        last_completed,
+        next_due,
+    })
+}
+
+/// Calculate completion rate for a given time period
+/// Returns (rate as percentage, periods completed, total periods)
+fn calculate_completion_rate_for_period(
+    task: &Task,
+    completions: &[TaskCompletionRow],
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> (Option<f64>, i32, i32) {
+    // For OneTime tasks, completion rate doesn't really apply
+    if task.recurrence_type == shared::RecurrenceType::OneTime {
+        let completed = completions.iter().filter(|c| {
+            c.due_date >= start_date && c.due_date <= end_date
+        }).count() as i32;
+        let total = if task.target_count > 0 { task.target_count } else { 1 };
+        let rate = if total > 0 {
+            Some((completed.min(total) as f64 / total as f64) * 100.0)
+        } else {
+            None
+        };
+        return (rate, completed.min(total), total);
+    }
+
+    // Count how many due dates fall within the period
+    let mut total_periods = 0;
+    let mut completed_periods = 0;
+    let mut current_date = start_date;
+
+    while current_date <= end_date {
+        if scheduler::is_task_due_on_date(task, current_date) {
+            total_periods += 1;
+
+            // Count completions for this due date
+            let completions_for_date = completions.iter()
+                .filter(|c| c.due_date == current_date)
+                .count() as i32;
+
+            // Check if target was met for this period
+            if completions_for_date >= task.target_count {
+                completed_periods += 1;
+            }
+        }
+        current_date += chrono::Duration::days(1);
+    }
+
+    let rate = if total_periods > 0 {
+        Some((completed_periods as f64 / total_periods as f64) * 100.0)
+    } else {
+        None
+    };
+
+    (rate, completed_periods, total_periods)
+}
+
+/// Calculate the best (longest) streak ever achieved for a task
+fn calculate_best_streak(task: &Task, completions: &[TaskCompletionRow]) -> i32 {
+    if completions.is_empty() {
+        return 0;
+    }
+
+    // For OneTime tasks, best streak is total completions
+    if task.recurrence_type == shared::RecurrenceType::OneTime {
+        return completions.len() as i32;
+    }
+
+    let mut best_streak = 0;
+    let mut current_streak = 0;
+    let mut last_due_date: Option<NaiveDate> = None;
+
+    // Group completions by due_date and check consecutive periods
+    let mut due_dates: Vec<NaiveDate> = completions.iter()
+        .map(|c| c.due_date)
+        .collect();
+    due_dates.sort();
+    due_dates.dedup();
+
+    for due_date in due_dates {
+        // Count completions for this date
+        let count = completions.iter()
+            .filter(|c| c.due_date == due_date)
+            .count() as i32;
+
+        // Check if target was met
+        if count >= task.target_count {
+            if let Some(last) = last_due_date {
+                // Check if this is the expected next due date (get next due date after the last one)
+                let expected_next = scheduler::get_next_due_date(task, last + chrono::Duration::days(1));
+                if expected_next == Some(due_date) {
+                    current_streak += 1;
+                } else {
+                    // Streak broken, start new one
+                    current_streak = 1;
+                }
+            } else {
+                current_streak = 1;
+            }
+            last_due_date = Some(due_date);
+            best_streak = best_streak.max(current_streak);
+        } else {
+            // Target not met, streak broken
+            current_streak = 0;
+            last_due_date = None;
+        }
+    }
+
+    best_streak
+}
+
+/// Get the start of the current week (Monday)
+fn get_week_start(date: NaiveDate) -> NaiveDate {
+    let days_from_monday = date.weekday().num_days_from_monday();
+    date - chrono::Duration::days(days_from_monday as i64)
+}
+
+/// Get the start of the current month
+fn get_month_start(date: NaiveDate) -> NaiveDate {
+    NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap_or(date)
 }
 
 pub async fn list_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Task>, TaskError> {
@@ -1043,7 +1278,9 @@ mod tests {
                 id TEXT PRIMARY KEY NOT NULL,
                 username TEXT NOT NULL UNIQUE,
                 email TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
+                password_hash TEXT,
+                oidc_subject TEXT,
+                oidc_provider TEXT,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -2053,5 +2290,146 @@ mod tests {
         assert_eq!(all_tasks.len(), 1);
         assert_eq!(all_tasks[0].0.task.id, task1.id);
         assert_eq!(all_tasks[0].0.task.title, "Active Task");
+    }
+
+    #[tokio::test]
+    async fn test_get_task_with_details_basic() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create a task
+        let request = CreateTaskRequest {
+            title: "Detail Test Task".to_string(),
+            description: Some("Test description".to_string()),
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: Some(10),
+            points_penalty: Some(5),
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Get task details
+        let details = get_task_with_details(&pool, &task.id, &user_id)
+            .await
+            .unwrap()
+            .expect("Task should exist");
+
+        // Verify basic task info
+        assert_eq!(details.task.id, task.id);
+        assert_eq!(details.task.title, "Detail Test Task");
+        assert_eq!(details.task.description, "Test description");
+        assert_eq!(details.task.points_reward, Some(10));
+        assert_eq!(details.task.points_penalty, Some(5));
+
+        // Verify statistics (no completions yet)
+        assert_eq!(details.statistics.current_streak, 0);
+        assert_eq!(details.statistics.best_streak, 0);
+        assert_eq!(details.statistics.total_completions, 0);
+        assert!(details.statistics.last_completed.is_none());
+
+        // No assigned user
+        assert!(details.assigned_user.is_none());
+
+        // No linked rewards/punishments
+        assert!(details.linked_rewards.is_empty());
+        assert!(details.linked_punishments.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_task_with_details_with_completions() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create a task
+        let request = CreateTaskRequest {
+            title: "Completion Test Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: Some(true),
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Complete the task
+        complete_task(&pool, &task.id, &user_id, &household_id).await.unwrap();
+
+        // Get task details
+        let details = get_task_with_details(&pool, &task.id, &user_id)
+            .await
+            .unwrap()
+            .expect("Task should exist");
+
+        // Verify statistics
+        assert_eq!(details.statistics.total_completions, 1);
+        assert!(details.statistics.last_completed.is_some());
+        assert!(details.statistics.current_streak >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_task_with_details_not_found() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+
+        let random_id = Uuid::new_v4();
+        let details = get_task_with_details(&pool, &random_id, &user_id).await.unwrap();
+
+        assert!(details.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_task_with_details_assigned_user() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create a task assigned to the user
+        let request = CreateTaskRequest {
+            title: "Assigned Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: Some(user_id),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Get task details
+        let details = get_task_with_details(&pool, &task.id, &user_id)
+            .await
+            .unwrap()
+            .expect("Task should exist");
+
+        // Verify assigned user is returned
+        assert!(details.assigned_user.is_some());
+        let assigned = details.assigned_user.unwrap();
+        assert_eq!(assigned.id, user_id);
+        assert_eq!(assigned.username, "testuser");
     }
 }

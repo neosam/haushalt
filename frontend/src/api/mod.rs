@@ -13,10 +13,11 @@ use shared::{
     InviteUserRequest, JournalEntry, JournalEntryWithUser, LeaderboardEntry, LoginRequest, MemberWithUser,
     Note, NoteWithUser, PendingPunishmentCompletion, PendingReview, PendingRewardRedemption, PointCondition,
     Punishment, RandomPickResult, RandomRewardPickResult, RefreshTokenRequest, Reward, Task, TaskCompletion,
-    TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest, UpdateChatMessageRequest,
-    UpdateHouseholdSettingsRequest, UpdateJournalEntryRequest, UpdateNoteRequest, UpdatePunishmentRequest,
-    UpdateRewardRequest, UpdateRoleRequest, UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment,
-    UserPunishmentWithUser, UserReward, UserRewardWithUser, UserSettings,
+    TaskPunishmentLink, TaskRewardLink, TaskWithDetails, TaskWithStatus, UpdateAnnouncementRequest,
+    UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdateJournalEntryRequest, UpdateNoteRequest,
+    UpdatePunishmentRequest, UpdateRewardRequest, UpdateRoleRequest, UpdateTaskRequest,
+    UpdateUserSettingsRequest, User, UserPunishment, UserPunishmentWithUser, UserReward, UserRewardWithUser,
+    UserSettings,
 };
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -411,6 +412,20 @@ impl ApiClient {
         Self::request::<Vec<Task>>(
             "GET",
             &format!("/households/{}/tasks/assigned-to-me", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    /// Get full task details including statistics for the detail view
+    pub async fn get_task_details(
+        household_id: &str,
+        task_id: &str,
+    ) -> Result<TaskWithDetails, String> {
+        Self::request::<TaskWithDetails>(
+            "GET",
+            &format!("/households/{}/tasks/{}/details", household_id, task_id),
             None::<()>,
             true,
         )

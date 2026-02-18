@@ -9,6 +9,7 @@ use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::markdown::MarkdownView;
 use crate::components::pending_reviews::PendingReviews;
+use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
 use crate::i18n::use_i18n;
 
@@ -47,6 +48,9 @@ pub fn TasksPage() -> impl IntoView {
     // Category modal state
     let show_category_modal = create_rw_signal(false);
     let categories = create_rw_signal(Vec::<TaskCategory>::new());
+
+    // Detail modal state - holds the task_id to show details for
+    let detail_task_id = create_rw_signal(Option::<String>::None);
 
     // Load tasks and supporting data
     create_effect(move |_| {
@@ -303,10 +307,16 @@ pub fn TasksPage() -> impl IntoView {
                     </div>
                     {move || {
                         my_assigned_tasks.get().into_iter().map(|task| {
+                            let task_id = task.id.to_string();
                             view! {
                                 <div class="task-item">
                                     <div class="task-content">
-                                        <div class="task-title">{task.title.clone()}</div>
+                                        <div
+                                            class="task-title task-title-clickable"
+                                            on:click=move |_| detail_task_id.set(Some(task_id.clone()))
+                                        >
+                                            {task.title.clone()}
+                                        </div>
                                         <div class="task-meta">
                                             {format!("{:?}", task.recurrence_type)}
                                         </div>
@@ -425,11 +435,15 @@ pub fn TasksPage() -> impl IntoView {
 
                                 let task_style = if is_paused { "opacity: 0.6;" } else { "" };
                                 let paused_badge = i18n_stored.get_value().t("tasks.paused_badge");
+                                let detail_id = task_id.clone();
 
                                 view! {
                                     <div class="task-item" style=task_style>
                                         <div class="task-content">
-                                            <div class="task-title">
+                                            <div
+                                                class="task-title task-title-clickable"
+                                                on:click=move |_| detail_task_id.set(Some(detail_id.clone()))
+                                            >
                                                 {task.title.clone()}
                                                 {if is_paused {
                                                     view! {
@@ -516,10 +530,16 @@ pub fn TasksPage() -> impl IntoView {
                                     },
                                 ];
 
+                                let detail_id = task_id.clone();
                                 view! {
                                     <div class="task-item" style="opacity: 0.7;">
                                         <div class="task-content">
-                                            <div class="task-title">{task.title.clone()}</div>
+                                            <div
+                                                class="task-title task-title-clickable"
+                                                on:click=move |_| detail_task_id.set(Some(detail_id.clone()))
+                                            >
+                                                {task.title.clone()}
+                                            </div>
                                             <div class="task-meta">
                                                 {format!("{:?}", task.recurrence_type)}
                                                 {if let Some(name) = assigned_name {
@@ -668,6 +688,25 @@ pub fn TasksPage() -> impl IntoView {
                     />
                 }
             }
+        </Show>
+
+        // Task Detail Modal
+        <Show when=move || detail_task_id.get().is_some() fallback=|| ()>
+            {move || {
+                let hid = household_id();
+                let task_id = detail_task_id.get().unwrap_or_default();
+                view! {
+                    <TaskDetailModal
+                        task_id=task_id
+                        household_id=hid
+                        on_close=move |_| detail_task_id.set(None)
+                        on_edit=move |task| {
+                            detail_task_id.set(None);
+                            on_edit(task);
+                        }
+                    />
+                }
+            }}
         </Show>
     }
 }

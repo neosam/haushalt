@@ -1053,6 +1053,54 @@ pub struct TaskWithConfig {
     pub linked_punishments: Vec<TaskPunishmentLink>,
 }
 
+/// Task completion statistics for the detail view
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskStatistics {
+    /// Completion rate for current week (0.0 to 100.0)
+    pub completion_rate_week: Option<f64>,
+    /// Completion rate for current month (0.0 to 100.0)
+    pub completion_rate_month: Option<f64>,
+    /// Completion rate since task creation (0.0 to 100.0)
+    pub completion_rate_all_time: Option<f64>,
+    /// Number of periods completed this week
+    pub periods_completed_week: i32,
+    /// Total applicable periods this week
+    pub periods_total_week: i32,
+    /// Number of periods completed this month
+    pub periods_completed_month: i32,
+    /// Total applicable periods this month
+    pub periods_total_month: i32,
+    /// Number of periods completed all time
+    pub periods_completed_all_time: i32,
+    /// Total applicable periods all time
+    pub periods_total_all_time: i32,
+    /// Current consecutive successful streak
+    pub current_streak: i32,
+    /// Best (longest) streak ever achieved
+    pub best_streak: i32,
+    /// Total number of individual completions
+    pub total_completions: i64,
+    /// Most recent completion timestamp
+    pub last_completed: Option<DateTime<Utc>>,
+    /// Next due date for the task
+    pub next_due: Option<NaiveDate>,
+}
+
+/// Full task details for the detail view modal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskWithDetails {
+    /// The task itself
+    pub task: Task,
+    /// Completion statistics
+    pub statistics: TaskStatistics,
+    /// The assigned user (if any)
+    pub assigned_user: Option<User>,
+    /// Linked rewards with amounts
+    pub linked_rewards: Vec<TaskRewardLink>,
+    /// Linked punishments with amounts
+    pub linked_punishments: Vec<TaskPunishmentLink>,
+}
+
 /// Result of task completion including points and rewards assigned
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskCompletionResult {

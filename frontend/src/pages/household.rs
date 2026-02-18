@@ -15,6 +15,7 @@ use crate::components::pending_confirmations::PendingConfirmations;
 use crate::components::pending_reviews::PendingReviews;
 use crate::components::points_display::PointsBadge;
 use crate::components::task_card::GroupedTaskList;
+use crate::components::task_detail_modal::TaskDetailModal;
 use crate::i18n::use_i18n;
 
 #[component]
@@ -56,6 +57,9 @@ pub fn HouseholdPage() -> impl IntoView {
 
     // Dashboard task whitelist
     let dashboard_task_ids = create_rw_signal(HashSet::<String>::new());
+
+    // Task detail modal state
+    let detail_task_id = create_rw_signal(Option::<String>::None);
 
     // Adjust points modal state
     let show_adjust_points_modal = create_rw_signal(false);
@@ -408,6 +412,11 @@ pub fn HouseholdPage() -> impl IntoView {
         });
     });
 
+    // Task title click callback - opens detail modal
+    let on_click_task_title = Callback::new(move |(task_id, _household_id): (String, String)| {
+        detail_task_id.set(Some(task_id));
+    });
+
     view! {
         <Show when=move || loading.get() fallback=|| ()>
             <Loading />
@@ -466,7 +475,8 @@ pub fn HouseholdPage() -> impl IntoView {
                             {
                                 let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
                                 let dashboard_ids = dashboard_task_ids.get();
-                                view! { <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard /> }
+                                let hh_id = id.clone();
+                                view! { <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard household_id=hh_id on_click_title=on_click_task_title /> }
                             }
 
                             // Pending Reviews Section (only for managers/owners)
@@ -1090,6 +1100,19 @@ pub fn HouseholdPage() -> impl IntoView {
                     })
                 />
             </Show>
+
+            // Task Detail Modal
+            {move || {
+                let hh_id = household_id();
+                detail_task_id.get().map(|tid| view! {
+                    <TaskDetailModal
+                        task_id=tid
+                        household_id=hh_id
+                        on_close=move |_| detail_task_id.set(None)
+                        on_edit=move |_| detail_task_id.set(None)
+                    />
+                })
+            }}
         </Show>
     }
 }

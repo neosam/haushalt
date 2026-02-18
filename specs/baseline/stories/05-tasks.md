@@ -311,3 +311,69 @@
 - **Scope**: Affects all tasks in the household uniformly
 - **Streak handling**: Streaks are preserved, not reset, when vacation ends
 - **Override**: Individual task pause (US-TASK-018) and vacation mode are independent; a task paused before vacation remains paused after vacation ends
+
+---
+
+## US-TASK-020: Task Detail View
+
+**As a** household member
+**I want to** view a detailed, well-formatted modal for a task
+**So that** I can see all task information, statistics, and linked items in an easy-to-read format
+
+### Acceptance Criteria
+
+#### Task Information Display
+- Shows task title prominently in modal header
+- Renders description in nicely formatted markdown (not raw markdown text)
+- Shows task type (Good/Bad habit) with appropriate visual indicator
+- Shows recurrence information in human-readable format:
+  - Daily → "Every day"
+  - Weekly(3) → "Every Wednesday"
+  - Monthly(15) → "On the 15th of each month"
+  - Weekdays([1,3,5]) → "Every Monday, Wednesday, Friday"
+  - Custom → "On specific dates: ..."
+  - OneTime → "One-time task"
+- Shows due time if set
+- Shows target count and time period (e.g., "3 times per week")
+- Shows whether exceeding target is allowed
+- Shows whether review is required before approval
+- Shows assigned user if any
+- Shows linked category if any
+
+#### Completion Statistics
+- **Completion rates** shown for three time periods:
+  - **This week**: Percentage for current week with breakdown (e.g., "80% (4 of 5 periods)")
+  - **This month**: Percentage for current month with breakdown
+  - **All time**: Percentage since task creation with breakdown
+  - Calculated as: (periods where target was met / total applicable periods) × 100%
+- **Current streak**: Number of consecutive successful periods
+- **Best streak**: Historical record of longest successful streak
+- **Total completions**: Cumulative count of all individual completions
+- **Last completed**: Date and time of most recent completion
+- **Next due**: Date when task is next due
+
+#### Points Information
+- **Points on completion**: Points awarded when task is completed (for good habits) or deducted (for bad habits)
+- **Points on miss**: Points deducted when task is missed (for good habits) or awarded for resisting (for bad habits)
+- Clear visual distinction between positive and negative point values (e.g., +10 in green, -5 in red)
+
+#### Linked Rewards and Punishments
+- **Linked rewards**: List of all rewards triggered when task is completed
+  - Shows reward name with amount (e.g., "Movie Night x2")
+- **Linked punishments**: List of all punishments triggered when task is missed
+  - Shows punishment name with amount
+
+#### Navigation and Actions
+- "Edit" button for users with edit permission (opens edit modal)
+- Close button (X) to dismiss the modal
+- Quick complete/uncomplete action available in the modal
+
+### Design Decisions
+- **UI pattern**: Modal overlay (consistent with notes/rewards patterns in the app)
+- **Navigation trigger**: Click on task title opens the detail modal. Available from:
+  - Main dashboard (tasks across all households)
+  - Household overview page (task cards)
+  - Tasks page (task list within a household)
+- **Read-only focus**: This view emphasizes readability; editing is done through a separate edit modal
+- **Statistics periods**: Completion rates shown for week, month, and all-time to provide both recent and historical context
+- **Mobile-friendly**: Layout adapts for smaller screens with stacked sections

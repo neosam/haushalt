@@ -54,8 +54,10 @@ pub fn TaskCard(
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
     #[prop(optional)] household_name: Option<String>,
+    #[prop(optional)] household_id: Option<String>,
     #[prop(optional)] on_dashboard: Option<bool>,
     #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
+    #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -65,6 +67,8 @@ pub fn TaskCard(
     let task_id = task.task.id.to_string();
     let task_id_for_minus = task_id.clone();
     let task_id_for_dashboard = task_id.clone();
+    let task_id_for_title = task_id.clone();
+    let household_id_for_title = household_id.clone();
     let completions = task.completions_today;
     let target = task.task.target_count;
     let has_completions = completions > 0;
@@ -150,11 +154,29 @@ pub fn TaskCard(
     let dashboard_toggle_title_on = i18n_stored.get_value().t("task_card.remove_from_dashboard");
     let dashboard_toggle_title_off = i18n_stored.get_value().t("task_card.add_to_dashboard");
 
+    // Title click handler
+    let title_clickable = on_click_title.is_some() && household_id_for_title.is_some();
+    let on_title_click = move |_| {
+        if let (Some(callback), Some(ref hid)) = (on_click_title, &household_id_for_title) {
+            callback.call((task_id_for_title.clone(), hid.clone()));
+        }
+    };
+
+    let task_title = task.task.title.clone();
+
     view! {
         <div class=card_class>
             <div class="task-content" style="flex: 1;">
                 <div class="task-title" style="display: flex; align-items: center; gap: 0.5rem;">
-                    {task.task.title.clone()}
+                    {if title_clickable {
+                        view! {
+                            <span class="task-title-clickable" on:click=on_title_click.clone()>
+                                {task_title.clone()}
+                            </span>
+                        }.into_view()
+                    } else {
+                        view! { <span>{task_title.clone()}</span> }.into_view()
+                    }}
                     {if is_bad_habit {
                         view! {
                             <span style="font-size: 0.7rem; padding: 0.1rem 0.4rem; background: var(--danger-color); color: white; border-radius: var(--border-radius); font-weight: 500;">
@@ -327,6 +349,8 @@ pub fn GroupedTaskList(
     #[prop(default = "UTC".to_string())] timezone: String,
     #[prop(optional)] dashboard_task_ids: Option<HashSet<String>>,
     #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
+    #[prop(optional)] household_id: Option<String>,
+    #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -402,12 +426,23 @@ pub fn GroupedTaskList(
                                                     {cat_tasks.into_iter().map(|task| {
                                                         let tz_task = tz_cat.clone();
                                                         let task_id = task.task.id.to_string();
+                                                        let hh_id = household_id.clone();
                                                         // Only pass dashboard props if the feature is enabled
-                                                        if let (Some(ids), Some(callback)) = (&dashboard_ids_cat, on_toggle_dashboard) {
-                                                            let is_on_dashboard = ids.contains(&task_id);
-                                                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=callback /> }.into_view()
-                                                        } else {
-                                                            view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }.into_view()
+                                                        match (&dashboard_ids_cat, on_toggle_dashboard, on_click_title, hh_id) {
+                                                            (Some(ids), Some(callback), Some(title_callback), Some(hid)) => {
+                                                                let is_on_dashboard = ids.contains(&task_id);
+                                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=callback household_id=hid on_click_title=title_callback /> }.into_view()
+                                                            }
+                                                            (Some(ids), Some(callback), _, _) => {
+                                                                let is_on_dashboard = ids.contains(&task_id);
+                                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=callback /> }.into_view()
+                                                            }
+                                                            (_, _, Some(title_callback), Some(hid)) => {
+                                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_click_title=title_callback /> }.into_view()
+                                                            }
+                                                            _ => {
+                                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }.into_view()
+                                                            }
                                                         }
                                                     }).collect_view()}
                                                 </div>
@@ -467,6 +502,7 @@ pub fn DashboardGroupedTaskList(
     #[prop(into)] on_complete: Callback<String>,
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
+    #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -538,7 +574,12 @@ pub fn DashboardGroupedTaskList(
                                                     }}
                                                     {cat_tasks.into_iter().map(|twh| {
                                                         let tz_task = tz_cat.clone();
-                                                        view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name /> }
+                                                        let hh_id = twh.household_id.clone();
+                                                        if let Some(callback) = on_click_title {
+                                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name household_id=hh_id on_click_title=callback /> }.into_view()
+                                                        } else {
+                                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name /> }.into_view()
+                                                        }
                                                     }).collect_view()}
                                                 </div>
                                             }

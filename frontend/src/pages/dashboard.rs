@@ -5,6 +5,7 @@ use crate::api::ApiClient;
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
 use crate::components::task_card::{DashboardGroupedTaskList, TaskWithHousehold};
+use crate::components::task_detail_modal::TaskDetailModal;
 use crate::i18n::use_i18n;
 
 #[component]
@@ -20,6 +21,10 @@ pub fn Dashboard() -> impl IntoView {
     let show_create_modal = create_rw_signal(false);
     let new_household_name = create_rw_signal(String::new());
     let show_all = create_rw_signal(false);
+
+    // Task detail modal state
+    let detail_task_id = create_rw_signal(Option::<String>::None);
+    let detail_household_id = create_rw_signal(Option::<String>::None);
 
     // Load households, invitations, and tasks on mount
     create_effect(move |_| {
@@ -167,6 +172,12 @@ pub fn Dashboard() -> impl IntoView {
         }
     });
 
+    // Task title click handler - opens detail modal
+    let on_click_task_title = Callback::new(move |(task_id, household_id): (String, String)| {
+        detail_task_id.set(Some(task_id));
+        detail_household_id.set(Some(household_id));
+    });
+
     view! {
         <div class="dashboard-header">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -294,6 +305,7 @@ pub fn Dashboard() -> impl IntoView {
                                 on_complete=on_complete_task
                                 on_uncomplete=on_uncomplete_task
                                 timezone="Europe/Berlin".to_string()
+                                on_click_title=on_click_task_title
                             />
                         </div>
                     }.into_view()
@@ -302,6 +314,29 @@ pub fn Dashboard() -> impl IntoView {
                 }
             }}
         </Show>
+
+        // Task detail modal
+        {move || {
+            if let (Some(task_id), Some(household_id)) = (detail_task_id.get(), detail_household_id.get()) {
+                Some(view! {
+                    <TaskDetailModal
+                        task_id=task_id
+                        household_id=household_id
+                        on_close=move |_| {
+                            detail_task_id.set(None);
+                            detail_household_id.set(None);
+                        }
+                        on_edit=move |_| {
+                            // Close modal - user can navigate to household to edit
+                            detail_task_id.set(None);
+                            detail_household_id.set(None);
+                        }
+                    />
+                })
+            } else {
+                None
+            }
+        }}
 
         <Show when=move || show_create_modal.get() fallback=|| ()>
             <Modal title=i18n_stored.get_value().t("household.create") on_close=move |_| show_create_modal.set(false)>

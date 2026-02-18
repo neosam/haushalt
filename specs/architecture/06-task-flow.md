@@ -170,6 +170,60 @@ flowchart TB
     Check2 -->|No| False[false]
 ```
 
+## Task Detail Retrieval Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant FE as Frontend
+    participant BE as Backend
+    participant DB as Database
+
+    U->>FE: Click task title
+    FE->>FE: Open TaskDetailModal
+    FE->>BE: GET /api/households/{id}/tasks/{task_id}/details
+
+    BE->>DB: Get task by ID
+    DB-->>BE: Task data
+
+    BE->>DB: Get all completions for task
+    DB-->>BE: Completion history
+
+    BE->>BE: Calculate statistics
+    Note right of BE: completion_rate (week/month/all-time)<br/>best_streak<br/>total_completions
+
+    BE->>DB: Get assigned user details
+    DB-->>BE: User data (if assigned)
+
+    BE->>DB: Get linked rewards
+    DB-->>BE: TaskRewardLinks
+
+    BE->>DB: Get linked punishments
+    DB-->>BE: TaskPunishmentLinks
+
+    BE-->>FE: TaskWithDetails
+    FE-->>U: Display detail modal
+```
+
+## Completion Rate Calculation
+
+```mermaid
+flowchart TB
+    Start[Calculate Completion Rate] --> GetPeriod{Time Period?}
+
+    GetPeriod -->|Week| WeekBounds[Get current week bounds]
+    GetPeriod -->|Month| MonthBounds[Get current month bounds]
+    GetPeriod -->|All Time| AllBounds[From task creation to now]
+
+    WeekBounds & MonthBounds & AllBounds --> GetOccur[Count applicable occurrences<br/>based on recurrence pattern]
+
+    GetOccur --> GetComp[Count completions where<br/>target was met]
+
+    GetComp --> Calc[Rate = met / total × 100]
+
+    Calc --> Result[Return rate + breakdown]
+```
+
 ## Recurrence Logic
 
 ```mermaid
