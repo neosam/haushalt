@@ -19,12 +19,36 @@ pub fn Dashboard() -> impl IntoView {
     let error = create_rw_signal(Option::<String>::None);
     let show_create_modal = create_rw_signal(false);
     let new_household_name = create_rw_signal(String::new());
+    let show_all = create_rw_signal(false);
 
     // Load households, invitations, and tasks on mount
     create_effect(move |_| {
         wasm_bindgen_futures::spawn_local(async move {
-            // Load dashboard tasks with status (all whitelist tasks, not just due)
-            match ApiClient::get_dashboard_tasks_with_status().await {
+            // Load households
+            if let Ok(data) = ApiClient::list_households().await {
+                households.set(data);
+            }
+
+            // Load pending invitations
+            if let Ok(inv) = ApiClient::get_my_invitations().await {
+                invitations.set(inv);
+            }
+
+            loading.set(false);
+        });
+    });
+
+    // Load tasks based on show_all toggle (reactive)
+    create_effect(move |_| {
+        let show_all_mode = show_all.get();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = if show_all_mode {
+                ApiClient::get_all_tasks_across_households().await
+            } else {
+                ApiClient::get_dashboard_tasks_with_status().await
+            };
+
+            match result {
                 Ok(dashboard_tasks) => {
                     let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
                         .into_iter()
@@ -40,18 +64,6 @@ pub fn Dashboard() -> impl IntoView {
                     error.set(Some(e));
                 }
             }
-
-            // Load households
-            if let Ok(data) = ApiClient::list_households().await {
-                households.set(data);
-            }
-
-            // Load pending invitations
-            if let Ok(inv) = ApiClient::get_my_invitations().await {
-                invitations.set(inv);
-            }
-
-            loading.set(false);
         });
     });
 
@@ -102,6 +114,27 @@ pub fn Dashboard() -> impl IntoView {
         });
     };
 
+    // Helper to reload tasks based on show_all mode
+    let reload_tasks = move |show_all_mode: bool| async move {
+        let result = if show_all_mode {
+            ApiClient::get_all_tasks_across_households().await
+        } else {
+            ApiClient::get_dashboard_tasks_with_status().await
+        };
+
+        if let Ok(dashboard_tasks) = result {
+            let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
+                .into_iter()
+                .map(|t| TaskWithHousehold {
+                    task: t.task_with_status,
+                    household_name: t.household_name,
+                    household_id: t.household_id.to_string(),
+                })
+                .collect();
+            all_tasks.set(tasks_with_households);
+        }
+    };
+
     // Task completion handler
     let on_complete_task = Callback::new(move |task_id: String| {
         // Find the household_id for this task
@@ -109,20 +142,10 @@ pub fn Dashboard() -> impl IntoView {
         if let Some(twh) = tasks.iter().find(|t| t.task.task.id.to_string() == task_id) {
             let household_id = twh.household_id.clone();
             let task_id_clone = task_id.clone();
+            let show_all_mode = show_all.get();
             wasm_bindgen_futures::spawn_local(async move {
                 if ApiClient::complete_task(&household_id, &task_id_clone).await.is_ok() {
-                    // Reload dashboard tasks
-                    if let Ok(dashboard_tasks) = ApiClient::get_dashboard_tasks_with_status().await {
-                        let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
-                            .into_iter()
-                            .map(|t| TaskWithHousehold {
-                                task: t.task_with_status,
-                                household_name: t.household_name,
-                                household_id: t.household_id.to_string(),
-                            })
-                            .collect();
-                        all_tasks.set(tasks_with_households);
-                    }
+                    reload_tasks(show_all_mode).await;
                 }
             });
         }
@@ -135,20 +158,10 @@ pub fn Dashboard() -> impl IntoView {
         if let Some(twh) = tasks.iter().find(|t| t.task.task.id.to_string() == task_id) {
             let household_id = twh.household_id.clone();
             let task_id_clone = task_id.clone();
+            let show_all_mode = show_all.get();
             wasm_bindgen_futures::spawn_local(async move {
                 if ApiClient::uncomplete_task(&household_id, &task_id_clone).await.is_ok() {
-                    // Reload dashboard tasks
-                    if let Ok(dashboard_tasks) = ApiClient::get_dashboard_tasks_with_status().await {
-                        let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
-                            .into_iter()
-                            .map(|t| TaskWithHousehold {
-                                task: t.task_with_status,
-                                household_name: t.household_name,
-                                household_id: t.household_id.to_string(),
-                            })
-                            .collect();
-                        all_tasks.set(tasks_with_households);
-                    }
+                    reload_tasks(show_all_mode).await;
                 }
             });
         }
@@ -156,8 +169,18 @@ pub fn Dashboard() -> impl IntoView {
 
     view! {
         <div class="dashboard-header">
-            <h1 class="dashboard-title">{move || i18n_stored.get_value().t("dashboard.title")}</h1>
-            <p class="dashboard-subtitle">{move || i18n_stored.get_value().t("dashboard.subtitle")}</p>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1 class="dashboard-title">{move || i18n_stored.get_value().t("dashboard.title")}</h1>
+                    <p class="dashboard-subtitle">{move || i18n_stored.get_value().t("dashboard.subtitle")}</p>
+                </div>
+                <button
+                    class=move || if show_all.get() { "btn btn-primary" } else { "btn btn-outline" }
+                    on:click=move |_| show_all.update(|v| *v = !*v)
+                >
+                    {move || i18n_stored.get_value().t("dashboard.show_all")}
+                </button>
+            </div>
         </div>
 
         {move || error.get().map(|e| view! {

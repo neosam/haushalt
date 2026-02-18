@@ -4,7 +4,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{TaskCompletionRow, TaskRow, TaskRowWithCategory};
-use crate::services::{points as points_service, scheduler, task_consequences};
+use crate::services::{households as household_service, points as points_service, scheduler, task_consequences};
 use shared::{CompletionStatus, CreateTaskRequest, PendingReview, Task, TaskCompletion, TaskWithStatus, UpdateTaskRequest};
 
 #[derive(Debug, Error)]
@@ -943,6 +943,42 @@ pub async fn get_dashboard_tasks_with_status(
     Ok(results)
 }
 
+/// Get all tasks with status from all households the user is a member of
+/// Used by the "Show all" toggle on the dashboard
+pub async fn get_all_tasks_across_households(
+    pool: &SqlitePool,
+    user_id: &Uuid,
+) -> Result<Vec<(TaskWithStatus, Uuid)>, TaskError> {
+    // Get all households for user
+    let households = household_service::list_user_households(pool, user_id)
+        .await
+        .map_err(|_| TaskError::DatabaseError(sqlx::Error::RowNotFound))?;
+
+    let mut all_tasks = Vec::new();
+
+    for household in households {
+        if let Ok(tasks) = get_all_tasks_with_status(pool, &household.id, user_id).await {
+            for task in tasks {
+                all_tasks.push((task, household.id));
+            }
+        }
+    }
+
+    // Sort by next_due_date (primary), then by title (secondary, case-insensitive)
+    all_tasks.sort_by(|(a, _), (b, _)| {
+        match (&a.next_due_date, &b.next_due_date) {
+            (Some(date_a), Some(date_b)) => date_a
+                .cmp(date_b)
+                .then_with(|| a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase())),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase()),
+        }
+    });
+
+    Ok(all_tasks)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1063,6 +1099,24 @@ mod tests {
                 role TEXT NOT NULL DEFAULT 'member',
                 points INTEGER NOT NULL DEFAULT 0,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(household_id, user_id)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Also create household_memberships table for household service
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS household_memberships (
+                id TEXT PRIMARY KEY NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                user_id TEXT NOT NULL REFERENCES users(id),
+                role TEXT NOT NULL DEFAULT 'member',
+                points INTEGER NOT NULL DEFAULT 0,
+                joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(household_id, user_id)
             )
             "#,
@@ -1201,6 +1255,18 @@ mod tests {
         // Add membership
         sqlx::query(
             "INSERT INTO memberships (id, household_id, user_id, role) VALUES (?, ?, ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(household_id.to_string())
+        .bind(owner_id.to_string())
+        .bind("owner")
+        .execute(pool)
+        .await
+        .unwrap();
+
+        // Also add to household_memberships for household service
+        sqlx::query(
+            "INSERT INTO household_memberships (id, household_id, user_id, role) VALUES (?, ?, ?, ?)",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(household_id.to_string())
@@ -1799,5 +1865,152 @@ mod tests {
         let active_tasks = list_tasks(&pool, &household_id).await.unwrap();
         assert_eq!(active_tasks.len(), 1);
         assert_eq!(active_tasks[0].title, "Active Task");
+    }
+
+    #[tokio::test]
+    async fn test_get_all_tasks_across_households() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household1_id = create_test_household(&pool, &user_id).await;
+
+        // Create second household
+        let household2_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO households (id, name, owner_id) VALUES (?, ?, ?)",
+        )
+        .bind(household2_id.to_string())
+        .bind("Second Household")
+        .bind(user_id.to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Add membership for second household
+        sqlx::query(
+            "INSERT INTO memberships (id, household_id, user_id, role) VALUES (?, ?, ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(household2_id.to_string())
+        .bind(user_id.to_string())
+        .bind("owner")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Also add to household_memberships
+        sqlx::query(
+            "INSERT INTO household_memberships (id, household_id, user_id, role) VALUES (?, ?, ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(household2_id.to_string())
+        .bind(user_id.to_string())
+        .bind("owner")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Create task in household 1
+        let request1 = CreateTaskRequest {
+            title: "Task in Household 1".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        create_task(&pool, &household1_id, &request1).await.unwrap();
+
+        // Create task in household 2
+        let request2 = CreateTaskRequest {
+            title: "Task in Household 2".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        create_task(&pool, &household2_id, &request2).await.unwrap();
+
+        // Get all tasks across households
+        let all_tasks = get_all_tasks_across_households(&pool, &user_id).await.unwrap();
+
+        // Should have 2 tasks (one from each household)
+        assert_eq!(all_tasks.len(), 2);
+
+        // Verify tasks are from both households
+        let household_ids: Vec<_> = all_tasks.iter().map(|(_, h_id)| *h_id).collect();
+        assert!(household_ids.contains(&household1_id));
+        assert!(household_ids.contains(&household2_id));
+    }
+
+    #[tokio::test]
+    async fn test_get_all_tasks_across_households_excludes_archived() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create two tasks
+        let request1 = CreateTaskRequest {
+            title: "Active Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task1 = create_task(&pool, &household_id, &request1).await.unwrap();
+
+        let request2 = CreateTaskRequest {
+            title: "Archived Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task2 = create_task(&pool, &household_id, &request2).await.unwrap();
+
+        // Archive the second task
+        archive_task(&pool, &task2.id).await.unwrap();
+
+        // Get all tasks across households
+        let all_tasks = get_all_tasks_across_households(&pool, &user_id).await.unwrap();
+
+        // Should only have 1 task (the active one)
+        assert_eq!(all_tasks.len(), 1);
+        assert_eq!(all_tasks[0].0.task.id, task1.id);
+        assert_eq!(all_tasks[0].0.task.title, "Active Task");
     }
 }

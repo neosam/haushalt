@@ -70,6 +70,7 @@
   "dashboard.accept": "Accept",
   "dashboard.decline": "Decline",
   "dashboard.households": "Households",
+  "dashboard.show_all": "Show all",
 
   "household.name": "Household Name",
   "household.name_placeholder": "e.g., Smith Family",

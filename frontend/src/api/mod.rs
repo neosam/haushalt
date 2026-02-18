@@ -1304,6 +1304,15 @@ impl ApiClient {
             Self::request("GET", "/dashboard/tasks/details", None::<()>, true).await?;
         Ok(response.tasks)
     }
+
+    /// Get all tasks from all households the user is a member of
+    /// Used by the "Show all" toggle on the dashboard
+    pub async fn get_all_tasks_across_households(
+    ) -> Result<Vec<shared::DashboardTaskWithHousehold>, String> {
+        let response: shared::DashboardTasksWithStatusResponse =
+            Self::request("GET", "/dashboard/tasks/all", None::<()>, true).await?;
+        Ok(response.tasks)
+    }
 }
 
 #[cfg(test)]

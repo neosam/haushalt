@@ -72,3 +72,19 @@
 
 ### Acceptance Criteria
 - Returns true/false for whether task is on dashboard
+
+---
+
+## US-DASH-007: Show All Tasks Mode
+
+**As an** authenticated user
+**I want to** optionally see all tasks from all my households on the dashboard
+**So that** I have a complete overview without manually adding each task
+
+### Acceptance Criteria
+- Toggle/switch on the dashboard labeled "Show all" (off by default)
+- When enabled, dashboard shows all active tasks from all households the user is a member of
+- Tasks are still grouped by household
+- Archived tasks are excluded
+- Overrides the whitelist behavior (whitelist is ignored when this mode is enabled)
+- Toggle state resets to off when navigating away from the dashboard
