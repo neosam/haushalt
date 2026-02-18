@@ -11,9 +11,14 @@ sequenceDiagram
 
     U->>FE: Complete task
     FE->>BE: POST /api/households/{id}/tasks/{task_id}/complete
-    BE->>BE: Validate user can complete
-    BE->>DB: Check completion count for period
-    DB-->>BE: Current count
+    BE->>BE: Check user assignment
+    alt Task assigned to different user
+        BE-->>FE: 403 Not assigned to this task
+        FE-->>U: Show error
+    else User is assigned or task unassigned
+        BE->>DB: Check completion count for period
+        DB-->>BE: Current count
+    end
 
     alt Target reached & !allow_exceed
         BE-->>FE: 400 Target already reached
@@ -161,9 +166,18 @@ flowchart TB
     Fields --> Streak[current_streak]
     Fields --> LastComp[last_completion]
     Fields --> NextDue[next_due_date]
+    Fields --> IsAssigned[is_user_assigned]
     Fields --> CanComp[can_complete]
 
-    CanComp --> Check1{remaining > 0?}
+    IsAssigned --> AssignCheck{assigned_user_id?}
+    AssignCheck -->|None| AssignTrue[true - anyone can complete]
+    AssignCheck -->|Some| UserMatch{current_user == assigned?}
+    UserMatch -->|Yes| AssignTrue2[true]
+    UserMatch -->|No| AssignFalse[false]
+
+    CanComp --> CheckAssign{is_user_assigned?}
+    CheckAssign -->|No| CanFalse[false]
+    CheckAssign -->|Yes| Check1{remaining > 0?}
     Check1 -->|Yes| True1[true]
     Check1 -->|No| Check2{allow_exceed?}
     Check2 -->|Yes| True2[true]

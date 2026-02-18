@@ -603,6 +603,10 @@ pub struct TaskCompletion {
     pub status: CompletionStatus,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskWithStatus {
     pub task: Task,
@@ -611,6 +615,10 @@ pub struct TaskWithStatus {
     pub last_completion: Option<DateTime<Utc>>,
     /// Next date when this task is due (None for OneTime tasks)
     pub next_due_date: Option<NaiveDate>,
+    /// Whether the current user can complete this task based on assignment.
+    /// True if the task has no assigned user OR the current user is the assigned user.
+    #[serde(default = "default_true")]
+    pub is_user_assigned: bool,
 }
 
 impl TaskWithStatus {
@@ -626,9 +634,11 @@ impl TaskWithStatus {
     }
 
     /// Returns true if the user can add more completions
-    /// This is false when target is met AND allow_exceed_target is false
+    /// This is false when:
+    /// - User is not assigned to the task (when task has an assigned user)
+    /// - Target is met AND allow_exceed_target is false
     pub fn can_complete(&self) -> bool {
-        self.task.allow_exceed_target || !self.is_target_met()
+        self.is_user_assigned && (self.task.allow_exceed_target || !self.is_target_met())
     }
 }
 
@@ -1658,6 +1668,10 @@ mod tests {
     }
 
     fn create_task_with_status(completions: i32, target: i32, allow_exceed: bool) -> TaskWithStatus {
+        create_task_with_status_assigned(completions, target, allow_exceed, true)
+    }
+
+    fn create_task_with_status_assigned(completions: i32, target: i32, allow_exceed: bool, is_user_assigned: bool) -> TaskWithStatus {
         TaskWithStatus {
             task: Task {
                 id: Uuid::new_v4(),
@@ -1686,6 +1700,7 @@ mod tests {
             current_streak: 0,
             last_completion: None,
             next_due_date: None,
+            is_user_assigned,
         }
     }
 
@@ -1754,6 +1769,27 @@ mod tests {
     fn test_task_with_status_can_complete_exceeded_no_exceed() {
         // Cannot complete when already exceeded with allow_exceed_target false
         let task = create_task_with_status(5, 3, false);
+        assert!(!task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_not_assigned() {
+        // Cannot complete when user is not assigned to the task
+        let task = create_task_with_status_assigned(0, 3, true, false);
+        assert!(!task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_assigned() {
+        // Can complete when user is assigned to the task
+        let task = create_task_with_status_assigned(0, 3, true, true);
+        assert!(task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_not_assigned_even_with_exceed() {
+        // Cannot complete when not assigned, even with allow_exceed_target true
+        let task = create_task_with_status_assigned(0, 3, true, false);
         assert!(!task.can_complete());
     }
 

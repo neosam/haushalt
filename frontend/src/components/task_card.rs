@@ -64,6 +64,7 @@ pub fn TaskCard(
 
     let is_target_met = task.is_target_met();
     let can_complete = task.can_complete();
+    let is_user_assigned = task.is_user_assigned;
     let task_id = task.task.id.to_string();
     let task_id_for_minus = task_id.clone();
     let task_id_for_dashboard = task_id.clone();
@@ -212,25 +213,37 @@ pub fn TaskCard(
                 } else {
                     ().into_view()
                 }}
-                <button
-                    class="btn btn-outline"
-                    style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
-                    disabled=!has_completions
-                    on:click=on_minus
-                >
-                    "-"
-                </button>
-                <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
-                    {progress_display}
-                </span>
-                <button
-                    class=move || if is_debouncing.get() { "btn btn-primary btn-debouncing" } else { "btn btn-primary" }
-                    style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
-                    disabled=move || !can_complete || is_debouncing.get()
-                    on:click=on_plus
-                >
-                    {move || if is_debouncing.get() { "..." } else { "+" }}
-                </button>
+                // Only show +/- buttons if user is assigned to the task
+                {if is_user_assigned {
+                    view! {
+                        <button
+                            class="btn btn-outline"
+                            style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
+                            disabled=!has_completions
+                            on:click=on_minus
+                        >
+                            "-"
+                        </button>
+                        <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
+                            {progress_display.clone()}
+                        </span>
+                        <button
+                            class=move || if is_debouncing.get() { "btn btn-primary btn-debouncing" } else { "btn btn-primary" }
+                            style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
+                            disabled=move || !can_complete || is_debouncing.get()
+                            on:click=on_plus
+                        >
+                            {move || if is_debouncing.get() { "..." } else { "+" }}
+                        </button>
+                    }.into_view()
+                } else {
+                    // Just show progress without buttons
+                    view! {
+                        <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
+                            {progress_display.clone()}
+                        </span>
+                    }.into_view()
+                }}
             </div>
         </div>
     }
@@ -638,6 +651,7 @@ mod tests {
             current_streak: 0,
             last_completion: None,
             next_due_date: None,
+            is_user_assigned: true,
         }
     }
 
@@ -747,6 +761,7 @@ mod tests {
             current_streak: 5,
             last_completion: None,
             next_due_date: None,
+            is_user_assigned: true,
         };
         let streak_text = if task.current_streak > 0 {
             format!(" | Streak: {}", task.current_streak)

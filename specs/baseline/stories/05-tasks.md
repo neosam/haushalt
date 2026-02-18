@@ -89,11 +89,14 @@
 **So that** I earn points and rewards
 
 ### Acceptance Criteria
+- If task has an assigned user, only that user can complete the task
+- If task has no assigned user, any household member can complete it
 - If requires_review: completion status = Pending
 - Otherwise: completion status = Approved
 - Points are calculated and awarded (if approved)
 - Linked rewards are applied (if approved)
 - Streak is updated
+- The +/- buttons are hidden for users who cannot complete the task
 
 ---
 
@@ -104,6 +107,8 @@
 **So that** mistakes can be corrected
 
 ### Acceptance Criteria
+- If task has an assigned user, only that user can uncomplete (remove their own completions)
+- If task has no assigned user, any household member can uncomplete their own completions
 - Completion record is removed
 - Points are reverted
 - Rewards are reverted

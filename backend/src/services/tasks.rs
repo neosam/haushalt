@@ -17,6 +17,8 @@ pub enum TaskError {
     NotDueToday,
     #[error("No completion to undo")]
     NotCompleted,
+    #[error("User is not assigned to this task")]
+    NotAssigned,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 }
@@ -148,12 +150,18 @@ pub async fn get_task_with_status(
     // Calculate streak
     let current_streak = calculate_streak(pool, &task, user_id).await?;
 
+    // Check if user is assigned to this task
+    let is_user_assigned = task.assigned_user_id
+        .map(|assigned_id| assigned_id == *user_id)
+        .unwrap_or(true); // If no assignment, anyone can complete
+
     Ok(Some(TaskWithStatus {
         task,
         completions_today,
         current_streak,
         last_completion: last_completion.map(|c| c.completed_at),
         next_due_date,
+        is_user_assigned,
     }))
 }
 
@@ -648,6 +656,13 @@ pub async fn complete_task(
 ) -> Result<TaskCompletion, TaskError> {
     let task = get_task(pool, task_id).await?.ok_or(TaskError::NotFound)?;
 
+    // Check if user is allowed to complete this task based on assignment
+    if let Some(assigned_id) = task.assigned_user_id {
+        if assigned_id != *user_id {
+            return Err(TaskError::NotAssigned);
+        }
+    }
+
     let today = Utc::now().date_naive();
 
     // Special handling for RecurrenceType::OneTime (free-form and one-time tasks)
@@ -771,6 +786,14 @@ pub async fn uncomplete_task(
     user_id: &Uuid,
 ) -> Result<(), TaskError> {
     let task = get_task(pool, task_id).await?.ok_or(TaskError::NotFound)?;
+
+    // Check if user is allowed to uncomplete this task based on assignment
+    if let Some(assigned_id) = task.assigned_user_id {
+        if assigned_id != *user_id {
+            return Err(TaskError::NotAssigned);
+        }
+    }
+
     let today = Utc::now().date_naive();
 
     // Use next_due_date for period calculation to match how completions are stored
@@ -2431,5 +2454,289 @@ mod tests {
         let assigned = details.assigned_user.unwrap();
         assert_eq!(assigned.id, user_id);
         assert_eq!(assigned.username, "testuser");
+    }
+
+    async fn create_second_test_user(pool: &SqlitePool) -> Uuid {
+        let user_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
+        )
+        .bind(user_id.to_string())
+        .bind("testuser2")
+        .bind("test2@example.com")
+        .bind("hash")
+        .execute(pool)
+        .await
+        .unwrap();
+        user_id
+    }
+
+    async fn add_user_to_household(pool: &SqlitePool, household_id: &Uuid, user_id: &Uuid) {
+        // Add membership
+        sqlx::query(
+            "INSERT INTO memberships (id, household_id, user_id, role) VALUES (?, ?, ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(household_id.to_string())
+        .bind(user_id.to_string())
+        .bind("member")
+        .execute(pool)
+        .await
+        .unwrap();
+
+        // Also add to household_memberships for household service
+        sqlx::query(
+            "INSERT INTO household_memberships (id, household_id, user_id, role) VALUES (?, ?, ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(household_id.to_string())
+        .bind(user_id.to_string())
+        .bind("member")
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_assigned_user_success() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create task assigned to the user
+        let request = CreateTaskRequest {
+            title: "Assigned Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: Some(user_id),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: Some(true),
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Assigned user should be able to complete the task
+        let result = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_unassigned_task_any_user() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Create task without assignment
+        let request = CreateTaskRequest {
+            title: "Unassigned Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None, // No assignment
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: Some(true),
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Both users should be able to complete the task
+        let result1 = complete_task(&pool, &task.id, &user1, &household_id).await;
+        assert!(result1.is_ok());
+
+        let result2 = complete_task(&pool, &task.id, &user2, &household_id).await;
+        assert!(result2.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_wrong_user_forbidden() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Create task assigned to user1
+        let request = CreateTaskRequest {
+            title: "User1's Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: Some(user1),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: Some(true),
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // User2 should NOT be able to complete user1's task
+        let result = complete_task(&pool, &task.id, &user2, &household_id).await;
+        assert!(matches!(result, Err(TaskError::NotAssigned)));
+    }
+
+    #[tokio::test]
+    async fn test_uncomplete_task_wrong_user_forbidden() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Create task assigned to user1
+        let request = CreateTaskRequest {
+            title: "User1's Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: Some(user1),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: Some(true),
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // User1 completes the task first
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+
+        // User2 should NOT be able to uncomplete user1's task
+        let result = uncomplete_task(&pool, &task.id, &user2).await;
+        assert!(matches!(result, Err(TaskError::NotAssigned)));
+    }
+
+    #[tokio::test]
+    async fn test_task_with_status_is_user_assigned_true() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create task assigned to the user
+        let request = CreateTaskRequest {
+            title: "My Assigned Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: Some(user_id),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Get task with status for the assigned user
+        let status = get_task_with_status(&pool, &task.id, &user_id)
+            .await
+            .unwrap()
+            .expect("Task should exist");
+
+        assert!(status.is_user_assigned);
+    }
+
+    #[tokio::test]
+    async fn test_task_with_status_is_user_assigned_false() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Create task assigned to user1
+        let request = CreateTaskRequest {
+            title: "User1's Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: Some(user1),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Get task with status for user2 (not assigned)
+        let status = get_task_with_status(&pool, &task.id, &user2)
+            .await
+            .unwrap()
+            .expect("Task should exist");
+
+        assert!(!status.is_user_assigned);
+    }
+
+    #[tokio::test]
+    async fn test_task_with_status_is_user_assigned_no_assignment() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Create task with no assignment
+        let request = CreateTaskRequest {
+            title: "Unassigned Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None, // No assignment
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task = create_task(&pool, &household_id, &request).await.unwrap();
+
+        // Both users should have is_user_assigned = true
+        let status1 = get_task_with_status(&pool, &task.id, &user1)
+            .await
+            .unwrap()
+            .expect("Task should exist");
+        assert!(status1.is_user_assigned);
+
+        let status2 = get_task_with_status(&pool, &task.id, &user2)
+            .await
+            .unwrap()
+            .expect("Task should exist");
+        assert!(status2.is_user_assigned);
     }
 }
