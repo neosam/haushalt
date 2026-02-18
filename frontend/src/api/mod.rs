@@ -7,13 +7,14 @@ use serde::{de::DeserializeOwned, Serialize};
 use shared::{
     ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, Announcement, ApiError, ApiSuccess,
     AuthResponse, ChatMessageWithUser, CreateAnnouncementRequest, CreateChatMessageRequest,
-    CreateHouseholdRequest, CreateInvitationRequest, CreateNoteRequest, CreatePointConditionRequest,
-    CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest, CreateUserRequest, Household,
-    HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold, InviteUserRequest,
-    LeaderboardEntry, LoginRequest, MemberWithUser, Note, NoteWithUser, PendingPunishmentCompletion,
-    PendingReview, PendingRewardRedemption, PointCondition, Punishment, RandomPickResult, RefreshTokenRequest,
-    Reward, Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest,
-    UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdateNoteRequest, UpdatePunishmentRequest,
+    CreateHouseholdRequest, CreateInvitationRequest, CreateJournalEntryRequest, CreateNoteRequest,
+    CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
+    CreateUserRequest, Household, HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold,
+    InviteUserRequest, JournalEntry, JournalEntryWithUser, LeaderboardEntry, LoginRequest, MemberWithUser,
+    Note, NoteWithUser, PendingPunishmentCompletion, PendingReview, PendingRewardRedemption, PointCondition,
+    Punishment, RandomPickResult, RandomRewardPickResult, RefreshTokenRequest, Reward, Task, TaskCompletion,
+    TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateAnnouncementRequest, UpdateChatMessageRequest,
+    UpdateHouseholdSettingsRequest, UpdateJournalEntryRequest, UpdateNoteRequest, UpdatePunishmentRequest,
     UpdateRewardRequest, UpdateRoleRequest, UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment,
     UserPunishmentWithUser, UserReward, UserRewardWithUser, UserSettings,
 };
@@ -798,6 +799,28 @@ impl ApiClient {
         .await
     }
 
+    /// Get the options linked to a random choice reward
+    pub async fn get_reward_options(household_id: &str, reward_id: &str) -> Result<Vec<Reward>, String> {
+        Self::request::<Vec<Reward>>(
+            "GET",
+            &format!("/households/{}/rewards/{}/options", household_id, reward_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    /// Pick a random reward from a user's random choice reward assignment
+    pub async fn pick_random_reward(household_id: &str, user_reward_id: &str) -> Result<RandomRewardPickResult, String> {
+        Self::request::<RandomRewardPickResult>(
+            "POST",
+            &format!("/households/{}/rewards/user-rewards/{}/pick", household_id, user_reward_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // Punishment endpoints
     pub async fn list_punishments(household_id: &str) -> Result<Vec<Punishment>, String> {
         Self::request::<Vec<Punishment>>(
@@ -1224,6 +1247,64 @@ impl ApiClient {
         Self::request::<()>(
             "DELETE",
             &format!("/households/{}/notes/{}", household_id, note_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // Journal endpoints
+    pub async fn list_journal_entries(household_id: &str) -> Result<Vec<JournalEntryWithUser>, String> {
+        Self::request::<Vec<JournalEntryWithUser>>(
+            "GET",
+            &format!("/households/{}/journal", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn create_journal_entry(
+        household_id: &str,
+        request: CreateJournalEntryRequest,
+    ) -> Result<JournalEntry, String> {
+        Self::request(
+            "POST",
+            &format!("/households/{}/journal", household_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn get_journal_entry(household_id: &str, entry_id: &str) -> Result<JournalEntry, String> {
+        Self::request::<JournalEntry>(
+            "GET",
+            &format!("/households/{}/journal/{}", household_id, entry_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn update_journal_entry(
+        household_id: &str,
+        entry_id: &str,
+        request: UpdateJournalEntryRequest,
+    ) -> Result<JournalEntry, String> {
+        Self::request(
+            "PUT",
+            &format!("/households/{}/journal/{}", household_id, entry_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_journal_entry(household_id: &str, entry_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/households/{}/journal/{}", household_id, entry_id),
             None::<()>,
             true,
         )

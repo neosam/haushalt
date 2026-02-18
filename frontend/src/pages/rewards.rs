@@ -114,6 +114,39 @@ pub fn RewardsPage() -> impl IntoView {
         });
     };
 
+    let on_pick_random = move |user_reward_id: String| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::pick_random_reward(&id, &user_reward_id).await {
+                Ok(result) => {
+                    // Remove or update the original random choice assignment
+                    my_rewards.update(|r| {
+                        if let Some(pos) = r.iter().position(|ur| ur.id.to_string() == user_reward_id) {
+                            if r[pos].amount <= 1 {
+                                r.remove(pos);
+                            } else {
+                                r[pos].amount -= 1;
+                            }
+                        }
+                    });
+
+                    // Add the newly assigned reward
+                    let picked_name = result.picked_reward.name.clone();
+                    let new_ur = result.user_reward;
+                    let existing_idx = my_rewards.get().iter().position(|ur| ur.reward_id == new_ur.reward_id);
+                    if let Some(idx) = existing_idx {
+                        my_rewards.update(|r| r[idx].amount += 1);
+                    } else {
+                        my_rewards.update(|r| r.push(new_ur));
+                    }
+
+                    success.set(Some(format!("{}: {}", i18n_stored.get_value().t("rewards.random_picked"), picked_name)));
+                }
+                Err(e) => error.set(Some(e)),
+            }
+        });
+    };
+
     let on_delete = move |reward_id: String| {
         let id = household_id();
         wasm_bindgen_futures::spawn_local(async move {
@@ -213,22 +246,37 @@ pub fn RewardsPage() -> impl IntoView {
                             // Only show rewards that have available redemptions or pending confirmations
                             .filter(|ur| ur.amount > ur.redeemed_amount)
                             .map(|user_reward| {
-                                let reward_name = all_rewards.iter()
-                                    .find(|r| r.id == user_reward.reward_id)
+                                let reward_info = all_rewards.iter()
+                                    .find(|r| r.id == user_reward.reward_id);
+                                let reward_name = reward_info
                                     .map(|r| r.name.clone())
                                     .unwrap_or_else(|| i18n_stored.get_value().t("rewards.unknown_reward"));
-                                let reward_desc = all_rewards.iter()
-                                    .find(|r| r.id == user_reward.reward_id)
+                                let reward_desc = reward_info
                                     .map(|r| r.description.clone())
                                     .unwrap_or_default();
+                                let is_random_choice = reward_info
+                                    .map(|r| r.reward_type.is_random_choice())
+                                    .unwrap_or(false);
                                 let ur_id = user_reward.id.to_string();
                                 let redeem_id = ur_id.clone();
+                                let pick_id = ur_id.clone();
                                 let available = user_reward.amount - user_reward.redeemed_amount - user_reward.pending_redemption;
                                 let pending = user_reward.pending_redemption;
                                 view! {
                                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
                                         <div>
-                                            <div style="font-weight: 600;">{reward_name}</div>
+                                            <div style="font-weight: 600;">
+                                                {reward_name}
+                                                {if is_random_choice {
+                                                    view! {
+                                                        <span class="badge" style="margin-left: 0.5rem; background: var(--primary-color); color: white; font-size: 0.65rem;">
+                                                            {i18n_stored.get_value().t("rewards.random_choice")}
+                                                        </span>
+                                                    }.into_view()
+                                                } else {
+                                                    view! { <span></span> }.into_view()
+                                                }}
+                                            </div>
                                             <div style="font-size: 0.75rem; color: var(--text-muted);">
                                                 {format!("{} available, {} redeemed", available, user_reward.redeemed_amount)}
                                                 {if pending > 0 { format!(", {} pending", pending) } else { String::new() }}
@@ -238,6 +286,16 @@ pub fn RewardsPage() -> impl IntoView {
                                         {if pending > 0 {
                                             view! {
                                                 <span class="badge" style="background: var(--warning-color); color: white;">{i18n_stored.get_value().t("rewards.awaiting_confirmation")}</span>
+                                            }.into_view()
+                                        } else if is_random_choice {
+                                            view! {
+                                                <button
+                                                    class="btn btn-primary"
+                                                    style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                                    on:click=move |_| on_pick_random(pick_id.clone())
+                                                >
+                                                    {i18n_stored.get_value().t("rewards.pick_one")}
+                                                </button>
                                             }.into_view()
                                         } else {
                                             view! {
@@ -308,7 +366,18 @@ pub fn RewardsPage() -> impl IntoView {
 
                                 view! {
                                     <div class="card">
-                                        <h3 class="card-title">{reward.name.clone()}</h3>
+                                        <h3 class="card-title">
+                                            {reward.name.clone()}
+                                            {if reward.reward_type.is_random_choice() {
+                                                view! {
+                                                    <span class="badge" style="margin-left: 0.5rem; background: var(--primary-color); color: white; font-size: 0.65rem;">
+                                                        {i18n_stored.get_value().t("rewards.random_choice")}
+                                                    </span>
+                                                }.into_view()
+                                            } else {
+                                                view! { <span></span> }.into_view()
+                                            }}
+                                        </h3>
                                         <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;">
                                             {reward.description.clone()}
                                         </p>
@@ -445,10 +514,12 @@ pub fn RewardsPage() -> impl IntoView {
 
         {move || modal_reward.get().map(|reward_opt| {
             let hh_id = household_id();
+            let all_rews = rewards.get();
             view! {
                 <RewardModal
                     reward=reward_opt
                     household_id=hh_id
+                    all_rewards=all_rews
                     on_close=move |_| modal_reward.set(None)
                     on_save=move |saved_reward: Reward| {
                         // Check if this is an existing reward (edit) or new (create)

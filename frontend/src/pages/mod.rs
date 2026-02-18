@@ -9,5 +9,6 @@ pub mod punishments;
 pub mod activity;
 pub mod chat;
 pub mod notes;
+pub mod journal;
 pub mod settings;
 pub mod user_settings;

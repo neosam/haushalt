@@ -1,18 +1,27 @@
 use leptos::*;
-use shared::{CreateRewardRequest, Reward, UpdateRewardRequest};
+use shared::{CreateRewardRequest, Reward, RewardType, UpdateRewardRequest};
+use uuid::Uuid;
 
 use crate::api::ApiClient;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn RewardModal(
     reward: Option<Reward>,
     household_id: String,
+    /// All rewards in the household (for option selection)
+    #[prop(default = vec![])]
+    all_rewards: Vec<Reward>,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Reward>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+    let all_rewards_stored = store_value(all_rewards);
     let is_edit = reward.is_some();
     let error = create_rw_signal(Option::<String>::None);
     let saving = create_rw_signal(false);
+    let options_loading = create_rw_signal(false);
 
     // Form fields - initialize based on mode
     let name = create_rw_signal(reward.as_ref().map(|r| r.name.clone()).unwrap_or_default());
@@ -25,8 +34,25 @@ pub fn RewardModal(
     );
     let is_purchasable = create_rw_signal(reward.as_ref().map(|r| r.is_purchasable).unwrap_or(true));
     let requires_confirmation = create_rw_signal(reward.as_ref().map(|r| r.requires_confirmation).unwrap_or(false));
+    let reward_type = create_rw_signal(reward.as_ref().map(|r| r.reward_type).unwrap_or_default());
+    let selected_options = create_rw_signal(Vec::<Uuid>::new());
 
     let reward_id = reward.as_ref().map(|r| r.id.to_string());
+
+    // Load existing options if editing a random choice reward
+    if let Some(ref rid) = reward_id {
+        if reward_type.get_untracked().is_random_choice() {
+            let rid = rid.clone();
+            let hid = household_id.clone();
+            options_loading.set(true);
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(options) = ApiClient::get_reward_options(&hid, &rid).await {
+                    selected_options.set(options.iter().map(|r| r.id).collect());
+                }
+                options_loading.set(false);
+            });
+        }
+    }
 
     let on_submit = {
         let reward_id = reward_id.clone();
@@ -34,6 +60,13 @@ pub fn RewardModal(
 
         move |ev: web_sys::SubmitEvent| {
             ev.prevent_default();
+
+            // Validate minimum options for random choice
+            if reward_type.get().is_random_choice() && selected_options.get().len() < 2 {
+                error.set(Some(i18n_stored.get_value().t("rewards.min_options_error")));
+                return;
+            }
+
             saving.set(true);
             error.set(None);
 
@@ -45,12 +78,20 @@ pub fn RewardModal(
             wasm_bindgen_futures::spawn_local(async move {
                 if let Some(reward_id) = reward_id {
                     // Edit mode - update existing reward
+                    let option_ids = if reward_type.get().is_random_choice() {
+                        Some(Some(selected_options.get()))
+                    } else {
+                        Some(None) // Clear options if not random choice
+                    };
+
                     let request = UpdateRewardRequest {
                         name: Some(name.get()),
                         description: Some(description.get()),
                         point_cost: cost,
                         is_purchasable: Some(is_purchasable.get()),
                         requires_confirmation: Some(requires_confirmation.get()),
+                        reward_type: Some(reward_type.get()),
+                        option_ids,
                     };
 
                     match ApiClient::update_reward(&household_id, &reward_id, request).await {
@@ -65,12 +106,20 @@ pub fn RewardModal(
                     }
                 } else {
                     // Create mode - create new reward
+                    let option_ids = if reward_type.get().is_random_choice() {
+                        Some(selected_options.get())
+                    } else {
+                        None
+                    };
+
                     let request = CreateRewardRequest {
                         name: name.get(),
                         description: Some(description.get()),
                         point_cost: cost,
                         is_purchasable: is_purchasable.get(),
                         requires_confirmation: Some(requires_confirmation.get()),
+                        reward_type: Some(reward_type.get()),
+                        option_ids,
                     };
 
                     match ApiClient::create_reward(&household_id, request).await {
@@ -169,6 +218,73 @@ pub fn RewardModal(
                                 <span>"Requires owner confirmation to redeem"</span>
                             </label>
                         </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="reward-type">{i18n_stored.get_value().t("rewards.type_label")}</label>
+                            <select
+                                id="reward-type"
+                                class="form-input"
+                                on:change=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    reward_type.set(value.parse().unwrap_or_default());
+                                }
+                            >
+                                <option value="standard" selected=move || reward_type.get() == RewardType::Standard>
+                                    {i18n_stored.get_value().t("rewards.type_standard")}
+                                </option>
+                                <option value="random_choice" selected=move || reward_type.get() == RewardType::RandomChoice>
+                                    {i18n_stored.get_value().t("rewards.type_random_choice")}
+                                </option>
+                            </select>
+                        </div>
+
+                        // Options selection (shown only when random choice is selected)
+                        <Show when=move || reward_type.get().is_random_choice() fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label">{i18n_stored.get_value().t("rewards.options_label")}</label>
+                                <Show when=move || options_loading.get() fallback=|| ()>
+                                    <p style="color: var(--text-muted); font-size: 0.875rem;">"Loading options..."</p>
+                                </Show>
+                                <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; padding: 0.5rem;">
+                                    {move || {
+                                        all_rewards_stored.get_value().into_iter()
+                                            // Self-reference is allowed
+                                            .map(|r| {
+                                                let option_id = r.id;
+                                                let is_selected = move || selected_options.get().contains(&option_id);
+                                                let toggle = move |_| {
+                                                    selected_options.update(|opts| {
+                                                        if opts.contains(&option_id) {
+                                                            opts.retain(|id| *id != option_id);
+                                                        } else {
+                                                            opts.push(option_id);
+                                                        }
+                                                    });
+                                                };
+                                                let random_badge = if r.reward_type.is_random_choice() {
+                                                    format!(" [{}]", i18n_stored.get_value().t("rewards.random_choice"))
+                                                } else {
+                                                    String::new()
+                                                };
+                                                view! {
+                                                    <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer;">
+                                                        <input
+                                                            type="checkbox"
+                                                            prop:checked=is_selected
+                                                            on:change=toggle
+                                                        />
+                                                        <span>{r.name.clone()}{random_badge}</span>
+                                                    </label>
+                                                }
+                                            })
+                                            .collect_view()
+                                    }}
+                                </div>
+                                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                    {move || format!("{} {}", selected_options.get().len(), i18n_stored.get_value().t("rewards.selected"))}
+                                </p>
+                            </div>
+                        </Show>
                     </div>
 
                     <div class="modal-footer">

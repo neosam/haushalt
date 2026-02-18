@@ -215,3 +215,62 @@
 ### Acceptance Criteria
 - Shows all rewards linked to the task
 - Shows the amount for each
+
+---
+
+## US-REW-018: Create Random Choice Reward
+
+**As a** household Owner or Admin
+**I want to** create a reward that references multiple other rewards
+**So that** one is randomly selected when the user receives it
+
+### Acceptance Criteria
+- Reward has `reward_type` set to `random_choice`
+- Can link multiple other rewards as options
+- At least 2 reward options must be linked
+- Options can include other random choice rewards (nesting allowed)
+- Self-reference is allowed (reward can include itself as an option)
+- Shows linked rewards when viewing the reward
+- Reward type is selected via dropdown (extensible for future types)
+
+---
+
+## US-REW-019: Link Reward Option
+
+**As a** household Owner or Admin
+**I want to** add a reward as an option to a random choice reward
+**So that** it can be randomly selected
+
+### Acceptance Criteria
+- Target reward must have `reward_type = random_choice`
+- Option can be any reward (including self and other random choice rewards)
+- Creates link between random choice reward and option
+
+---
+
+## US-REW-020: Unlink Reward Option
+
+**As a** household Owner or Admin
+**I want to** remove a reward option from a random choice reward
+**So that** it's no longer a possible selection
+
+### Acceptance Criteria
+- Link is removed
+- Random choice reward must still have at least 2 options after removal
+
+---
+
+## US-REW-021: Pick Random Reward
+
+**As a** household member with an assigned random choice reward
+**I want to** click "Pick one" to have the system randomly select a reward
+**So that** I receive a concrete reward
+
+### Acceptance Criteria
+- Only available when user has a random choice reward assigned
+- System randomly selects one of the linked reward options
+- Selected reward is assigned to the user
+- If selected reward is also a random choice, user must pick again
+- Random choice reward assignment is marked as resolved
+- Activity is logged showing which reward was selected
+- Success notification displays which reward was selected (e.g., "You got: Movie Night")

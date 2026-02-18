@@ -17,6 +17,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/user-rewards/{id}/redeem", web::post().to(redeem_reward))
             .route("/user-rewards/{id}/approve", web::post().to(approve_redemption))
             .route("/user-rewards/{id}/reject", web::post().to(reject_redemption))
+            .route("/user-rewards/{id}/pick", web::post().to(pick_random_reward))
             .route("/pending-confirmations", web::get().to(list_pending_redemptions))
             // Dynamic routes after static routes
             .route("/{reward_id}", web::get().to(get_reward))
@@ -25,6 +26,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{reward_id}/purchase", web::post().to(purchase_reward))
             .route("/{reward_id}/assign/{user_id}", web::post().to(assign_reward))
             .route("/{reward_id}/unassign/{user_id}", web::post().to(unassign_reward))
+            .route("/{reward_id}/options", web::get().to(get_reward_options))
+            .route("/{reward_id}/options/{option_id}", web::post().to(add_reward_option))
+            .route("/{reward_id}/options/{option_id}", web::delete().to(remove_reward_option))
     );
 }
 
@@ -1273,6 +1277,345 @@ async fn reject_redemption(
             log::error!("Error rejecting redemption: {:?}", e);
             Ok(HttpResponse::BadRequest().json(ApiError {
                 error: "reject_error".to_string(),
+                message: e.to_string(),
+            }))
+        }
+    }
+}
+
+// ============================================================================
+// Random Choice Reward Handlers
+// ============================================================================
+
+async fn get_reward_options(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, reward_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let reward_id = match Uuid::parse_str(&reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid reward ID format".to_string(),
+            }));
+        }
+    };
+
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if rewards feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
+    match reward_service::get_reward_options(&state.db, &reward_id).await {
+        Ok(options) => Ok(HttpResponse::Ok().json(ApiSuccess::new(options))),
+        Err(e) => {
+            log::error!("Error getting reward options: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to get reward options".to_string(),
+            }))
+        }
+    }
+}
+
+async fn add_reward_option(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, reward_id_str, option_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let reward_id = match Uuid::parse_str(&reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid reward ID format".to_string(),
+            }));
+        }
+    };
+
+    let option_id = match Uuid::parse_str(&option_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid option ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to manage reward options".to_string(),
+        }));
+    }
+
+    match reward_service::add_reward_option(&state.db, &reward_id, &option_id).await {
+        Ok(option) => Ok(HttpResponse::Created().json(ApiSuccess::new(option))),
+        Err(e) => {
+            log::error!("Error adding reward option: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "option_error".to_string(),
+                message: e.to_string(),
+            }))
+        }
+    }
+}
+
+async fn remove_reward_option(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, reward_id_str, option_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let reward_id = match Uuid::parse_str(&reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid reward ID format".to_string(),
+            }));
+        }
+    };
+
+    let option_id = match Uuid::parse_str(&option_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid option ID format".to_string(),
+            }));
+        }
+    };
+
+    // Get settings for hierarchy-aware permissions
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to manage reward options".to_string(),
+        }));
+    }
+
+    match reward_service::remove_reward_option(&state.db, &reward_id, &option_id).await {
+        Ok(_) => Ok(HttpResponse::NoContent().finish()),
+        Err(e) => {
+            log::error!("Error removing reward option: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "option_error".to_string(),
+                message: e.to_string(),
+            }))
+        }
+    }
+}
+
+async fn pick_random_reward(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, user_reward_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let user_reward_id = match Uuid::parse_str(&user_reward_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid user reward ID format".to_string(),
+            }));
+        }
+    };
+
+    if !household_service::is_member(&state.db, &household_id, &user_id).await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    // Check if rewards feature is enabled
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+    if !settings.rewards_enabled {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "feature_disabled".to_string(),
+            message: "Rewards are not enabled for this household".to_string(),
+        }));
+    }
+
+    match reward_service::pick_random_reward(&state.db, &user_reward_id, &user_id).await {
+        Ok(result) => {
+            // Log activity
+            let details = serde_json::json!({ "picked_reward": result.picked_reward.name }).to_string();
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                Some(&user_id),
+                ActivityType::RewardRandomPicked,
+                Some("reward"),
+                Some(&result.picked_reward.id),
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(result)))
+        }
+        Err(e) => {
+            log::error!("Error picking random reward: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "pick_error".to_string(),
                 message: e.to_string(),
             }))
         }

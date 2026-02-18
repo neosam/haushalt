@@ -74,6 +74,10 @@ flowchart TB
                 RUM[GET /users/me]
                 RUA[GET /users]
                 RPE[GET /pending]
+                RO[GET /{id}/options]
+                ROA[POST /{id}/options/{option_id}]
+                ROD[DELETE /{id}/options/{option_id}]
+                RPK[POST /user-rewards/{id}/pick]
             end
 
             subgraph "/punishments"
@@ -112,6 +116,14 @@ flowchart TB
                 NG[GET /{id}]
                 NU[PUT /{id}]
                 NDD[DELETE /{id}]
+            end
+
+            subgraph "/journal"
+                JL[GET /]
+                JC[POST /]
+                JG[GET /{id}]
+                JU[PUT /{id}]
+                JDD[DELETE /{id}]
             end
 
             subgraph "/announcements"

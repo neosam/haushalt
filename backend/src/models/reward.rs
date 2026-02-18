@@ -13,6 +13,7 @@ pub struct RewardRow {
     pub point_cost: Option<i64>,
     pub is_purchasable: bool,
     pub requires_confirmation: bool,
+    pub reward_type: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -26,6 +27,7 @@ impl RewardRow {
             point_cost: self.point_cost,
             is_purchasable: self.is_purchasable,
             requires_confirmation: self.requires_confirmation,
+            reward_type: self.reward_type.parse().unwrap_or_default(),
             created_at: self.created_at,
         }
     }
@@ -41,6 +43,7 @@ pub struct TaskRewardRow {
     pub point_cost: Option<i64>,
     pub is_purchasable: bool,
     pub requires_confirmation: bool,
+    pub reward_type: String,
     pub created_at: DateTime<Utc>,
     pub amount: i32,
 }
@@ -56,6 +59,7 @@ impl TaskRewardRow {
                 point_cost: self.point_cost,
                 is_purchasable: self.is_purchasable,
                 requires_confirmation: self.requires_confirmation,
+                reward_type: self.reward_type.parse().unwrap_or_default(),
                 created_at: self.created_at,
             },
             amount: self.amount,
@@ -91,6 +95,28 @@ impl UserRewardRow {
     }
 }
 
+/// Database model for reward options (links random choice reward to its options)
+#[allow(dead_code)]
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct RewardOptionRow {
+    pub id: String,
+    pub parent_reward_id: String,
+    pub option_reward_id: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl RewardOptionRow {
+    #[allow(dead_code)]
+    pub fn to_shared(&self) -> shared::RewardOption {
+        shared::RewardOption {
+            id: Uuid::parse_str(&self.id).unwrap(),
+            parent_reward_id: Uuid::parse_str(&self.parent_reward_id).unwrap(),
+            option_reward_id: Uuid::parse_str(&self.option_reward_id).unwrap(),
+            created_at: self.created_at,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +135,7 @@ mod tests {
             point_cost: Some(100),
             is_purchasable: true,
             requires_confirmation: false,
+            reward_type: "standard".to_string(),
             created_at: now,
         };
 
@@ -120,6 +147,52 @@ mod tests {
         assert_eq!(shared.point_cost, Some(100));
         assert!(shared.is_purchasable);
         assert!(!shared.requires_confirmation);
+        assert_eq!(shared.reward_type, shared::RewardType::Standard);
+    }
+
+    #[test]
+    fn test_reward_row_random_choice_to_shared() {
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+        let household_id = Uuid::new_v4();
+
+        let row = RewardRow {
+            id: id.to_string(),
+            household_id: household_id.to_string(),
+            name: "Random Reward".to_string(),
+            description: "Pick one randomly".to_string(),
+            point_cost: None,
+            is_purchasable: false,
+            requires_confirmation: false,
+            reward_type: "random_choice".to_string(),
+            created_at: now,
+        };
+
+        let shared = row.to_shared();
+
+        assert_eq!(shared.reward_type, shared::RewardType::RandomChoice);
+        assert!(shared.reward_type.is_random_choice());
+    }
+
+    #[test]
+    fn test_reward_option_row_to_shared() {
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+        let parent_id = Uuid::new_v4();
+        let option_id = Uuid::new_v4();
+
+        let row = RewardOptionRow {
+            id: id.to_string(),
+            parent_reward_id: parent_id.to_string(),
+            option_reward_id: option_id.to_string(),
+            created_at: now,
+        };
+
+        let shared = row.to_shared();
+
+        assert_eq!(shared.id, id);
+        assert_eq!(shared.parent_reward_id, parent_id);
+        assert_eq!(shared.option_reward_id, option_id);
     }
 
     #[test]

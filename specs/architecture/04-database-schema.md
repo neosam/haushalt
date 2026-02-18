@@ -11,6 +11,7 @@ erDiagram
     users ||--o{ user_punishments : receives
     users ||--o{ chat_messages : sends
     users ||--o{ notes : creates
+    users ||--o{ journal_entries : writes
     users ||--o{ announcements : creates
     users ||--o{ activity_logs : performs
     users ||--o{ refresh_tokens : has
@@ -27,6 +28,7 @@ erDiagram
     households ||--o{ household_invitations : has
     households ||--o{ chat_messages : contains
     households ||--o{ notes : contains
+    households ||--o{ journal_entries : contains
     households ||--o{ announcements : contains
     households ||--o{ activity_logs : logs
     households ||--|| household_settings : has
@@ -39,6 +41,8 @@ erDiagram
 
     rewards ||--o{ task_rewards : linked_to
     rewards ||--o{ user_rewards : assigned_to
+    rewards ||--o{ reward_options : has_options
+    reward_options }o--|| rewards : option_is
 
     punishments ||--o{ task_punishments : linked_to
     punishments ||--o{ user_punishments : assigned_to
@@ -120,6 +124,14 @@ erDiagram
         INTEGER point_cost
         BOOLEAN is_purchasable
         BOOLEAN requires_confirmation
+        TEXT reward_type
+        DATETIME created_at
+    }
+
+    reward_options {
+        TEXT id PK
+        TEXT parent_reward_id FK
+        TEXT option_reward_id FK
         DATETIME created_at
     }
 
@@ -246,6 +258,18 @@ erDiagram
         TEXT user_id FK
         TEXT title
         TEXT content
+        BOOLEAN is_shared
+        DATETIME created_at
+        DATETIME updated_at
+    }
+
+    journal_entries {
+        TEXT id PK
+        TEXT household_id FK
+        TEXT user_id FK
+        TEXT title
+        TEXT content
+        DATE entry_date
         BOOLEAN is_shared
         DATETIME created_at
         DATETIME updated_at

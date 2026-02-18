@@ -8,6 +8,7 @@ pub enum HouseholdTab {
     Overview,
     Tasks,
     Notes,
+    Journal,
     Rewards,
     Punishments,
     Chat,
@@ -21,6 +22,7 @@ impl HouseholdTab {
             HouseholdTab::Overview => "tabs.overview",
             HouseholdTab::Tasks => "tabs.tasks",
             HouseholdTab::Notes => "tabs.notes",
+            HouseholdTab::Journal => "tabs.journal",
             HouseholdTab::Rewards => "tabs.rewards",
             HouseholdTab::Punishments => "tabs.punishments",
             HouseholdTab::Chat => "tabs.chat",
@@ -34,6 +36,7 @@ impl HouseholdTab {
             HouseholdTab::Overview => format!("/households/{}", household_id),
             HouseholdTab::Tasks => format!("/households/{}/tasks", household_id),
             HouseholdTab::Notes => format!("/households/{}/notes", household_id),
+            HouseholdTab::Journal => format!("/households/{}/journal", household_id),
             HouseholdTab::Rewards => format!("/households/{}/rewards", household_id),
             HouseholdTab::Punishments => format!("/households/{}/punishments", household_id),
             HouseholdTab::Chat => format!("/households/{}/chat", household_id),
@@ -58,6 +61,7 @@ pub fn HouseholdTabs(
             HouseholdTab::Overview,
             HouseholdTab::Tasks,
             HouseholdTab::Notes,
+            HouseholdTab::Journal,
         ];
         if let Some(ref s) = settings {
             if s.rewards_enabled {

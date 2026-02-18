@@ -688,6 +688,42 @@ pub struct UpdatePointConditionRequest {
 // Reward Types
 // ============================================================================
 
+/// Type of reward determining its behavior
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RewardType {
+    /// Standard reward: describes what the reward is
+    #[default]
+    Standard,
+    /// Random choice: links to multiple rewards, user picks one randomly
+    RandomChoice,
+}
+
+impl RewardType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RewardType::Standard => "standard",
+            RewardType::RandomChoice => "random_choice",
+        }
+    }
+
+    pub fn is_random_choice(&self) -> bool {
+        matches!(self, RewardType::RandomChoice)
+    }
+}
+
+impl FromStr for RewardType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "standard" => Ok(RewardType::Standard),
+            "random_choice" => Ok(RewardType::RandomChoice),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reward {
     pub id: Uuid,
@@ -697,6 +733,7 @@ pub struct Reward {
     pub point_cost: Option<i64>,
     pub is_purchasable: bool,
     pub requires_confirmation: bool,
+    pub reward_type: RewardType,
     pub created_at: DateTime<Utc>,
 }
 
@@ -707,6 +744,8 @@ pub struct CreateRewardRequest {
     pub point_cost: Option<i64>,
     pub is_purchasable: bool,
     pub requires_confirmation: Option<bool>,
+    pub reward_type: Option<RewardType>,
+    pub option_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -716,6 +755,9 @@ pub struct UpdateRewardRequest {
     pub point_cost: Option<i64>,
     pub is_purchasable: Option<bool>,
     pub requires_confirmation: Option<bool>,
+    pub reward_type: Option<RewardType>,
+    /// None = no change, Some(None) = clear all options, Some(vec) = set options
+    pub option_ids: Option<Option<Vec<Uuid>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -740,6 +782,21 @@ pub struct UserRewardWithDetails {
 pub struct UserRewardWithUser {
     pub user_reward: UserReward,
     pub user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RewardOption {
+    pub id: Uuid,
+    pub parent_reward_id: Uuid,
+    pub option_reward_id: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Result of picking a random reward option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RandomRewardPickResult {
+    pub picked_reward: Reward,
+    pub user_reward: UserReward,
 }
 
 // ============================================================================
@@ -1042,6 +1099,7 @@ pub enum ActivityType {
     RewardRedeemed,
     RewardRedemptionApproved,
     RewardRedemptionRejected,
+    RewardRandomPicked,
 
     // Punishment events
     PunishmentCreated,
@@ -1083,6 +1141,7 @@ impl ActivityType {
             ActivityType::RewardRedeemed => "reward_redeemed",
             ActivityType::RewardRedemptionApproved => "reward_redemption_approved",
             ActivityType::RewardRedemptionRejected => "reward_redemption_rejected",
+            ActivityType::RewardRandomPicked => "reward_random_picked",
             ActivityType::PunishmentCreated => "punishment_created",
             ActivityType::PunishmentDeleted => "punishment_deleted",
             ActivityType::PunishmentAssigned => "punishment_assigned",
@@ -1120,6 +1179,7 @@ impl FromStr for ActivityType {
             "reward_redeemed" => Ok(ActivityType::RewardRedeemed),
             "reward_redemption_approved" => Ok(ActivityType::RewardRedemptionApproved),
             "reward_redemption_rejected" => Ok(ActivityType::RewardRedemptionRejected),
+            "reward_random_picked" => Ok(ActivityType::RewardRandomPicked),
             "punishment_created" => Ok(ActivityType::PunishmentCreated),
             "punishment_deleted" => Ok(ActivityType::PunishmentDeleted),
             "punishment_assigned" => Ok(ActivityType::PunishmentAssigned),
@@ -1307,6 +1367,45 @@ pub struct CreateNoteRequest {
 pub struct UpdateNoteRequest {
     pub title: Option<String>,
     pub content: Option<String>,
+    pub is_shared: Option<bool>,
+}
+
+// ============================================================================
+// Journal Entry Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JournalEntry {
+    pub id: Uuid,
+    pub household_id: Uuid,
+    pub user_id: Uuid,
+    pub title: String,
+    pub content: String,
+    pub entry_date: NaiveDate,
+    pub is_shared: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JournalEntryWithUser {
+    pub entry: JournalEntry,
+    pub user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateJournalEntryRequest {
+    pub title: Option<String>,
+    pub content: String,
+    pub entry_date: Option<NaiveDate>,
+    pub is_shared: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateJournalEntryRequest {
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub entry_date: Option<NaiveDate>,
     pub is_shared: Option<bool>,
 }
 
@@ -1659,5 +1758,31 @@ mod tests {
     #[test]
     fn test_punishment_type_default() {
         assert_eq!(PunishmentType::default(), PunishmentType::Standard);
+    }
+
+    #[test]
+    fn test_reward_type_from_str() {
+        assert_eq!("standard".parse(), Ok(RewardType::Standard));
+        assert_eq!("STANDARD".parse(), Ok(RewardType::Standard));
+        assert_eq!("random_choice".parse(), Ok(RewardType::RandomChoice));
+        assert_eq!("RANDOM_CHOICE".parse(), Ok(RewardType::RandomChoice));
+        assert!("invalid".parse::<RewardType>().is_err());
+    }
+
+    #[test]
+    fn test_reward_type_as_str() {
+        assert_eq!(RewardType::Standard.as_str(), "standard");
+        assert_eq!(RewardType::RandomChoice.as_str(), "random_choice");
+    }
+
+    #[test]
+    fn test_reward_type_is_random_choice() {
+        assert!(!RewardType::Standard.is_random_choice());
+        assert!(RewardType::RandomChoice.is_random_choice());
+    }
+
+    #[test]
+    fn test_reward_type_default() {
+        assert_eq!(RewardType::default(), RewardType::Standard);
     }
 }

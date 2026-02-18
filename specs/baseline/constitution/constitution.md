@@ -163,7 +163,26 @@ Database Layer (SQLx + SQLite)
 - Name, description, point cost
 - `is_purchasable`: Purchasable with points?
 - `requires_confirmation`: Approval required?
+- `reward_type`: Type of reward (extensible enum)
 - Linkable to tasks (automatic assignment)
+
+#### Reward Types
+
+| Type | Description |
+|------|-------------|
+| Standard | Default type - describes what the reward is |
+| RandomChoice | Container for other rewards, user picks randomly |
+
+#### Random Choice Rewards
+
+- `reward_type = random_choice`: Reward is a container for other rewards
+- Links to multiple other rewards as options (minimum 2)
+- Self-reference is allowed (reward can include itself as an option)
+- When assigned, user sees "Pick one" button
+- Clicking randomly selects one option and assigns it to the user
+- Options can include other random choice rewards (nesting allowed)
+- If nested random choice is selected, user picks again
+- Success notification shows which reward was selected
 
 ### 5.4 Punishments
 
@@ -300,6 +319,7 @@ UNIQUE(task_id, user_id, due_date)
 - `invitations`: Invitations
 - `chat_messages`: Chat messages
 - `notes`: Notes
+- `journal_entries`: Personal journal entries
 - `announcements`: Announcements
 - `activity_logs`: Activity log
 - `household_settings`: Household settings
@@ -359,6 +379,10 @@ UNIQUE(task_id, user_id, due_date)
 | POST | `/households/{id}/punishments` | Create |
 | POST | `/rewards/{id}/redeem` | Redeem |
 | POST | `/punishments/{id}/complete` | Complete |
+| GET | `/rewards/{id}/options` | Get reward options |
+| POST | `/rewards/{id}/options/{option_id}` | Add reward option |
+| DELETE | `/rewards/{id}/options/{option_id}` | Remove reward option |
+| POST | `/user-rewards/{id}/pick` | Pick random reward |
 | GET | `/punishments/{id}/options` | Get punishment options |
 | POST | `/punishments/{id}/options/{option_id}` | Add punishment option |
 | DELETE | `/punishments/{id}/options/{option_id}` | Remove punishment option |
@@ -374,6 +398,11 @@ UNIQUE(task_id, user_id, due_date)
 | GET | `/households/{id}/notes` | Notes |
 | GET | `/households/{id}/announcements` | Announcements |
 | GET | `/households/{id}/activity` | Activity log |
+| GET | `/households/{id}/journal` | List journal entries |
+| POST | `/households/{id}/journal` | Create journal entry |
+| GET | `/journal/{id}` | Get journal entry |
+| PUT | `/journal/{id}` | Update journal entry |
+| DELETE | `/journal/{id}` | Delete journal entry |
 
 ---
 
@@ -392,6 +421,7 @@ UNIQUE(task_id, user_id, due_date)
 | `/households/:id/punishments` | Punishments | Punishments |
 | `/households/:id/chat` | Chat | Real-time chat |
 | `/households/:id/notes` | Notes | Notes |
+| `/households/:id/journal` | Journal | Personal journal entries |
 | `/households/:id/activity` | Activity | Activity log |
 | `/households/:id/settings` | Settings | Settings |
 | `/user-settings` | UserSettings | User settings |

@@ -19,6 +19,7 @@ pub mod invitation;
 pub mod activity_log;
 pub mod chat_message;
 pub mod note;
+pub mod journal;
 pub mod announcement;
 pub mod refresh_token;
 
@@ -37,6 +38,7 @@ pub use invitation::*;
 pub use activity_log::*;
 pub use chat_message::*;
 pub use note::*;
+pub use journal::*;
 pub use announcement::*;
 pub use refresh_token::*;
 

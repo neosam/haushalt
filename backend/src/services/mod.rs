@@ -15,4 +15,5 @@ pub mod activity_logs;
 pub mod chat;
 pub mod websocket;
 pub mod notes;
+pub mod journal;
 pub mod announcements;

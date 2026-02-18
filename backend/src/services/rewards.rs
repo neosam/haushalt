@@ -1,11 +1,12 @@
 use chrono::Utc;
+use rand::seq::SliceRandom;
 use sqlx::SqlitePool;
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{RewardRow, UserRewardRow};
 use crate::services::households;
-use shared::{CreateRewardRequest, PendingRewardRedemption, Reward, UpdateRewardRequest, User, UserReward, UserRewardWithUser};
+use shared::{CreateRewardRequest, PendingRewardRedemption, RandomRewardPickResult, Reward, RewardType, UpdateRewardRequest, User, UserReward, UserRewardWithUser};
 
 #[derive(Debug, Error)]
 pub enum RewardError {
@@ -21,6 +22,12 @@ pub enum RewardError {
     NothingToRedeem,
     #[error("No pending redemptions")]
     NothingPending,
+    #[error("Reward is not a random choice type")]
+    NotRandomChoice,
+    #[error("Random choice reward requires at least 2 options")]
+    InsufficientOptions,
+    #[error("Random choice reward has no options")]
+    NoOptions,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
     #[error("Household error: {0}")]
@@ -35,11 +42,20 @@ pub async fn create_reward(
     let id = Uuid::new_v4();
     let now = Utc::now();
     let requires_confirmation = request.requires_confirmation.unwrap_or(false);
+    let reward_type = request.reward_type.unwrap_or_default();
+
+    // Validate random choice has at least 2 options
+    if reward_type.is_random_choice() {
+        let option_count = request.option_ids.as_ref().map(|v| v.len()).unwrap_or(0);
+        if option_count < 2 {
+            return Err(RewardError::InsufficientOptions);
+        }
+    }
 
     sqlx::query(
         r#"
-        INSERT INTO rewards (id, household_id, name, description, point_cost, is_purchasable, requires_confirmation, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO rewards (id, household_id, name, description, point_cost, is_purchasable, requires_confirmation, reward_type, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -49,9 +65,17 @@ pub async fn create_reward(
     .bind(request.point_cost)
     .bind(request.is_purchasable)
     .bind(requires_confirmation)
+    .bind(reward_type.as_str())
     .bind(now)
     .execute(pool)
     .await?;
+
+    // Add options if provided
+    if let Some(ref option_ids) = request.option_ids {
+        for option_id in option_ids {
+            add_reward_option_internal(pool, &id, option_id, now).await?;
+        }
+    }
 
     Ok(Reward {
         id,
@@ -61,6 +85,7 @@ pub async fn create_reward(
         point_cost: request.point_cost,
         is_purchasable: request.is_purchasable,
         requires_confirmation,
+        reward_type,
         created_at: now,
     })
 }
@@ -111,15 +136,50 @@ pub async fn update_reward(
     if let Some(requires_confirmation) = request.requires_confirmation {
         reward.requires_confirmation = requires_confirmation;
     }
+    if let Some(reward_type) = request.reward_type {
+        reward.reward_type = reward_type.as_str().to_string();
+    }
+
+    // Handle option_ids update
+    if let Some(ref option_ids_opt) = request.option_ids {
+        let reward_type: RewardType = reward.reward_type.parse().unwrap_or_default();
+        match option_ids_opt {
+            None => {
+                // Clear all options
+                sqlx::query("DELETE FROM reward_options WHERE parent_reward_id = ?")
+                    .bind(reward_id.to_string())
+                    .execute(pool)
+                    .await?;
+            }
+            Some(option_ids) => {
+                // Validate minimum options if random choice
+                if reward_type.is_random_choice() && option_ids.len() < 2 {
+                    return Err(RewardError::InsufficientOptions);
+                }
+
+                // Clear existing and set new options
+                sqlx::query("DELETE FROM reward_options WHERE parent_reward_id = ?")
+                    .bind(reward_id.to_string())
+                    .execute(pool)
+                    .await?;
+
+                let now = chrono::Utc::now();
+                for option_id in option_ids {
+                    add_reward_option_internal(pool, reward_id, option_id, now).await?;
+                }
+            }
+        }
+    }
 
     sqlx::query(
-        "UPDATE rewards SET name = ?, description = ?, point_cost = ?, is_purchasable = ?, requires_confirmation = ? WHERE id = ?",
+        "UPDATE rewards SET name = ?, description = ?, point_cost = ?, is_purchasable = ?, requires_confirmation = ?, reward_type = ? WHERE id = ?",
     )
     .bind(&reward.name)
     .bind(&reward.description)
     .bind(reward.point_cost)
     .bind(reward.is_purchasable)
     .bind(reward.requires_confirmation)
+    .bind(&reward.reward_type)
     .bind(reward_id.to_string())
     .execute(pool)
     .await?;
@@ -136,6 +196,13 @@ pub async fn delete_reward(pool: &SqlitePool, reward_id: &Uuid) -> Result<(), Re
 
     // Delete task associations
     sqlx::query("DELETE FROM task_rewards WHERE reward_id = ?")
+        .bind(reward_id.to_string())
+        .execute(pool)
+        .await?;
+
+    // Delete reward options (both as parent and as option)
+    sqlx::query("DELETE FROM reward_options WHERE parent_reward_id = ? OR option_reward_id = ?")
+        .bind(reward_id.to_string())
         .bind(reward_id.to_string())
         .execute(pool)
         .await?;
@@ -457,6 +524,7 @@ pub async fn list_pending_redemptions(
         r_point_cost: Option<i64>,
         r_is_purchasable: bool,
         r_requires_confirmation: bool,
+        r_reward_type: String,
         r_created_at: chrono::DateTime<chrono::Utc>,
         // user fields
         u_id: String,
@@ -476,7 +544,7 @@ pub async fn list_pending_redemptions(
             r.id as r_id, r.household_id as r_household_id, r.name as r_name,
             r.description as r_description, r.point_cost as r_point_cost,
             r.is_purchasable as r_is_purchasable, r.requires_confirmation as r_requires_confirmation,
-            r.created_at as r_created_at,
+            r.reward_type as r_reward_type, r.created_at as r_created_at,
             u.id as u_id, u.username as u_username, u.email as u_email,
             u.created_at as u_created_at, u.updated_at as u_updated_at
         FROM user_rewards ur
@@ -511,6 +579,7 @@ pub async fn list_pending_redemptions(
                 point_cost: row.r_point_cost,
                 is_purchasable: row.r_is_purchasable,
                 requires_confirmation: row.r_requires_confirmation,
+                reward_type: row.r_reward_type.parse().unwrap_or_default(),
                 created_at: row.r_created_at,
             },
             user: User {
@@ -587,6 +656,182 @@ pub async fn reject_redemption(
     Ok(result)
 }
 
+// ============================================================================
+// Random Choice Reward Functions
+// ============================================================================
+
+/// Internal helper to add a reward option
+async fn add_reward_option_internal(
+    pool: &SqlitePool,
+    parent_reward_id: &Uuid,
+    option_reward_id: &Uuid,
+    created_at: chrono::DateTime<chrono::Utc>,
+) -> Result<(), RewardError> {
+    let id = Uuid::new_v4();
+
+    sqlx::query(
+        r#"
+        INSERT INTO reward_options (id, parent_reward_id, option_reward_id, created_at)
+        VALUES (?, ?, ?, ?)
+        "#,
+    )
+    .bind(id.to_string())
+    .bind(parent_reward_id.to_string())
+    .bind(option_reward_id.to_string())
+    .bind(created_at)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Add a reward as an option to a random choice reward
+pub async fn add_reward_option(
+    pool: &SqlitePool,
+    parent_reward_id: &Uuid,
+    option_reward_id: &Uuid,
+) -> Result<shared::RewardOption, RewardError> {
+    // Verify parent reward exists and is random choice type
+    let parent = get_reward(pool, parent_reward_id).await?.ok_or(RewardError::NotFound)?;
+    if !parent.reward_type.is_random_choice() {
+        return Err(RewardError::NotRandomChoice);
+    }
+
+    // Verify option reward exists
+    let _option = get_reward(pool, option_reward_id).await?.ok_or(RewardError::NotFound)?;
+
+    let id = Uuid::new_v4();
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        INSERT INTO reward_options (id, parent_reward_id, option_reward_id, created_at)
+        VALUES (?, ?, ?, ?)
+        "#,
+    )
+    .bind(id.to_string())
+    .bind(parent_reward_id.to_string())
+    .bind(option_reward_id.to_string())
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(shared::RewardOption {
+        id,
+        parent_reward_id: *parent_reward_id,
+        option_reward_id: *option_reward_id,
+        created_at: now,
+    })
+}
+
+/// Get all reward options for a random choice reward
+pub async fn get_reward_options(
+    pool: &SqlitePool,
+    reward_id: &Uuid,
+) -> Result<Vec<Reward>, RewardError> {
+    let rewards: Vec<RewardRow> = sqlx::query_as(
+        r#"
+        SELECT r.*
+        FROM rewards r
+        JOIN reward_options ro ON r.id = ro.option_reward_id
+        WHERE ro.parent_reward_id = ?
+        ORDER BY r.name ASC
+        "#,
+    )
+    .bind(reward_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rewards.into_iter().map(|r| r.to_shared()).collect())
+}
+
+/// Remove a reward option from a random choice reward
+pub async fn remove_reward_option(
+    pool: &SqlitePool,
+    parent_reward_id: &Uuid,
+    option_reward_id: &Uuid,
+) -> Result<(), RewardError> {
+    // Count current options
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM reward_options WHERE parent_reward_id = ?",
+    )
+    .bind(parent_reward_id.to_string())
+    .fetch_one(pool)
+    .await?;
+
+    // Cannot remove if it would leave less than 2 options
+    if count <= 2 {
+        return Err(RewardError::InsufficientOptions);
+    }
+
+    sqlx::query(
+        "DELETE FROM reward_options WHERE parent_reward_id = ? AND option_reward_id = ?",
+    )
+    .bind(parent_reward_id.to_string())
+    .bind(option_reward_id.to_string())
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Pick a random reward from a random choice reward
+pub async fn pick_random_reward(
+    pool: &SqlitePool,
+    user_reward_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<RandomRewardPickResult, RewardError> {
+    // Get the user_reward
+    let user_reward: UserRewardRow = sqlx::query_as("SELECT * FROM user_rewards WHERE id = ?")
+        .bind(user_reward_id.to_string())
+        .fetch_optional(pool)
+        .await?
+        .ok_or(RewardError::UserRewardNotFound)?;
+
+    // Verify ownership
+    if user_reward.user_id != user_id.to_string() {
+        return Err(RewardError::UserRewardNotFound);
+    }
+
+    // Check there's something to pick
+    let available = user_reward.amount - user_reward.redeemed_amount - user_reward.pending_redemption;
+    if available <= 0 {
+        return Err(RewardError::NothingToRedeem);
+    }
+
+    // Get the reward
+    let reward_id = Uuid::parse_str(&user_reward.reward_id).unwrap();
+    let reward = get_reward(pool, &reward_id).await?.ok_or(RewardError::NotFound)?;
+
+    // Verify it's a random choice reward
+    if !reward.reward_type.is_random_choice() {
+        return Err(RewardError::NotRandomChoice);
+    }
+
+    // Get all options
+    let options = get_reward_options(pool, &reward_id).await?;
+    if options.is_empty() {
+        return Err(RewardError::NoOptions);
+    }
+
+    // Randomly select one
+    let mut rng = rand::thread_rng();
+    let picked = options.choose(&mut rng).ok_or(RewardError::NoOptions)?;
+
+    let household_id = Uuid::parse_str(&user_reward.household_id).unwrap();
+
+    // Assign the picked reward to the user
+    let new_user_reward = assign_reward(pool, &picked.id, user_id, &household_id).await?;
+
+    // Decrement the random choice reward assignment
+    unassign_reward(pool, &reward_id, user_id, &household_id).await?;
+
+    Ok(RandomRewardPickResult {
+        picked_reward: picked.clone(),
+        user_reward: new_user_reward,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -596,5 +841,8 @@ mod tests {
         assert_eq!(RewardError::NotFound.to_string(), "Reward not found");
         assert_eq!(RewardError::NotPurchasable.to_string(), "Reward is not purchasable");
         assert_eq!(RewardError::InsufficientPoints.to_string(), "Insufficient points");
+        assert_eq!(RewardError::NotRandomChoice.to_string(), "Reward is not a random choice type");
+        assert_eq!(RewardError::InsufficientOptions.to_string(), "Random choice reward requires at least 2 options");
+        assert_eq!(RewardError::NoOptions.to_string(), "Random choice reward has no options");
     }
 }
