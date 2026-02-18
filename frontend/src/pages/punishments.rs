@@ -5,6 +5,7 @@ use shared::{HouseholdSettings, MemberWithUser, Punishment, UserPunishment, User
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::components::markdown::MarkdownView;
 use crate::components::punishment_modal::PunishmentModal;
 use crate::i18n::use_i18n;
 
@@ -269,8 +270,12 @@ pub fn PunishmentsPage() -> impl IntoView {
                                             <div style="font-size: 0.75rem; color: var(--text-muted);">
                                                 {format!("{} remaining, {} completed", available, user_punishment.completed_amount)}
                                                 {if pending_conf > 0 { format!(", {} pending confirmation", pending_conf) } else { String::new() }}
-                                                {if !punishment_desc.is_empty() { format!(" • {}", punishment_desc) } else { String::new() }}
                                             </div>
+                                            {if !punishment_desc.is_empty() {
+                                                view! { <MarkdownView content=punishment_desc.clone() /> }.into_view()
+                                            } else {
+                                                ().into_view()
+                                            }}
                                         </div>
                                         {if pending_conf > 0 {
                                             view! {
@@ -366,9 +371,11 @@ pub fn PunishmentsPage() -> impl IntoView {
                                                 view! { <span></span> }.into_view()
                                             }}
                                         </h3>
-                                        <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;">
-                                            {punishment.description.clone()}
-                                        </p>
+                                        {if !punishment.description.is_empty() {
+                                            view! { <MarkdownView content=punishment.description.clone() /> }.into_view()
+                                        } else {
+                                            ().into_view()
+                                        }}
 
                                         // Assignments section
                                         <div style="border-top: 1px solid var(--border-color); padding-top: 0.5rem; margin-top: 0.5rem;">

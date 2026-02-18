@@ -7,7 +7,7 @@
 **So that** household members can complete it
 
 ### Acceptance Criteria
-- Task has a title and optional description
+- Task has a title and optional description (stored in markdown format, entered via multiline textarea)
 - Can set recurrence type:
   - Daily
   - Weekly (with specific day of week)

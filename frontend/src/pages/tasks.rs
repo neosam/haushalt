@@ -7,6 +7,7 @@ use crate::components::category_modal::CategoryModal;
 use crate::components::context_menu::{ContextMenu, ContextMenuAction};
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::components::markdown::MarkdownView;
 use crate::components::pending_reviews::PendingReviews;
 use crate::components::task_modal::TaskModal;
 use crate::i18n::use_i18n;
@@ -280,12 +281,12 @@ pub fn TasksPage() -> impl IntoView {
                                         <div class="task-title">{task.title.clone()}</div>
                                         <div class="task-meta">
                                             {format!("{:?}", task.recurrence_type)}
-                                            {if !task.description.is_empty() {
-                                                format!(" | {}", task.description)
-                                            } else {
-                                                String::new()
-                                            }}
                                         </div>
+                                        {if !task.description.is_empty() {
+                                            view! { <MarkdownView content=task.description.clone() /> }.into_view()
+                                        } else {
+                                            ().into_view()
+                                        }}
                                     </div>
                                 </div>
                             }
@@ -385,12 +386,12 @@ pub fn TasksPage() -> impl IntoView {
                                                 } else {
                                                     String::new()
                                                 }}
-                                                {if !task.description.is_empty() {
-                                                    format!(" | {}", task.description)
-                                                } else {
-                                                    String::new()
-                                                }}
                                             </div>
+                                            {if !task.description.is_empty() {
+                                                view! { <MarkdownView content=task.description.clone() /> }.into_view()
+                                            } else {
+                                                ().into_view()
+                                            }}
                                         </div>
                                         <ContextMenu actions=actions />
                                     </div>
@@ -464,12 +465,12 @@ pub fn TasksPage() -> impl IntoView {
                                                 } else {
                                                     String::new()
                                                 }}
-                                                {if !task.description.is_empty() {
-                                                    format!(" | {}", task.description)
-                                                } else {
-                                                    String::new()
-                                                }}
                                             </div>
+                                            {if !task.description.is_empty() {
+                                                view! { <MarkdownView content=task.description.clone() /> }.into_view()
+                                            } else {
+                                                ().into_view()
+                                            }}
                                         </div>
                                         <ContextMenu actions=actions />
                                     </div>

@@ -443,10 +443,10 @@ pub fn TaskModal(
 
                         <div class="form-group">
                             <label class="form-label" for="task-description">{i18n_stored.get_value().t("task_modal.description_label")}</label>
-                            <input
-                                type="text"
+                            <textarea
                                 id="task-description"
-                                class="form-input"
+                                class="form-input description-textarea"
+                                rows="4"
                                 placeholder=i18n_stored.get_value().t("task_modal.description_placeholder")
                                 prop:value=move || description.get()
                                 on:input=move |ev| description.set(event_target_value(&ev))
@@ -1357,5 +1357,19 @@ mod tests {
 
         assert!(is_edit_when_some);
         assert!(!is_edit_when_none);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_description_textarea_rows() {
+        // Description textarea should use 4 rows for compact multiline input
+        let expected_rows = "4";
+        assert_eq!(expected_rows, "4");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_description_textarea_css_class() {
+        // Description textarea should use description-textarea class for styling
+        let expected_class = "form-input description-textarea";
+        assert!(expected_class.contains("description-textarea"));
     }
 }

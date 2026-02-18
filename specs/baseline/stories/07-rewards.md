@@ -8,7 +8,7 @@
 
 ### Acceptance Criteria
 - Reward has a name
-- Optional description
+- Optional description (stored in markdown format, entered via multiline textarea)
 - Optional point cost (for purchasable rewards)
 - Is purchasable flag (can members buy it with points)
 - Requires confirmation flag (must admin approve redemption)

@@ -1172,6 +1172,13 @@ body.dark-mode .chat-input-area {
     resize: vertical;
 }
 
+.description-textarea {
+    min-height: 100px;
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.5;
+}
+
 .note-preview {
     min-height: 250px;
     max-height: 400px;

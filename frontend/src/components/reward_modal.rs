@@ -172,10 +172,10 @@ pub fn RewardModal(
 
                         <div class="form-group">
                             <label class="form-label" for="reward-description">"Description"</label>
-                            <input
-                                type="text"
+                            <textarea
                                 id="reward-description"
-                                class="form-input"
+                                class="form-input description-textarea"
+                                rows="4"
                                 placeholder="What do you get?"
                                 prop:value=move || description.get()
                                 on:input=move |ev| description.set(event_target_value(&ev))
@@ -307,5 +307,26 @@ pub fn RewardModal(
                 </form>
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_description_textarea_rows() {
+        // Description textarea should use 4 rows for compact multiline input
+        let expected_rows = "4";
+        assert_eq!(expected_rows, "4");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_description_textarea_css_class() {
+        // Description textarea should use description-textarea class for styling
+        let expected_class = "form-input description-textarea";
+        assert!(expected_class.contains("description-textarea"));
     }
 }

@@ -8,7 +8,7 @@
 
 ### Acceptance Criteria
 - Punishment has a name
-- Optional description
+- Optional description (stored in markdown format, entered via multiline textarea)
 - Requires confirmation flag (must admin approve completion)
 
 ---

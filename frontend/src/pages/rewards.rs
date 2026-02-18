@@ -5,6 +5,7 @@ use shared::{HouseholdSettings, MemberWithUser, Reward, UserReward, UserRewardWi
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::components::markdown::MarkdownView;
 use crate::components::reward_modal::RewardModal;
 use crate::i18n::use_i18n;
 
@@ -280,8 +281,12 @@ pub fn RewardsPage() -> impl IntoView {
                                             <div style="font-size: 0.75rem; color: var(--text-muted);">
                                                 {format!("{} available, {} redeemed", available, user_reward.redeemed_amount)}
                                                 {if pending > 0 { format!(", {} pending", pending) } else { String::new() }}
-                                                {if !reward_desc.is_empty() { format!(" • {}", reward_desc) } else { String::new() }}
                                             </div>
+                                            {if !reward_desc.is_empty() {
+                                                view! { <MarkdownView content=reward_desc.clone() /> }.into_view()
+                                            } else {
+                                                ().into_view()
+                                            }}
                                         </div>
                                         {if pending > 0 {
                                             view! {
@@ -378,9 +383,11 @@ pub fn RewardsPage() -> impl IntoView {
                                                 view! { <span></span> }.into_view()
                                             }}
                                         </h3>
-                                        <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;">
-                                            {reward.description.clone()}
-                                        </p>
+                                        {if !reward.description.is_empty() {
+                                            view! { <MarkdownView content=reward.description.clone() /> }.into_view()
+                                        } else {
+                                            ().into_view()
+                                        }}
                                         {if reward.is_purchasable {
                                             view! {
                                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
