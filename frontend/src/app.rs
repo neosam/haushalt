@@ -3,6 +3,7 @@ use leptos_router::*;
 
 use crate::api::{ApiClient, AuthState};
 use crate::components::navbar::Navbar;
+use crate::components::quick_task_fab::QuickTaskFab;
 use crate::i18n::{provide_i18n, use_i18n};
 use crate::pages::{
     activity::ActivityPage, chat::ChatPage, dashboard::Dashboard, household::HouseholdPage,
@@ -87,6 +88,7 @@ fn AuthenticatedLayout() -> impl IntoView {
             <div class="container">
                 <Outlet />
             </div>
+            <QuickTaskFab />
         </Show>
     }
 }

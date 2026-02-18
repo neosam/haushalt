@@ -534,6 +534,12 @@
   "task_modal.no_category": "No category",
   "task_modal.category_hint": "Optional: Tasks with a category are grouped together",
 
+  "quick_task.fab_label": "Quick Task",
+  "quick_task.select_household": "Select Household",
+  "quick_task.no_permission": "You don't have permission to create tasks in any household.",
+
+  "common.ok": "OK",
+
   "errors.network": "Network error. Please check your connection.",
   "errors.unauthorized": "Please sign in to continue.",
   "errors.forbidden": "You don't have permission to do that.",

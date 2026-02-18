@@ -19,6 +19,8 @@ pub fn TaskModal(
     /// Optional: Task to prefill values from (for duplicate mode)
     /// When set with task=None, opens in create mode but with prefilled values
     #[prop(optional)] prefill_from: Option<Task>,
+    /// Override default recurrence type (e.g., "onetime" for quick task creation)
+    #[prop(default = "daily".to_string())] default_recurrence: String,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
@@ -34,7 +36,7 @@ pub fn TaskModal(
     let recurrence_type = create_rw_signal(
         source_task
             .map(|t| t.recurrence_type.as_str().to_string())
-            .unwrap_or_else(|| "daily".to_string())
+            .unwrap_or(default_recurrence)
     );
     // Auto-select if only one member can be assigned (create mode only, not duplicate)
     let initial_assigned_user_id = source_task
@@ -489,9 +491,7 @@ pub fn TaskModal(
                         <div class="form-group">
                             <label class="form-label" for="task-recurrence">{i18n_stored.get_value().t("task_modal.recurrence_label")}</label>
                             {
-                                let initial_recurrence = source_task
-                                    .map(|t| t.recurrence_type.as_str().to_string())
-                                    .unwrap_or_else(|| "daily".to_string());
+                                let initial_recurrence = recurrence_type.get_untracked();
                                 let onetime_label = i18n_stored.get_value().t("recurrence.onetime_freeform");
                                 let daily_label = i18n_stored.get_value().t("recurrence.daily");
                                 let weekly_label = i18n_stored.get_value().t("recurrence.weekly");

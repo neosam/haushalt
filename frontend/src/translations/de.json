@@ -534,6 +534,12 @@
   "task_modal.no_category": "Keine Kategorie",
   "task_modal.category_hint": "Optional: Aufgaben mit Kategorie werden gruppiert angezeigt",
 
+  "quick_task.fab_label": "Schnellaufgabe",
+  "quick_task.select_household": "Haushalt auswählen",
+  "quick_task.no_permission": "Sie haben keine Berechtigung, Aufgaben in einem Haushalt zu erstellen.",
+
+  "common.ok": "OK",
+
   "errors.network": "Netzwerkfehler. Bitte überprüfen Sie Ihre Verbindung.",
   "errors.unauthorized": "Bitte melden Sie sich an, um fortzufahren.",
   "errors.forbidden": "Sie haben keine Berechtigung dafür.",

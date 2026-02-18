@@ -234,3 +234,28 @@
 
 ### Design Decisions
 - **Archive UI location**: Collapsible section at bottom of tasks page (decided over toggle or tabs)
+
+---
+
+## US-TASK-017: Quick Task Creation
+
+**As a** user with task creation permission in one or more households
+**I want to** quickly create a task from anywhere in the app
+**So that** I can capture tasks without navigating to a specific household's task page
+
+### Acceptance Criteria
+- A floating action button (+) appears in the lower-right corner on all authenticated pages
+- Button uses circular Material Design FAB style
+- On click:
+  - Fetches households where user has task creation permission (based on `HierarchyType.can_manage(role)`)
+  - If user has permission in exactly one household: opens the task creation modal directly for that household
+  - If user has permission in multiple households: shows a household selection modal first, then opens task creation modal
+  - If user has no permission in any household: shows appropriate message
+- Uses the existing task creation modal (US-TASK-001)
+- Recurrence type defaults to "OneTime" (instead of the usual "Daily" default) for quick task creation
+- After successful task creation, the modal closes and the new task appears in the appropriate household
+
+### Design Decisions
+- **FAB placement**: Fixed position, lower-right corner (follows Material Design conventions)
+- **Single household optimization**: Skips selection step when only one option exists
+- **Global visibility**: Available on all authenticated pages for quick access
