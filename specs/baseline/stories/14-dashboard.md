@@ -4,9 +4,15 @@
 
 **As an** authenticated user
 **I want to** see a central dashboard
-**So that** I can quickly access my tasks across households
+**So that** I can quickly access my households and tasks
 
 ### Acceptance Criteria
+- Dashboard layout order (top to bottom):
+  1. Pending invitations section (if any)
+  2. Create household button
+  3. Households section (list of user's households)
+  4. Tasks section (whitelisted tasks)
+- Households are ordered alphabetically by name
 - Shows whitelisted tasks from all households
 - Groups tasks by household
 - Shows completion status and progress

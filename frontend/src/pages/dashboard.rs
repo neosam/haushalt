@@ -251,28 +251,10 @@ pub fn Dashboard() -> impl IntoView {
                 </button>
             </div>
 
-            // Tasks section
-            {move || {
-                let tasks = all_tasks.get();
-                if !tasks.is_empty() {
-                    view! {
-                        <div style="margin-bottom: 1.5rem;">
-                            <DashboardGroupedTaskList
-                                tasks=tasks
-                                on_complete=on_complete_task
-                                on_uncomplete=on_uncomplete_task
-                                timezone="Europe/Berlin".to_string()
-                            />
-                        </div>
-                    }.into_view()
-                } else {
-                    ().into_view()
-                }
-            }}
-
             // Households section
             {move || {
-                let h = households.get();
+                let mut h = households.get();
+                h.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
                 if h.is_empty() {
                     view! {
                         <div class="card empty-state">
@@ -298,6 +280,25 @@ pub fn Dashboard() -> impl IntoView {
                             </ul>
                         </div>
                     }.into_view()
+                }
+            }}
+
+            // Tasks section
+            {move || {
+                let tasks = all_tasks.get();
+                if !tasks.is_empty() {
+                    view! {
+                        <div style="margin-bottom: 1.5rem;">
+                            <DashboardGroupedTaskList
+                                tasks=tasks
+                                on_complete=on_complete_task
+                                on_uncomplete=on_uncomplete_task
+                                timezone="Europe/Berlin".to_string()
+                            />
+                        </div>
+                    }.into_view()
+                } else {
+                    ().into_view()
                 }
             }}
         </Show>
