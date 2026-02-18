@@ -221,3 +221,37 @@ flowchart TB
         Block -->|No| Allow[Allow Request]
     end
 ```
+
+## Frontend Token Refresh Synchronization
+
+When the access token expires, multiple API requests may receive 401 errors simultaneously. To prevent race conditions during token refresh:
+
+```mermaid
+sequenceDiagram
+    participant R1 as Request 1
+    participant R2 as Request 2
+    participant Lock as Refresh Lock
+    participant BE as Backend
+
+    R1->>Lock: Check lock
+    Lock-->>R1: Not locked
+    R1->>Lock: Acquire lock
+    R1->>BE: POST /api/auth/refresh
+    R2->>Lock: Check lock
+    Lock-->>R2: Locked (wait)
+    BE-->>R1: New tokens
+    R1->>R1: Store tokens
+    R1->>Lock: Release lock
+    R2->>Lock: Check lock
+    Lock-->>R2: Not locked
+    R2->>R2: Tokens now valid
+    R2->>R2: Retry original request
+```
+
+**Key behaviors:**
+
+1. **Single refresh guarantee** - Only one token refresh request is made at a time using an atomic lock
+2. **Concurrent requests wait** - Other requests that receive 401 wait briefly for the in-progress refresh
+3. **Shared result** - All waiting requests use the newly refreshed tokens from localStorage
+
+This prevents the scenario where multiple concurrent refresh attempts cause token rotation conflicts on the backend (first refresh succeeds, subsequent ones fail because the old token was already rotated).

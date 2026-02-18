@@ -28,6 +28,9 @@ const REFRESH_TOKEN_KEY: &str = "refresh_token";
 /// Global flag to signal that authentication has failed and user should re-login
 static AUTH_FAILED: AtomicBool = AtomicBool::new(false);
 
+/// Global flag to prevent concurrent token refresh attempts
+static REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
 #[derive(Clone)]
 pub struct AuthState {
     pub token: RwSignal<Option<String>>,
@@ -121,6 +124,46 @@ impl ApiClient {
         LocalStorage::delete(REFRESH_TOKEN_KEY);
     }
 
+    /// Attempt to refresh tokens, ensuring only one refresh happens at a time.
+    /// If a refresh is already in progress, waits briefly and checks if tokens are now valid.
+    async fn try_refresh_token() -> Result<(), String> {
+        // If refresh is already in progress, wait and check if tokens are valid
+        if REFRESH_IN_PROGRESS.load(Ordering::Relaxed) {
+            // Wait a bit for the other refresh to complete
+            gloo_timers::future::TimeoutFuture::new(100).await;
+            // Check if we now have a valid token (other refresh succeeded)
+            if Self::get_token().is_some() {
+                return Ok(());
+            }
+            // Still no token - the other refresh must have failed
+            return Err("Refresh failed".to_string());
+        }
+
+        // Mark refresh as in progress
+        REFRESH_IN_PROGRESS.store(true, Ordering::Relaxed);
+
+        let result = Self::do_refresh().await;
+
+        // Mark refresh as complete
+        REFRESH_IN_PROGRESS.store(false, Ordering::Relaxed);
+
+        result
+    }
+
+    /// Perform the actual token refresh
+    async fn do_refresh() -> Result<(), String> {
+        let refresh_token = Self::get_refresh_token()
+            .ok_or_else(|| "No refresh token".to_string())?;
+
+        match Self::refresh_token_request(refresh_token).await {
+            Ok(auth_response) => {
+                Self::store_tokens(&auth_response.token, &auth_response.refresh_token);
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Execute a single HTTP request without retry logic
     async fn execute_request<T: DeserializeOwned>(
         method: &str,
@@ -190,20 +233,17 @@ impl ApiClient {
             Err(e) => {
                 // Check if it's a 401 and we should try refresh
                 if auth && e.starts_with("401|") {
-                    if let Some(refresh_token) = Self::get_refresh_token() {
-                        if let Ok(auth_response) = Self::refresh_token_request(refresh_token).await {
-                            // Store new tokens
-                            Self::store_tokens(&auth_response.token, &auth_response.refresh_token);
-                            // Retry with new token
-                            return match Self::execute_request::<T>(method, path, body_json, auth).await {
-                                Ok((data, _)) => Ok(data),
-                                Err(e2) => {
-                                    // Extract error message from "status|message" format
-                                    let msg = e2.split('|').nth(1).unwrap_or(&e2);
-                                    Err(msg.to_string())
-                                }
+                    // Try synchronized refresh (prevents race conditions with concurrent requests)
+                    if Self::try_refresh_token().await.is_ok() {
+                        // Retry with new token
+                        return match Self::execute_request::<T>(method, path, body_json, auth).await {
+                            Ok((data, _)) => Ok(data),
+                            Err(e2) => {
+                                // Extract error message from "status|message" format
+                                let msg = e2.split('|').nth(1).unwrap_or(&e2);
+                                Err(msg.to_string())
                             }
-                        }
+                        };
                     }
                     // Refresh failed, clear tokens and signal auth failure
                     Self::clear_tokens();
