@@ -838,13 +838,15 @@ async fn calculate_streak(pool: &SqlitePool, task: &Task, _user_id: &Uuid) -> Re
 // Dashboard Task Whitelist
 // ============================================================================
 
-/// Get all task IDs that the user has added to their dashboard
+/// Get all task IDs that the user has added to their dashboard (excluding archived tasks)
 pub async fn get_dashboard_task_ids(
     pool: &SqlitePool,
     user_id: &str,
 ) -> Result<Vec<String>, TaskError> {
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT task_id FROM user_dashboard_tasks WHERE user_id = ?",
+        "SELECT udt.task_id FROM user_dashboard_tasks udt
+         JOIN tasks t ON udt.task_id = t.id
+         WHERE udt.user_id = ? AND t.archived = 0",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -1482,6 +1484,70 @@ mod tests {
         // Get dashboard tasks - should be empty since task is not on dashboard
         let dashboard_tasks = get_dashboard_tasks_with_status(&pool, &user_id).await.unwrap();
         assert!(dashboard_tasks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_tasks_excludes_archived() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create two tasks
+        let request1 = CreateTaskRequest {
+            title: "Active Dashboard Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task1 = create_task(&pool, &household_id, &request1).await.unwrap();
+
+        let request2 = CreateTaskRequest {
+            title: "Archived Dashboard Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+        };
+        let task2 = create_task(&pool, &household_id, &request2).await.unwrap();
+
+        // Add both to dashboard
+        add_task_to_dashboard(&pool, &user_id.to_string(), &task1.id.to_string())
+            .await
+            .unwrap();
+        add_task_to_dashboard(&pool, &user_id.to_string(), &task2.id.to_string())
+            .await
+            .unwrap();
+
+        // Verify both are on dashboard
+        let dashboard_tasks = get_dashboard_tasks_with_status(&pool, &user_id).await.unwrap();
+        assert_eq!(dashboard_tasks.len(), 2);
+
+        // Archive task2
+        archive_task(&pool, &task2.id).await.unwrap();
+
+        // Verify only task1 is on dashboard now
+        let dashboard_tasks = get_dashboard_tasks_with_status(&pool, &user_id).await.unwrap();
+        assert_eq!(dashboard_tasks.len(), 1);
+        assert_eq!(dashboard_tasks[0].0.task.id, task1.id);
     }
 
     #[tokio::test]
