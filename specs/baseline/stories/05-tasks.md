@@ -224,9 +224,10 @@
 
 ### Acceptance Criteria
 - Task can be archived via context menu in the UI
-- Archived tasks are excluded from the main task list
-- Archived tasks are excluded from dashboard
+- Archived tasks are excluded from the main task list (household tasks view)
+- Archived tasks are excluded from the main page (dashboard)
 - Archived tasks are excluded from due tasks
+- Archived tasks are excluded from household overview
 - Task completion history is preserved
 - Archived tasks are viewable in a collapsible "Archived Tasks" section at the bottom of the tasks page
 - Archived tasks can be unarchived via context menu to restore them to active status

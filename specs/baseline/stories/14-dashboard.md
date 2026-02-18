@@ -11,6 +11,7 @@
 - Groups tasks by household
 - Shows completion status and progress
 - Tasks are ordered alphabetically by title within each category
+- Archived tasks are excluded even if on whitelist
 
 ---
 
@@ -35,6 +36,7 @@
 - Returns full task details with completion status
 - Shows household name and ID for each task
 - Shows whether task can be completed
+- Excludes archived tasks
 
 ---
 
