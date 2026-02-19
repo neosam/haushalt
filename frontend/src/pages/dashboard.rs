@@ -1,11 +1,12 @@
 use leptos::*;
-use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, Role};
+use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
 use crate::components::task_card::{DashboardGroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
+use crate::components::task_modal::TaskModal;
 use crate::i18n::use_i18n;
 
 #[component]
@@ -25,6 +26,16 @@ pub fn Dashboard() -> impl IntoView {
     // Task detail modal state
     let detail_task_id = create_rw_signal(Option::<String>::None);
     let detail_household_id = create_rw_signal(Option::<String>::None);
+
+    // Task edit modal state
+    let editing_task = create_rw_signal(Option::<Task>::None);
+    let editing_household_id = create_rw_signal(Option::<String>::None);
+    let task_linked_rewards = create_rw_signal(Vec::<TaskRewardLink>::new());
+    let task_linked_punishments = create_rw_signal(Vec::<TaskPunishmentLink>::new());
+    let edit_members = create_rw_signal(Vec::<MemberWithUser>::new());
+    let edit_rewards = create_rw_signal(Vec::<Reward>::new());
+    let edit_punishments = create_rw_signal(Vec::<Punishment>::new());
+    let edit_categories = create_rw_signal(Vec::<TaskCategory>::new());
 
     // Load households, invitations, and tasks on mount
     create_effect(move |_| {
@@ -178,6 +189,62 @@ pub fn Dashboard() -> impl IntoView {
         detail_household_id.set(Some(household_id));
     });
 
+    // Clear edit state helper
+    let clear_edit_state = move || {
+        editing_task.set(None);
+        editing_household_id.set(None);
+        edit_members.set(vec![]);
+        edit_rewards.set(vec![]);
+        edit_punishments.set(vec![]);
+        edit_categories.set(vec![]);
+        task_linked_rewards.set(vec![]);
+        task_linked_punishments.set(vec![]);
+    };
+
+    // Handle task edit from detail modal
+    let on_edit_task = move |task: Task| {
+        let household_id = detail_household_id.get().unwrap_or_default();
+        let task_id = task.id.to_string();
+
+        editing_task.set(Some(task));
+        editing_household_id.set(Some(household_id.clone()));
+
+        // Fetch all required data for this household
+        let hid = household_id.clone();
+        let tid = task_id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            // Fetch members, rewards, punishments, categories in parallel
+            if let Ok(m) = ApiClient::list_members(&hid).await {
+                edit_members.set(m);
+            }
+            if let Ok(r) = ApiClient::list_rewards(&hid).await {
+                edit_rewards.set(r);
+            }
+            if let Ok(p) = ApiClient::list_punishments(&hid).await {
+                edit_punishments.set(p);
+            }
+            if let Ok(c) = ApiClient::list_categories(&hid).await {
+                edit_categories.set(c);
+            }
+            if let Ok(tr) = ApiClient::get_task_rewards(&hid, &tid).await {
+                task_linked_rewards.set(tr);
+            }
+            if let Ok(tp) = ApiClient::get_task_punishments(&hid, &tid).await {
+                task_linked_punishments.set(tp);
+            }
+        });
+    };
+
+    // Handle task save from edit modal
+    let on_task_save = move |_saved_task: Task| {
+        // Reload tasks to reflect changes
+        let show_all_mode = show_all.get();
+        wasm_bindgen_futures::spawn_local(async move {
+            reload_tasks(show_all_mode).await;
+        });
+        clear_edit_state();
+    };
+
     view! {
         <div class="dashboard-header">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -326,11 +393,33 @@ pub fn Dashboard() -> impl IntoView {
                             detail_task_id.set(None);
                             detail_household_id.set(None);
                         }
-                        on_edit=move |_| {
-                            // Close modal - user can navigate to household to edit
+                        on_edit=move |task| {
+                            on_edit_task(task);
                             detail_task_id.set(None);
                             detail_household_id.set(None);
                         }
+                    />
+                })
+            } else {
+                None
+            }
+        }}
+
+        // Task edit modal
+        {move || {
+            if let (Some(task), Some(hid)) = (editing_task.get(), editing_household_id.get()) {
+                Some(view! {
+                    <TaskModal
+                        task=Some(task)
+                        household_id=hid
+                        members=edit_members.get()
+                        household_rewards=edit_rewards.get()
+                        household_punishments=edit_punishments.get()
+                        linked_rewards=task_linked_rewards.get()
+                        linked_punishments=task_linked_punishments.get()
+                        categories=edit_categories.get()
+                        on_close=move |_| clear_edit_state()
+                        on_save=on_task_save
                     />
                 })
             } else {

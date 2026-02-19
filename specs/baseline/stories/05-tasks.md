@@ -373,13 +373,6 @@
 - Close button (X) to dismiss the modal
 - Quick complete/uncomplete action available in the modal
 
-### Known Issues
-- **BUG**: Edit button in task detail modal only works when viewing from the household tasks page (`/households/:id/tasks`). The edit dialog does not appear when clicking Edit from:
-  - Household overview page (`/households/:id`)
-  - Main dashboard page (`/`)
-
-  **Root Cause**: The `TaskDetailModal` component's `on_edit: Callback<Task>` prop is only properly implemented on the Tasks page (`tasks.rs:699-707`), where it opens the `TaskModal` in edit mode with the task data. On the Household Overview page (`household.rs:1104-1115`) and Dashboard (`dashboard.rs:319-339`), the `on_edit` callback ignores the `Task` parameter and simply closes the modal - no edit modal infrastructure exists on those pages.
-
 ### Design Decisions
 - **UI pattern**: Modal overlay (consistent with notes/rewards patterns in the app)
 - **Navigation trigger**: Click on task title opens the detail modal. Available from:

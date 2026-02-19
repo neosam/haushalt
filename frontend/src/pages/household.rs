@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use leptos::*;
 use leptos_router::*;
-use shared::{AdjustPointsRequest, Announcement, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, TaskWithStatus, UpdateRoleRequest};
+use shared::{AdjustPointsRequest, Announcement, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateRoleRequest};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
@@ -16,6 +16,7 @@ use crate::components::pending_reviews::PendingReviews;
 use crate::components::points_display::PointsBadge;
 use crate::components::task_card::GroupedTaskList;
 use crate::components::task_detail_modal::TaskDetailModal;
+use crate::components::task_modal::TaskModal;
 use crate::i18n::use_i18n;
 
 #[component]
@@ -60,6 +61,12 @@ pub fn HouseholdPage() -> impl IntoView {
 
     // Task detail modal state
     let detail_task_id = create_rw_signal(Option::<String>::None);
+
+    // Task edit modal state
+    let editing_task = create_rw_signal(Option::<Task>::None);
+    let task_linked_rewards = create_rw_signal(Vec::<TaskRewardLink>::new());
+    let task_linked_punishments = create_rw_signal(Vec::<TaskPunishmentLink>::new());
+    let categories = create_rw_signal(Vec::<TaskCategory>::new());
 
     // Adjust points modal state
     let show_adjust_points_modal = create_rw_signal(false);
@@ -133,12 +140,15 @@ pub fn HouseholdPage() -> impl IntoView {
                 invitations.set(inv);
             }
 
-            // Load rewards and punishments for assignment modals
+            // Load rewards, punishments, and categories for assignment/edit modals
             if let Ok(r) = ApiClient::list_rewards(&id).await {
                 rewards.set(r);
             }
             if let Ok(p) = ApiClient::list_punishments(&id).await {
                 punishments.set(p);
+            }
+            if let Ok(c) = ApiClient::list_categories(&id).await {
+                categories.set(c);
             }
 
             // Load active announcements
@@ -207,6 +217,42 @@ pub fn HouseholdPage() -> impl IntoView {
             }
         });
     });
+
+    // Handle task edit from detail modal
+    let on_edit_task = move |task: Task| {
+        let id = household_id();
+        let task_id = task.id.to_string();
+        editing_task.set(Some(task));
+
+        // Load linked rewards
+        let id_for_rewards = id.clone();
+        let task_id_for_rewards = task_id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(r) = ApiClient::get_task_rewards(&id_for_rewards, &task_id_for_rewards).await {
+                task_linked_rewards.set(r);
+            }
+        });
+
+        // Load linked punishments
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(p) = ApiClient::get_task_punishments(&id, &task_id).await {
+                task_linked_punishments.set(p);
+            }
+        });
+    };
+
+    // Handle task save from edit modal
+    let on_task_save = move |saved_task: Task| {
+        // Update tasks list
+        tasks.update(|t| {
+            if let Some(pos) = t.iter().position(|tw| tw.task.id == saved_task.id) {
+                t[pos].task = saved_task;
+            }
+        });
+        editing_task.set(None);
+        task_linked_rewards.set(vec![]);
+        task_linked_punishments.set(vec![]);
+    };
 
     let on_invite_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
@@ -1109,10 +1155,36 @@ pub fn HouseholdPage() -> impl IntoView {
                         task_id=tid
                         household_id=hh_id
                         on_close=move |_| detail_task_id.set(None)
-                        on_edit=move |_| detail_task_id.set(None)
+                        on_edit=move |task| {
+                            detail_task_id.set(None);
+                            on_edit_task(task);
+                        }
                     />
                 })
             }}
+
+            // Task Edit Modal
+            {move || editing_task.get().map(|task| {
+                let hid = household_id();
+                view! {
+                    <TaskModal
+                        task=Some(task)
+                        household_id=hid
+                        members=members.get()
+                        household_rewards=rewards.get()
+                        household_punishments=punishments.get()
+                        linked_rewards=task_linked_rewards.get()
+                        linked_punishments=task_linked_punishments.get()
+                        categories=categories.get()
+                        on_close=move |_| {
+                            editing_task.set(None);
+                            task_linked_rewards.set(vec![]);
+                            task_linked_punishments.set(vec![]);
+                        }
+                        on_save=on_task_save
+                    />
+                }
+            })}
         </Show>
     }
 }
