@@ -68,9 +68,10 @@ CREATE INDEX idx_period_results_status ON task_period_results(status);
 ### Acceptance Criteria
 
 - When a completion brings `completions_count >= target_count`, create a `completed` result
-- If period result already exists with `completed` status, no action needed
+- If period result already exists, update it (upsert behavior) - enables `failed` → `completed` on late completion
 - Store the `target_count` at the time of finalization
 - `finalized_by` is set to 'system'
+- When uncomplete drops below target, delete the period result (allows re-evaluation)
 
 ---
 
@@ -82,11 +83,13 @@ CREATE INDEX idx_period_results_status ON task_period_results(status);
 
 ### Acceptance Criteria
 
-- Background job runs daily (after midnight)
+- Background job runs every minute (to handle different timezones)
+- Uses household timezone to determine "yesterday"
 - For each task, check if yesterday's period is unfinalized
 - If `completions < target`, create a `failed` result
 - If `completions >= target` but no result exists, create `completed` result
 - Skip tasks that are paused or in vacation mode (mark as `skipped`)
+- Already finalized periods are skipped (no redundant updates)
 
 ---
 
@@ -209,8 +212,17 @@ Statistics are now calculated **exclusively** from `task_period_results`:
 
 Tasks without period results will show 0/0 and no completion rate.
 
+### Timezone Handling
+
+The background job respects each household's timezone setting:
+- "Yesterday" is calculated per-household based on their timezone
+- Job runs every minute to catch midnight in all timezones
+- Already finalized periods are skipped (efficient, no redundant updates)
+
 ### Pending
 
-- **US-PERIOD-006 (Backfill)**: Migration script for existing historical data not yet implemented
-- **US-PERIOD-007 (Frontend)**: Period results display in task detail view not yet implemented
-- **Streak calculation**: Not yet updated to use period results (currently uses completion-based calculation)
+| Item | Description | Impact |
+|------|-------------|--------|
+| **US-PERIOD-006 (Backfill)** | Migration script for existing historical data | Existing tasks show 0/0 until new periods are recorded |
+| **US-PERIOD-007 (Frontend)** | Period results display in task detail view | Users cannot see period history in UI |
+| **Streak calculation** | Update to use period results instead of completions | Streaks still use old completion-based calculation |
