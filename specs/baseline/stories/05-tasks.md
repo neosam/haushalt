@@ -373,6 +373,11 @@
 - Close button (X) to dismiss the modal
 - Quick complete/uncomplete action available in the modal
 
+### Known Issues
+- **BUG**: Edit button in task detail modal only works when viewing from the household tasks page (`/households/:id/tasks`). The edit dialog does not appear when clicking Edit from:
+  - Household overview page (`/households/:id`)
+  - Main dashboard page (`/`)
+
 ### Design Decisions
 - **UI pattern**: Modal overlay (consistent with notes/rewards patterns in the app)
 - **Navigation trigger**: Click on task title opens the detail modal. Available from:
