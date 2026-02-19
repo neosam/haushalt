@@ -144,8 +144,9 @@ pub fn TaskCard(
     let recent_periods = task.recent_periods.clone();
     let has_recent_periods = !recent_periods.is_empty();
 
-    // Household name prefix for meta line
-    let household_prefix = household_name.map(|name| format!("{} | ", name)).unwrap_or_default();
+    // Household name and link for meta line
+    let household_name_display = household_name.clone();
+    let household_id_for_link = household_id.clone();
 
     // Dashboard toggle handler
     let show_dashboard_toggle = on_toggle_dashboard.is_some();
@@ -185,7 +186,15 @@ pub fn TaskCard(
                     }}
                 </div>
                 <div class="task-meta">
-                    {household_prefix}
+                    {if let (Some(name), Some(hid)) = (household_name_display.clone(), household_id_for_link.clone()) {
+                        let href = format!("/household/{}", hid);
+                        view! {
+                            <a href=href class="household-link">{name}</a>
+                            " | "
+                        }.into_view()
+                    } else {
+                        ().into_view()
+                    }}
                     {recurrence_display}
                     {due_display}
                     {streak_display}
