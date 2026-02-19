@@ -1518,6 +1518,27 @@ body.dark-mode .filter-controls {
     color: white;
 }
 
+.badge-assigned {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.badge-danger {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.badge-success {
+    background-color: var(--success-color);
+    color: white;
+}
+
+/* Small badge variant for task cards */
+.badge-sm {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+}
+
 /* Dark mode for announcements */
 body.dark-mode .announcement-list-item {
     background-color: #1e293b;

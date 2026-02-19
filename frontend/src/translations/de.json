@@ -99,6 +99,7 @@
   "tasks.add_first": "Fügen Sie Ihre erste Aufgabe hinzu!",
   "tasks.task_name": "Aufgabenname",
   "tasks.my_assigned": "Meine zugewiesenen Aufgaben",
+  "tasks.assigned_to_you": "Dir zugewiesen",
   "tasks.all_tasks": "Alle Aufgaben",
   "tasks.assigned_to_name": "Zugewiesen an",
   "tasks.description": "Beschreibung",

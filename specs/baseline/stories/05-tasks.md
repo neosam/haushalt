@@ -40,6 +40,17 @@
 - Shows points value
 - Tasks are ordered alphabetically by title
 
+### Design Decisions
+- **Assignment display**: Tasks assigned to the current user show an "Assigned to you" badge (primary color) directly on the task card. No separate "Assigned Tasks" section to avoid duplication.
+- **Badge placement**: Task badges appear on a separate line below the metadata (household name, due date, streak).
+- **Badge styling**: All task card badges use a consistent small pill style (`badge-sm`):
+  - "Bad" badge: danger/red color for bad habits
+  - "Assigned to you" badge: primary color for assignment
+- **Consistency**: Badges appear on all task lists:
+  - Household tasks page
+  - Household overview page
+  - Main dashboard page
+
 ---
 
 ## US-TASK-003: View Task Details
@@ -153,6 +164,10 @@
 ### Acceptance Criteria
 - Returns only tasks where user is the assignee
 - Shows completion status for each
+
+### Design Decisions
+- **API endpoint only**: This is a backend filter endpoint, not a separate UI section
+- **UI integration**: Assigned tasks are shown inline within the main task list with visual indicators (see US-TASK-002)
 
 ---
 

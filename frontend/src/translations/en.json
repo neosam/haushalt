@@ -99,6 +99,7 @@
   "tasks.add_first": "Add your first task to get started!",
   "tasks.task_name": "Task Name",
   "tasks.my_assigned": "My Assigned Tasks",
+  "tasks.assigned_to_you": "Assigned to you",
   "tasks.all_tasks": "All Tasks",
   "tasks.assigned_to_name": "Assigned to",
   "tasks.description": "Description",

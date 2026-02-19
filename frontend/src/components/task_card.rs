@@ -168,7 +168,7 @@ pub fn TaskCard(
     view! {
         <div class=card_class>
             <div class="task-content" style="flex: 1;">
-                <div class="task-title" style="display: flex; align-items: center; gap: 0.5rem;">
+                <div class="task-title">
                     {if title_clickable {
                         view! {
                             <span class="task-title-clickable" on:click=on_title_click.clone()>
@@ -178,15 +178,6 @@ pub fn TaskCard(
                     } else {
                         view! { <span>{task_title.clone()}</span> }.into_view()
                     }}
-                    {if is_bad_habit {
-                        view! {
-                            <span style="font-size: 0.7rem; padding: 0.1rem 0.4rem; background: var(--danger-color); color: white; border-radius: var(--border-radius); font-weight: 500;">
-                                {bad_habit_label}
-                            </span>
-                        }.into_view()
-                    } else {
-                        ().into_view()
-                    }}
                 </div>
                 <div class="task-meta">
                     {household_prefix}
@@ -194,6 +185,29 @@ pub fn TaskCard(
                     {due_display}
                     {streak_display}
                 </div>
+                {if is_bad_habit || is_user_assigned {
+                    let assigned_label = i18n_stored.get_value().t("tasks.assigned_to_you");
+                    view! {
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;">
+                            {if is_bad_habit {
+                                view! {
+                                    <span class="badge badge-sm badge-danger">{bad_habit_label}</span>
+                                }.into_view()
+                            } else {
+                                ().into_view()
+                            }}
+                            {if is_user_assigned {
+                                view! {
+                                    <span class="badge badge-sm badge-assigned">{assigned_label}</span>
+                                }.into_view()
+                            } else {
+                                ().into_view()
+                            }}
+                        </div>
+                    }.into_view()
+                } else {
+                    ().into_view()
+                }}
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
                 // Dashboard toggle button (star icon)
