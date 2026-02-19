@@ -169,6 +169,7 @@ streak: completed +1, skipped continue, failed break
 | Midnight passes | Finalize yesterday as `failed` (if incomplete) |
 | Task paused | Future periods finalized as `skipped` |
 | Late completion | Update `failed` → `completed` |
+| Uncomplete drops below target | Delete period result (can be re-evaluated) |
 
 ### Statistics Query
 
@@ -195,7 +196,7 @@ WHERE task_id = ?
 | Shared Types | `shared/src/types.rs` | `PeriodStatus` enum, `TaskPeriodResult` struct, updated `TaskStatistics` |
 | Model | `backend/src/models/task_period_result.rs` | `TaskPeriodResultRow` database model |
 | Service | `backend/src/services/period_results.rs` | Core period result operations |
-| Integration | `backend/src/services/tasks.rs` | Auto-finalize on completion in `complete_task()` |
+| Integration | `backend/src/services/tasks.rs` | Auto-finalize on completion in `complete_task()`, delete on uncomplete in `uncomplete_task()` |
 | Background Job | `backend/src/services/background_jobs.rs` | `process_period_finalization()` for failed/skipped periods |
 | Statistics | `backend/src/services/tasks.rs` | Updated `calculate_task_statistics()` to include skipped counts |
 

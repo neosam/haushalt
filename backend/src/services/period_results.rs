@@ -259,6 +259,23 @@ pub async fn is_period_finalized(
     Ok(count > 0)
 }
 
+/// Delete a period result (used when uncompleting a task brings it below target)
+pub async fn delete_period_result(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    period_start: NaiveDate,
+) -> Result<bool, PeriodResultError> {
+    let result = sqlx::query(
+        "DELETE FROM task_period_results WHERE task_id = ? AND period_start = ?",
+    )
+    .bind(task_id.to_string())
+    .bind(period_start)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
 /// Get all unfinalized periods for a task that ended before a given date
 /// This is useful for the background job to find periods that need to be finalized
 #[allow(dead_code)]
@@ -583,5 +600,49 @@ mod tests {
         assert!(is_period_finalized(&pool, &task_id, period_start)
             .await
             .unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_delete_period_result() {
+        let pool = setup_test_db().await;
+        let task_id = Uuid::new_v4();
+        let period_start = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+
+        // Create result
+        finalize_period(
+            &pool,
+            &task_id,
+            period_start,
+            period_start,
+            PeriodStatus::Completed,
+            1,
+            1,
+            "system",
+            None,
+        )
+        .await
+        .unwrap();
+
+        // Should exist
+        assert!(is_period_finalized(&pool, &task_id, period_start)
+            .await
+            .unwrap());
+
+        // Delete it
+        let deleted = delete_period_result(&pool, &task_id, period_start)
+            .await
+            .unwrap();
+        assert!(deleted);
+
+        // Should no longer exist
+        assert!(!is_period_finalized(&pool, &task_id, period_start)
+            .await
+            .unwrap());
+
+        // Deleting again should return false
+        let deleted_again = delete_period_result(&pool, &task_id, period_start)
+            .await
+            .unwrap();
+        assert!(!deleted_again);
     }
 }

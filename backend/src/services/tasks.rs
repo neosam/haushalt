@@ -864,6 +864,26 @@ pub async fn uncomplete_task(
         return Err(TaskError::NotCompleted);
     }
 
+    // After deleting completion, check if we're now below target
+    // If so, delete the period result so it can be re-evaluated
+    let completions_for_period: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*) FROM task_completions
+        WHERE task_id = ? AND due_date >= ? AND due_date <= ?
+        "#,
+    )
+    .bind(task_id.to_string())
+    .bind(period_start)
+    .bind(period_end)
+    .fetch_one(pool)
+    .await?;
+
+    if completions_for_period < task.target_count as i64 {
+        // Delete the period result - will be re-created when target is reached
+        // or finalized as failed by background job when period ends
+        let _ = period_results::delete_period_result(pool, task_id, period_start).await;
+    }
+
     Ok(())
 }
 
