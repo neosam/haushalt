@@ -199,6 +199,15 @@ WHERE task_id = ?
 | Background Job | `backend/src/services/background_jobs.rs` | `process_period_finalization()` for failed/skipped periods |
 | Statistics | `backend/src/services/tasks.rs` | Updated `calculate_task_statistics()` to include skipped counts |
 
+### Statistics Calculation
+
+Statistics are now calculated **exclusively** from `task_period_results`:
+- `periods_completed` = COUNT where status = 'completed'
+- `periods_total` = completed + failed (excludes skipped)
+- `completion_rate` = completed / total × 100% (or None if total = 0)
+
+Tasks without period results will show 0/0 and no completion rate.
+
 ### Pending
 
 - **US-PERIOD-006 (Backfill)**: Migration script for existing historical data not yet implemented

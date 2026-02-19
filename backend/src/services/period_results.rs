@@ -150,9 +150,7 @@ pub async fn get_period_results_for_task(
 /// Count period results by status for a task within a date range
 #[derive(Debug, Clone)]
 pub struct PeriodCounts {
-    #[allow(dead_code)]
     pub completed: i32,
-    #[allow(dead_code)]
     pub failed: i32,
     pub skipped: i32,
 }

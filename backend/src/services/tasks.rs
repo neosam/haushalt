@@ -220,6 +220,8 @@ pub async fn get_task_with_details(
 }
 
 /// Calculate task statistics for the detail view
+/// Statistics are based on explicitly recorded period results only.
+/// If no period results exist, statistics will show 0/0.
 async fn calculate_task_statistics(
     pool: &SqlitePool,
     task: &Task,
@@ -242,131 +244,91 @@ async fn calculate_task_statistics(
     // Total completions
     let total_completions = completions.len() as i64;
 
-    // Calculate completion rates for different periods
-    let (rate_week, completed_week, total_week) = calculate_completion_rate_for_period(
-        task,
-        completions,
-        get_week_start(today),
-        today,
-    );
-
-    let (rate_month, completed_month, total_month) = calculate_completion_rate_for_period(
-        task,
-        completions,
-        get_month_start(today),
-        today,
-    );
-
-    let (rate_all_time, completed_all_time, total_all_time) = calculate_completion_rate_for_period(
-        task,
-        completions,
-        task.created_at.date_naive(),
-        today,
-    );
-
-    // Get skipped period counts from period_results table
-    let skipped_week = period_results::count_period_results(
+    // Get period result counts from task_period_results table
+    // Statistics are now based only on explicitly recorded period results
+    let counts_week = period_results::count_period_results(
         pool,
         &task.id,
         get_week_start(today),
         today,
     )
     .await
-    .map(|c| c.skipped)
-    .unwrap_or(0);
+    .unwrap_or(period_results::PeriodCounts {
+        completed: 0,
+        failed: 0,
+        skipped: 0,
+    });
 
-    let skipped_month = period_results::count_period_results(
+    let counts_month = period_results::count_period_results(
         pool,
         &task.id,
         get_month_start(today),
         today,
     )
     .await
-    .map(|c| c.skipped)
-    .unwrap_or(0);
+    .unwrap_or(period_results::PeriodCounts {
+        completed: 0,
+        failed: 0,
+        skipped: 0,
+    });
 
-    let skipped_all_time = period_results::count_period_results(
+    let counts_all_time = period_results::count_period_results(
         pool,
         &task.id,
         task.created_at.date_naive(),
         today,
     )
     .await
-    .map(|c| c.skipped)
-    .unwrap_or(0);
+    .unwrap_or(period_results::PeriodCounts {
+        completed: 0,
+        failed: 0,
+        skipped: 0,
+    });
+
+    // Calculate totals (completed + failed, excluding skipped)
+    let total_week = counts_week.completed + counts_week.failed;
+    let total_month = counts_month.completed + counts_month.failed;
+    let total_all_time = counts_all_time.completed + counts_all_time.failed;
+
+    // Calculate completion rates: completed / (completed + failed) * 100
+    // Returns None if no period results exist (0/0)
+    let rate_week = if total_week > 0 {
+        Some((counts_week.completed as f64 / total_week as f64) * 100.0)
+    } else {
+        None
+    };
+
+    let rate_month = if total_month > 0 {
+        Some((counts_month.completed as f64 / total_month as f64) * 100.0)
+    } else {
+        None
+    };
+
+    let rate_all_time = if total_all_time > 0 {
+        Some((counts_all_time.completed as f64 / total_all_time as f64) * 100.0)
+    } else {
+        None
+    };
 
     Ok(TaskStatistics {
         completion_rate_week: rate_week,
         completion_rate_month: rate_month,
         completion_rate_all_time: rate_all_time,
-        periods_completed_week: completed_week,
+        periods_completed_week: counts_week.completed,
         periods_total_week: total_week,
-        periods_completed_month: completed_month,
+        periods_completed_month: counts_month.completed,
         periods_total_month: total_month,
-        periods_completed_all_time: completed_all_time,
+        periods_completed_all_time: counts_all_time.completed,
         periods_total_all_time: total_all_time,
-        periods_skipped_week: skipped_week,
-        periods_skipped_month: skipped_month,
-        periods_skipped_all_time: skipped_all_time,
+        periods_skipped_week: counts_week.skipped,
+        periods_skipped_month: counts_month.skipped,
+        periods_skipped_all_time: counts_all_time.skipped,
         current_streak,
         best_streak,
         total_completions,
         last_completed,
         next_due,
     })
-}
-
-/// Calculate completion rate for a given time period
-/// Returns (rate as percentage, periods completed, total periods)
-fn calculate_completion_rate_for_period(
-    task: &Task,
-    completions: &[TaskCompletionRow],
-    start_date: NaiveDate,
-    end_date: NaiveDate,
-) -> (Option<f64>, i32, i32) {
-    // For OneTime tasks, completion rate doesn't really apply
-    if task.recurrence_type == shared::RecurrenceType::OneTime {
-        let completed = completions.iter().filter(|c| {
-            c.due_date >= start_date && c.due_date <= end_date
-        }).count() as i32;
-        let total = if task.target_count > 0 { task.target_count } else { 1 };
-        let rate = if total > 0 {
-            Some((completed.min(total) as f64 / total as f64) * 100.0)
-        } else {
-            None
-        };
-        return (rate, completed.min(total), total);
-    }
-
-    // Count how many due dates fall within the period
-    let mut total_periods = 0;
-    let mut completed_periods = 0;
-    let mut current_date = start_date;
-
-    while current_date <= end_date {
-        if scheduler::is_task_due_on_date(task, current_date) {
-            total_periods += 1;
-
-            // Count completions for this due date
-            let completions_for_date = completions.iter()
-                .filter(|c| c.due_date == current_date)
-                .count() as i32;
-
-            // Check if target was met for this period
-            if completions_for_date >= task.target_count {
-                completed_periods += 1;
-            }
-        }
-        current_date += chrono::Duration::days(1);
-    }
-
-    let rate = if total_periods > 0 {
-        Some((completed_periods as f64 / total_periods as f64) * 100.0)
-    } else {
-        None
-    };
-
-    (rate, completed_periods, total_periods)
 }
 
 /// Calculate the best (longest) streak ever achieved for a task
