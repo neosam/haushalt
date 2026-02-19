@@ -158,6 +158,7 @@
   "tasks.detail.points_on_miss": "On Miss",
   "tasks.detail.linked_rewards": "Linked Rewards",
   "tasks.detail.linked_punishments": "Linked Punishments",
+  "tasks.detail.recent_periods": "Recent Periods",
 
   "task_card.add_to_dashboard": "Add to dashboard",
   "task_card.remove_from_dashboard": "Remove from dashboard",

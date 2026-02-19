@@ -624,6 +624,9 @@ pub struct TaskWithStatus {
     /// True if the task has no assigned user OR the current user is the assigned user.
     #[serde(default = "default_true")]
     pub is_user_assigned: bool,
+    /// Recent period results for habit tracker display (last 15 periods, oldest first)
+    #[serde(default)]
+    pub recent_periods: Vec<PeriodDisplay>,
 }
 
 impl TaskWithStatus {
@@ -1164,6 +1167,13 @@ pub struct TaskPeriodResult {
     pub notes: Option<String>,
 }
 
+/// Simplified period info for habit tracker display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeriodDisplay {
+    pub period_start: NaiveDate,
+    pub status: PeriodStatus,
+}
+
 /// Full task details for the detail view modal
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskWithDetails {
@@ -1177,6 +1187,9 @@ pub struct TaskWithDetails {
     pub linked_rewards: Vec<TaskRewardLink>,
     /// Linked punishments with amounts
     pub linked_punishments: Vec<TaskPunishmentLink>,
+    /// Recent period results for habit tracker display (last 15 periods, oldest first)
+    #[serde(default)]
+    pub recent_periods: Vec<PeriodDisplay>,
 }
 
 /// Result of task completion including points and rewards assigned

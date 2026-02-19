@@ -23,3 +23,4 @@ pub mod category_modal;
 pub mod context_menu;
 pub mod household_picker_modal;
 pub mod quick_task_fab;
+pub mod period_tracker;

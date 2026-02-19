@@ -1799,3 +1799,93 @@ body.dark-mode .fab-message-content {
 body.dark-mode .household-picker-item:hover {
     background-color: #334155;
 }
+
+/* ============================
+   Period Tracker (Habit Tracker Display)
+   ============================ */
+
+.period-tracker {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+    flex-wrap: nowrap;
+    margin: 0.5rem 0;
+}
+
+.period-tracker-section {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.period-tracker-section .detail-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.period-tracker-compact {
+    gap: 0.15rem;
+    margin: 0.25rem 0;
+}
+
+.period-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    font-size: 0.75rem;
+    font-weight: bold;
+    border-radius: 0.25rem;
+    cursor: default;
+    transition: transform 0.1s;
+}
+
+.period-tracker-compact .period-icon {
+    width: 1rem;
+    height: 1rem;
+    font-size: 0.625rem;
+}
+
+.period-icon:hover {
+    transform: scale(1.2);
+}
+
+.period-completed {
+    background-color: #10b981;
+    color: white;
+}
+
+.period-failed {
+    background-color: #ef4444;
+    color: white;
+}
+
+.period-skipped {
+    background-color: #9ca3af;
+    color: white;
+}
+
+.period-in-progress {
+    background-color: #3b82f6;
+    color: white;
+}
+
+/* Dark mode adjustments */
+body.dark-mode .period-completed {
+    background-color: #059669;
+}
+
+body.dark-mode .period-failed {
+    background-color: #dc2626;
+}
+
+body.dark-mode .period-skipped {
+    background-color: #6b7280;
+}
+
+body.dark-mode .period-in-progress {
+    background-color: #2563eb;
+}

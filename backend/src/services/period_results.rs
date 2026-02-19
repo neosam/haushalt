@@ -147,6 +147,37 @@ pub async fn get_period_results_for_task(
     Ok(rows.into_iter().map(|r| r.to_shared()).collect())
 }
 
+/// Get the most recent N periods for habit tracker display
+/// Returns periods ordered oldest to newest (for left-to-right display)
+pub async fn get_recent_periods(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    limit: i32,
+) -> Result<Vec<shared::PeriodDisplay>, PeriodResultError> {
+    let rows: Vec<TaskPeriodResultRow> = sqlx::query_as(
+        r#"SELECT * FROM task_period_results
+        WHERE task_id = ?
+        ORDER BY period_start DESC
+        LIMIT ?"#,
+    )
+    .bind(task_id.to_string())
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    // Reverse to get oldest first (for left-to-right display)
+    let mut periods: Vec<shared::PeriodDisplay> = rows
+        .into_iter()
+        .map(|r| shared::PeriodDisplay {
+            period_start: r.period_start,
+            status: r.status.parse().unwrap_or(shared::PeriodStatus::Failed),
+        })
+        .collect();
+    periods.reverse();
+
+    Ok(periods)
+}
+
 /// Count period results by status for a task within a date range
 #[derive(Debug, Clone)]
 pub struct PeriodCounts {

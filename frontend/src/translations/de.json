@@ -158,6 +158,7 @@
   "tasks.detail.points_on_miss": "Bei Versäumnis",
   "tasks.detail.linked_rewards": "Verknüpfte Belohnungen",
   "tasks.detail.linked_punishments": "Verknüpfte Strafen",
+  "tasks.detail.recent_periods": "Letzte Perioden",
 
   "task_card.add_to_dashboard": "Zum Dashboard hinzufügen",
   "task_card.remove_from_dashboard": "Vom Dashboard entfernen",

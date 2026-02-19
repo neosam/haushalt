@@ -1,9 +1,10 @@
 use leptos::*;
-use shared::{HabitType, RecurrenceType, RecurrenceValue, Task, TaskStatistics, TaskWithDetails};
+use shared::{HabitType, PeriodDisplay, RecurrenceType, RecurrenceValue, Task, TaskStatistics, TaskWithDetails};
 
 use crate::api::ApiClient;
 use crate::components::markdown::MarkdownView;
 use crate::components::modal::Modal;
+use crate::components::period_tracker::PeriodTracker;
 use crate::i18n::use_i18n;
 
 /// Format a recurrence pattern as human-readable text
@@ -75,6 +76,7 @@ fn TaskDetailContent(
     assigned_user: Option<shared::User>,
     linked_rewards: Vec<shared::TaskRewardLink>,
     linked_punishments: Vec<shared::TaskPunishmentLink>,
+    recent_periods: Vec<PeriodDisplay>,
 ) -> impl IntoView {
     let i18n = use_i18n();
 
@@ -187,6 +189,17 @@ fn TaskDetailContent(
         // Statistics section
         <section class="detail-section">
             <h4>{i18n.t("tasks.detail.statistics")}</h4>
+            // Period tracker (habit tracker display)
+            {if !recent_periods.is_empty() {
+                Some(view! {
+                    <div class="period-tracker-section">
+                        <span class="detail-label">{i18n.t("tasks.detail.recent_periods")}</span>
+                        <PeriodTracker periods=recent_periods.clone() show_in_progress=true />
+                    </div>
+                })
+            } else {
+                None
+            }}
             <div class="stats-cards">
                 <div class="stat-card">
                     <div class="stat-label">{i18n.t("tasks.detail.rate_week")}</div>
@@ -368,6 +381,7 @@ pub fn TaskDetailModal(
                                 assigned_user=d.assigned_user
                                 linked_rewards=d.linked_rewards
                                 linked_punishments=d.linked_punishments
+                                recent_periods=d.recent_periods
                             />
                         }.into_view()
                     } else {

@@ -4,6 +4,7 @@ use shared::{RecurrenceType, TaskWithStatus};
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
+use crate::components::period_tracker::PeriodTrackerCompact;
 use crate::i18n::{use_i18n, I18nContext};
 use crate::utils::timezone::today_in_tz;
 
@@ -139,6 +140,10 @@ pub fn TaskCard(
     let is_bad_habit = task.task.habit_type.is_inverted();
     let bad_habit_label = i18n_stored.get_value().t("habit_type.bad_short");
 
+    // Recent periods for habit tracker display
+    let recent_periods = task.recent_periods.clone();
+    let has_recent_periods = !recent_periods.is_empty();
+
     // Household name prefix for meta line
     let household_prefix = household_name.map(|name| format!("{} | ", name)).unwrap_or_default();
 
@@ -185,6 +190,13 @@ pub fn TaskCard(
                     {due_display}
                     {streak_display}
                 </div>
+                {if has_recent_periods {
+                    view! {
+                        <PeriodTrackerCompact periods=recent_periods.clone() show_in_progress=true />
+                    }.into_view()
+                } else {
+                    ().into_view()
+                }}
                 {if is_bad_habit || is_user_assigned {
                     let assigned_label = i18n_stored.get_value().t("tasks.assigned_to_you");
                     view! {

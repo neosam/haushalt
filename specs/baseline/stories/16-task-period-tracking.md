@@ -1,6 +1,6 @@
 # Task Period Tracking
 
-> **Status:** Implemented (Backend)
+> **Status:** Implemented (Backend + Frontend)
 > **Created:** 2026-02-19
 > **Implemented:** 2026-02-19
 
@@ -154,6 +154,9 @@ streak: completed +1, skipped continue, failed break
 
 ## US-PERIOD-007: Display Period Results
 
+> **Status:** Implemented
+> **Implemented:** 2026-02-19
+
 **As a** user
 **I want to** see period results in the task detail view
 **so that** I can see my completion history
@@ -165,6 +168,7 @@ streak: completed +1, skipped continue, failed break
 - Icons displayed horizontally in a row (oldest left, newest right)
 - Hover/tooltip shows the date of each period
 - Today's period shown as "in progress" (○ or similar)
+- Display in **both** list views (Dashboard, Household Overview, Task List) and detail view
 - Statistics show completed/failed/skipped counts
 
 ### UI Mockup
@@ -235,11 +239,21 @@ The background job respects each household's timezone setting:
 - Job runs every minute to catch midnight in all timezones
 - Already finalized periods are skipped (efficient, no redundant updates)
 
+### Frontend Implementation (Completed)
+
+| Component | File | Description |
+|-----------|------|-------------|
+| Shared Types | `shared/src/types.rs` | `PeriodDisplay` struct, `recent_periods` added to `TaskWithStatus` and `TaskWithDetails` |
+| Period Tracker | `frontend/src/components/period_tracker.rs` | `PeriodTracker` and `PeriodTrackerCompact` components |
+| Task Card | `frontend/src/components/task_card.rs` | Displays compact period tracker in list views |
+| Task Detail | `frontend/src/components/task_detail_modal.rs` | Displays period tracker in detail view |
+| Styles | `frontend/styles.css` | Period tracker CSS styles |
+| Translations | `frontend/src/translations/*.json` | "Recent Periods" / "Letzte Perioden" |
+
 ### Pending
 
 | Item | Description | Impact |
 |------|-------------|--------|
-| **US-PERIOD-007 (Frontend)** | Habit tracker style: last 15 periods as ✓/✗/- icons with hover date | Users see aggregated stats but not per-period history |
 | **Streak calculation** | Update to use period results instead of completions | Streaks still use old completion-based calculation |
 
 ### Denied

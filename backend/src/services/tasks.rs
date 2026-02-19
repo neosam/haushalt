@@ -155,6 +155,11 @@ pub async fn get_task_with_status(
         .map(|assigned_id| assigned_id == *user_id)
         .unwrap_or(true); // If no assignment, anyone can complete
 
+    // Get recent periods for habit tracker display (last 15)
+    let recent_periods = period_results::get_recent_periods(pool, task_id, 15)
+        .await
+        .unwrap_or_default();
+
     Ok(Some(TaskWithStatus {
         task,
         completions_today,
@@ -162,6 +167,7 @@ pub async fn get_task_with_status(
         last_completion: last_completion.map(|c| c.completed_at),
         next_due_date,
         is_user_assigned,
+        recent_periods,
     }))
 }
 
@@ -210,12 +216,18 @@ pub async fn get_task_with_details(
         .await
         .unwrap_or_default();
 
+    // Get recent periods for habit tracker display (last 15)
+    let recent_periods = period_results::get_recent_periods(pool, task_id, 15)
+        .await
+        .unwrap_or_default();
+
     Ok(Some(TaskWithDetails {
         task,
         statistics,
         assigned_user,
         linked_rewards,
         linked_punishments,
+        recent_periods,
     }))
 }
 
