@@ -1,6 +1,6 @@
 // Dynamic cache name based on app version - extracted from index.html
-// Changed to v2 to force cache invalidation on existing devices
-let CACHE_NAME = 'household-v2';
+// Changed to v3 to force cache invalidation (fix CSS caching issue)
+let CACHE_NAME = 'household-v3';
 
 // Assets to always try to cache
 const SHELL_URLS = [
@@ -67,10 +67,11 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Network-first for HTML and JS/WASM files (app updates)
+  // Network-first for HTML, JS/WASM, and CSS files (app updates)
   if (url.pathname.endsWith('.html') ||
       url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.wasm') ||
+      url.pathname.endsWith('.css') ||
       url.pathname === '/') {
     event.respondWith(
       fetch(event.request)
@@ -88,7 +89,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for static assets (icons, manifest, css)
+  // Cache-first for static assets (icons, manifest)
   event.respondWith(
     caches.match(event.request)
       .then(cached => cached || fetch(event.request)

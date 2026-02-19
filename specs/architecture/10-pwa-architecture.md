@@ -60,7 +60,7 @@ The service worker handles caching and offline functionality.
 #### Cache Versioning
 
 ```javascript
-let CACHE_NAME = 'household-v2';
+let CACHE_NAME = 'household-v3';
 ```
 
 The cache name is dynamically updated during installation by extracting the JS bundle hash from `index.html`:
@@ -105,8 +105,8 @@ This ensures each deployment gets a unique cache, enabling automatic updates.
                     │                │
                     ▼                ▼
               ┌──────────┐   ┌───────────────────────────┐
-              │ Bypass   │   │ Is it HTML/JS/WASM?       │
-              │ (no SW)  │   │ (.html, .js, .wasm, /)    │
+              │ Bypass   │   │ Is it HTML/JS/WASM/CSS?   │
+              │ (no SW)  │   │ (.html, .js, .wasm, .css) │
               └──────────┘   └───────────────────────────┘
                                    │                │
                                   Yes              No
@@ -120,13 +120,14 @@ This ensures each deployment gets a unique cache, enabling automatic updates.
 
 **1. API Requests (`/api/*`):** Bypass service worker entirely - always go to network.
 
-**2. App Files (HTML, JS, WASM):** Network-first strategy
+**2. App Files (HTML, JS, WASM, CSS):** Network-first strategy
    - Try network first to get latest version
    - Cache successful responses
    - Fall back to cache if offline
    - Ultimate fallback to cached `/index.html` (SPA routing)
+   - CSS included here to ensure style updates deploy immediately
 
-**3. Static Assets (icons, manifest, CSS):** Cache-first strategy
+**3. Static Assets (icons, manifest):** Cache-first strategy
    - Check cache first for fast loading
    - Fetch from network if not cached
    - Cache successful network responses
@@ -245,8 +246,8 @@ frontend/
 
 | Content Type | Offline Behavior |
 |--------------|------------------|
-| App shell (HTML, JS, WASM) | Served from cache |
-| Static assets (icons, CSS) | Served from cache |
+| App shell (HTML, JS, WASM, CSS) | Served from cache |
+| Static assets (icons, manifest) | Served from cache |
 | API requests | Fail (network required) |
 | Navigation to any route | Falls back to cached index.html (SPA handles routing) |
 
