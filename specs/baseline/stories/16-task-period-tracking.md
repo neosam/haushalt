@@ -134,16 +134,21 @@ streak: completed +1, skipped continue, failed break
 
 ## US-PERIOD-006: Backfill Historical Data
 
+> **Status:** Denied
+> **Reason:** Retroactive calculations would be inaccurate - historical `target_count` values are not available, and past periods cannot be reliably reconstructed.
+
 **As a** system
 **I want to** backfill period results for existing tasks
 **so that** historical statistics are available
 
 ### Acceptance Criteria
 
-- Migration script processes all existing tasks
-- For each past period, count completions and determine status
-- Use current `target_count` (historical values not available)
-- Mark as `finalized_by = 'migration'`
+- ~~Migration script processes all existing tasks~~
+- ~~For each past period, count completions and determine status~~
+- ~~Use current `target_count` (historical values not available)~~
+- ~~Mark as `finalized_by = 'migration'`~~
+
+**Decision:** Statistics start fresh from implementation date. Existing tasks show 0/0 until new periods are recorded going forward.
 
 ---
 
@@ -155,10 +160,21 @@ streak: completed +1, skipped continue, failed break
 
 ### Acceptance Criteria
 
-- Calendar or list view showing period results
+- Habit tracker style: show last 15 periods as inline icons
 - Visual indicators: ✓ completed, ✗ failed, - skipped
-- Today's period shown as "in progress"
+- Icons displayed horizontally in a row (oldest left, newest right)
+- Hover/tooltip shows the date of each period
+- Today's period shown as "in progress" (○ or similar)
 - Statistics show completed/failed/skipped counts
+
+### UI Mockup
+
+```
+Letzte Perioden: ✓ ✓ ✗ ✓ ✓ ✓ - ✓ ✓ ✗ ✓ ✓ ✓ ✓ ○
+                                              ↑
+                                          [19.02.2026]
+                                          (on hover)
+```
 
 ---
 
@@ -223,6 +239,11 @@ The background job respects each household's timezone setting:
 
 | Item | Description | Impact |
 |------|-------------|--------|
-| **US-PERIOD-006 (Backfill)** | Migration script for existing historical data | Existing tasks show 0/0 until new periods are recorded |
-| **US-PERIOD-007 (Frontend)** | Period results display in task detail view | Users cannot see period history in UI |
+| **US-PERIOD-007 (Frontend)** | Habit tracker style: last 15 periods as ✓/✗/- icons with hover date | Users see aggregated stats but not per-period history |
 | **Streak calculation** | Update to use period results instead of completions | Streaks still use old completion-based calculation |
+
+### Denied
+
+| Item | Reason |
+|------|--------|
+| **US-PERIOD-006 (Backfill)** | Retroactive calculations would be inaccurate (no historical target_count) |
