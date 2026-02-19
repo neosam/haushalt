@@ -4,8 +4,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{TaskCompletionRow, TaskRow, TaskRowWithCategory, UserRow};
-use crate::services::{households as household_service, points as points_service, scheduler, task_consequences};
-use shared::{CompletionStatus, CreateTaskRequest, PendingReview, Task, TaskCompletion, TaskStatistics, TaskWithDetails, TaskWithStatus, UpdateTaskRequest};
+use crate::services::{households as household_service, period_results, points as points_service, scheduler, task_consequences};
+use shared::{CompletionStatus, CreateTaskRequest, PendingReview, PeriodStatus, Task, TaskCompletion, TaskStatistics, TaskWithDetails, TaskWithStatus, UpdateTaskRequest};
 
 #[derive(Debug, Error)]
 pub enum TaskError {
@@ -264,6 +264,37 @@ async fn calculate_task_statistics(
         today,
     );
 
+    // Get skipped period counts from period_results table
+    let skipped_week = period_results::count_period_results(
+        pool,
+        &task.id,
+        get_week_start(today),
+        today,
+    )
+    .await
+    .map(|c| c.skipped)
+    .unwrap_or(0);
+
+    let skipped_month = period_results::count_period_results(
+        pool,
+        &task.id,
+        get_month_start(today),
+        today,
+    )
+    .await
+    .map(|c| c.skipped)
+    .unwrap_or(0);
+
+    let skipped_all_time = period_results::count_period_results(
+        pool,
+        &task.id,
+        task.created_at.date_naive(),
+        today,
+    )
+    .await
+    .map(|c| c.skipped)
+    .unwrap_or(0);
+
     Ok(TaskStatistics {
         completion_rate_week: rate_week,
         completion_rate_month: rate_month,
@@ -274,6 +305,9 @@ async fn calculate_task_statistics(
         periods_total_month: total_month,
         periods_completed_all_time: completed_all_time,
         periods_total_all_time: total_all_time,
+        periods_skipped_week: skipped_week,
+        periods_skipped_month: skipped_month,
+        periods_skipped_all_time: skipped_all_time,
         current_streak,
         best_streak,
         total_completions,
@@ -768,6 +802,56 @@ pub async fn complete_task(
         task_consequences::assign_task_completion_rewards(pool, task_id, user_id, household_id)
             .await
             .ok();
+    }
+
+    // Check if period target is now met and finalize as completed
+    // Only for scheduled tasks (not OneTime) with target_count > 0
+    if task.recurrence_type != shared::RecurrenceType::OneTime && task.target_count > 0 {
+        let (period_start, period_end) = scheduler::get_period_bounds(&task, completion_due_date);
+
+        // Count completions for this period (all users if unassigned, specific user if assigned)
+        let completions_for_period: i64 = if task.assigned_user_id.is_some() {
+            sqlx::query_scalar(
+                "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
+            )
+            .bind(task_id.to_string())
+            .bind(user_id.to_string())
+            .bind(period_start)
+            .bind(period_end)
+            .fetch_one(pool)
+            .await?
+        } else {
+            sqlx::query_scalar(
+                "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date >= ? AND due_date <= ?",
+            )
+            .bind(task_id.to_string())
+            .bind(period_start)
+            .bind(period_end)
+            .fetch_one(pool)
+            .await?
+        };
+
+        // If target is met, finalize the period as completed
+        if completions_for_period >= task.target_count as i64 {
+            // Only finalize if not already finalized
+            if !period_results::is_period_finalized(pool, task_id, period_start)
+                .await
+                .unwrap_or(false)
+            {
+                let _ = period_results::finalize_period(
+                    pool,
+                    task_id,
+                    period_start,
+                    period_end,
+                    PeriodStatus::Completed,
+                    completions_for_period as i32,
+                    task.target_count,
+                    "system",
+                    None,
+                )
+                .await;
+            }
+        }
     }
 
     Ok(TaskCompletion {

@@ -1089,6 +1089,12 @@ pub struct TaskStatistics {
     pub periods_completed_all_time: i32,
     /// Total applicable periods all time
     pub periods_total_all_time: i32,
+    /// Number of periods skipped this week (paused/vacation)
+    pub periods_skipped_week: i32,
+    /// Number of periods skipped this month (paused/vacation)
+    pub periods_skipped_month: i32,
+    /// Number of periods skipped all time (paused/vacation)
+    pub periods_skipped_all_time: i32,
     /// Current consecutive successful streak
     pub current_streak: i32,
     /// Best (longest) streak ever achieved
@@ -1099,6 +1105,63 @@ pub struct TaskStatistics {
     pub last_completed: Option<DateTime<Utc>>,
     /// Next due date for the task
     pub next_due: Option<NaiveDate>,
+}
+
+// ============================================================================
+// Task Period Result Types
+// ============================================================================
+
+/// Status of a task period (day/week/month)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PeriodStatus {
+    /// Target was reached within the period
+    Completed,
+    /// Period ended without reaching target
+    Failed,
+    /// Period was skipped (task paused or vacation mode)
+    Skipped,
+}
+
+impl PeriodStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PeriodStatus::Completed => "completed",
+            PeriodStatus::Failed => "failed",
+            PeriodStatus::Skipped => "skipped",
+        }
+    }
+}
+
+impl FromStr for PeriodStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "completed" => Ok(PeriodStatus::Completed),
+            "failed" => Ok(PeriodStatus::Failed),
+            "skipped" => Ok(PeriodStatus::Skipped),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Record of a task period's outcome (frozen at finalization)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskPeriodResult {
+    pub id: Uuid,
+    pub task_id: Uuid,
+    pub period_start: NaiveDate,
+    pub period_end: NaiveDate,
+    pub status: PeriodStatus,
+    /// Number of completions recorded during this period
+    pub completions_count: i32,
+    /// Target count at the time of finalization (frozen)
+    pub target_count: i32,
+    pub finalized_at: DateTime<Utc>,
+    /// Who finalized: 'system', 'user', or 'migration'
+    pub finalized_by: String,
+    pub notes: Option<String>,
 }
 
 /// Full task details for the detail view modal
@@ -1896,5 +1959,23 @@ mod tests {
     #[test]
     fn test_reward_type_default() {
         assert_eq!(RewardType::default(), RewardType::Standard);
+    }
+
+    #[test]
+    fn test_period_status_from_str() {
+        assert_eq!("completed".parse(), Ok(PeriodStatus::Completed));
+        assert_eq!("COMPLETED".parse(), Ok(PeriodStatus::Completed));
+        assert_eq!("failed".parse(), Ok(PeriodStatus::Failed));
+        assert_eq!("FAILED".parse(), Ok(PeriodStatus::Failed));
+        assert_eq!("skipped".parse(), Ok(PeriodStatus::Skipped));
+        assert_eq!("SKIPPED".parse(), Ok(PeriodStatus::Skipped));
+        assert!("invalid".parse::<PeriodStatus>().is_err());
+    }
+
+    #[test]
+    fn test_period_status_as_str() {
+        assert_eq!(PeriodStatus::Completed.as_str(), "completed");
+        assert_eq!(PeriodStatus::Failed.as_str(), "failed");
+        assert_eq!(PeriodStatus::Skipped.as_str(), "skipped");
     }
 }

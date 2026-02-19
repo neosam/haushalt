@@ -7,10 +7,10 @@ use uuid::Uuid;
 
 use crate::models::{MembershipRow, TaskRow};
 use crate::services::{
-    activity_logs, household_settings, points as points_service, scheduler, task_consequences,
-    tasks as tasks_service,
+    activity_logs, household_settings, period_results, points as points_service, scheduler,
+    task_consequences, tasks as tasks_service,
 };
-use shared::{ActivityType, HouseholdSettings, RecurrenceType, RecurrenceValue};
+use shared::{ActivityType, HouseholdSettings, PeriodStatus, RecurrenceType, RecurrenceValue};
 
 #[derive(Debug, Error)]
 pub enum BackgroundJobError {
@@ -24,6 +24,8 @@ pub enum BackgroundJobError {
     ActivityLog(#[from] activity_logs::ActivityLogError),
     #[error("Task error: {0}")]
     TaskError(#[from] tasks_service::TaskError),
+    #[error("Period result error: {0}")]
+    PeriodResult(#[from] period_results::PeriodResultError),
 }
 
 /// Report from processing missed tasks
@@ -43,6 +45,15 @@ pub struct MissedTaskReport {
 pub struct AutoArchiveReport {
     pub tasks_checked: u32,
     pub tasks_archived: u32,
+}
+
+/// Report from period finalization
+#[derive(Debug, Clone)]
+pub struct PeriodFinalizationReport {
+    pub tasks_checked: u32,
+    pub periods_completed: u32,
+    pub periods_failed: u32,
+    pub periods_skipped: u32,
 }
 
 /// Configuration for the background job scheduler
@@ -117,6 +128,31 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>, config: JobConfig) {
             }
             Err(e) => {
                 log::error!("Error processing auto-archive: {}", e);
+            }
+        }
+
+        // Process period finalization (create failed/skipped records for ended periods)
+        match process_period_finalization(&pool).await {
+            Ok(report) => {
+                let total = report.periods_completed + report.periods_failed + report.periods_skipped;
+                if total > 0 {
+                    log::info!(
+                        "Period finalization complete: checked {} tasks, finalized {} periods (completed: {}, failed: {}, skipped: {})",
+                        report.tasks_checked,
+                        total,
+                        report.periods_completed,
+                        report.periods_failed,
+                        report.periods_skipped
+                    );
+                } else {
+                    log::debug!(
+                        "Period finalization check complete: checked {} tasks, no periods to finalize",
+                        report.tasks_checked
+                    );
+                }
+            }
+            Err(e) => {
+                log::error!("Error processing period finalization: {}", e);
             }
         }
     }
@@ -463,6 +499,116 @@ async fn is_eligible_for_auto_archive(
         }
         _ => Ok(false), // Other recurrence types never auto-archive
     }
+}
+
+/// Process period finalization for all tasks
+/// This function:
+/// 1. Gets all scheduled tasks from all households (not OneTime)
+/// 2. For each household, uses the household's timezone to determine "yesterday"
+/// 3. For each task due yesterday without a period result, creates one
+/// 4. Status is: completed (if target met), failed (if not met), skipped (if paused/vacation)
+pub async fn process_period_finalization(pool: &SqlitePool) -> Result<PeriodFinalizationReport, BackgroundJobError> {
+    let mut tasks_checked: u32 = 0;
+    let mut periods_completed: u32 = 0;
+    let mut periods_failed: u32 = 0;
+    let mut periods_skipped: u32 = 0;
+
+    // Get all scheduled tasks (not OneTime, not archived)
+    let tasks: Vec<TaskRow> = sqlx::query_as(
+        "SELECT * FROM tasks WHERE recurrence_type != 'onetime' AND archived = 0",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    // Cache household settings to avoid repeated lookups
+    let mut settings_cache: std::collections::HashMap<Uuid, HouseholdSettings> =
+        std::collections::HashMap::new();
+
+    for task_row in tasks {
+        let task = task_row.to_shared();
+
+        // Get household settings (cached)
+        let settings = if let Some(s) = settings_cache.get(&task.household_id) {
+            s.clone()
+        } else {
+            let s = household_settings::get_or_create_settings(pool, &task.household_id)
+                .await
+                .unwrap_or_default();
+            settings_cache.insert(task.household_id, s.clone());
+            s
+        };
+
+        let timezone = settings.timezone.clone();
+
+        // Get "yesterday" in the household's timezone
+        let tz = scheduler::parse_timezone(&timezone);
+        let today_local = scheduler::today_in_timezone(tz);
+        let yesterday_local = today_local - Duration::days(1);
+
+        // Check if task was due yesterday
+        if !scheduler::is_task_due_on_date(&task, yesterday_local) {
+            continue;
+        }
+
+        // Get the period bounds for yesterday
+        let (period_start, period_end) = scheduler::get_period_bounds(&task, yesterday_local);
+
+        // Check if period is already finalized
+        if period_results::is_period_finalized(pool, &task.id, period_start)
+            .await
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        tasks_checked += 1;
+
+        // Count completions for this period
+        let completions_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date >= ? AND due_date <= ?",
+        )
+        .bind(task.id.to_string())
+        .bind(period_start)
+        .bind(period_end)
+        .fetch_one(pool)
+        .await?;
+
+        // Determine status
+        let status = if task.paused || household_settings::is_household_on_vacation(&settings, yesterday_local) {
+            // Task was paused or household on vacation - skip
+            periods_skipped += 1;
+            PeriodStatus::Skipped
+        } else if completions_count >= task.target_count as i64 {
+            // Target was met
+            periods_completed += 1;
+            PeriodStatus::Completed
+        } else {
+            // Target was not met
+            periods_failed += 1;
+            PeriodStatus::Failed
+        };
+
+        // Create the period result
+        let _ = period_results::finalize_period(
+            pool,
+            &task.id,
+            period_start,
+            period_end,
+            status,
+            completions_count as i32,
+            task.target_count,
+            "system",
+            None,
+        )
+        .await;
+    }
+
+    Ok(PeriodFinalizationReport {
+        tasks_checked,
+        periods_completed,
+        periods_failed,
+        periods_skipped,
+    })
 }
 
 #[cfg(test)]
