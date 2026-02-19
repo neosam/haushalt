@@ -108,6 +108,6 @@
 
 ### Acceptance Criteria
 - Household name in task card meta line is a clickable link
-- Link navigates to `/household/{household_id}`
+- Link navigates to `/households/{household_id}`
 - Link is styled distinctly (primary color, underline on hover)
 - Works in dashboard task list view

@@ -187,7 +187,7 @@ pub fn TaskCard(
                 </div>
                 <div class="task-meta">
                     {if let (Some(name), Some(hid)) = (household_name_display.clone(), household_id_for_link.clone()) {
-                        let href = format!("/household/{}", hid);
+                        let href = format!("/households/{}", hid);
                         view! {
                             <a href=href class="household-link">{name}</a>
                             " | "
