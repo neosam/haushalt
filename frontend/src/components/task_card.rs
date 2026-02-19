@@ -171,7 +171,7 @@ pub fn TaskCard(
                 <div class="task-title">
                     {if title_clickable {
                         view! {
-                            <span class="task-title-clickable" on:click=on_title_click.clone()>
+                            <span class="task-title-clickable" on:pointerup=on_title_click.clone()>
                                 {task_title.clone()}
                             </span>
                         }.into_view()

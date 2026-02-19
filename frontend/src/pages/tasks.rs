@@ -399,7 +399,7 @@ pub fn TasksPage() -> impl IntoView {
                                         <div class="task-content">
                                             <div
                                                 class="task-title task-title-clickable"
-                                                on:click=move |_| detail_task_id.set(Some(detail_id.clone()))
+                                                on:pointerup=move |_| detail_task_id.set(Some(detail_id.clone()))
                                             >
                                                 {task.title.clone()}
                                                 {if is_paused {
@@ -493,7 +493,7 @@ pub fn TasksPage() -> impl IntoView {
                                         <div class="task-content">
                                             <div
                                                 class="task-title task-title-clickable"
-                                                on:click=move |_| detail_task_id.set(Some(detail_id.clone()))
+                                                on:pointerup=move |_| detail_task_id.set(Some(detail_id.clone()))
                                             >
                                                 {task.title.clone()}
                                             </div>

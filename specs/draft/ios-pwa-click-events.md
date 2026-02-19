@@ -77,6 +77,7 @@ These may have the same issue:
 
 ## Implementation
 
+### 1. CSS Changes
 Added `touch-action: manipulation` to the following CSS classes in `frontend/styles.css`:
 
 | Class | Line | Additional Properties |
@@ -86,6 +87,20 @@ Added `touch-action: manipulation` to the following CSS classes in `frontend/sty
 | `.modal-backdrop` | ~582 | |
 | `.fab` | ~1661 | |
 | `.household-picker-item` | ~1766 | |
+
+### 2. Event Handler Changes
+Changed task title click handlers from `on:click` to `on:pointerup`:
+
+| File | Line | Change |
+|------|------|--------|
+| `frontend/src/components/task_card.rs` | ~174 | `on:click` → `on:pointerup` |
+| `frontend/src/pages/tasks.rs` | ~402 | `on:click` → `on:pointerup` |
+| `frontend/src/pages/tasks.rs` | ~496 | `on:click` → `on:pointerup` |
+
+**Why `on:pointerup`?**
+- Pointer events are the modern unified API for mouse, touch, and pen input
+- They fire immediately without the 300ms delay on iOS
+- Work consistently across all platforms
 
 ## Testing Checklist
 
