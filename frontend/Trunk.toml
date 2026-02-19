@@ -2,6 +2,18 @@
 target = "index.html"
 dist = "dist"
 
+# Inject build hash into service worker for cache busting
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["-c", """
+HASH=$(grep -oP 'frontend-\\K[a-f0-9]+(?=\\.js)' $TRUNK_STAGING_DIR/index.html | head -1)
+if [ -n "$HASH" ]; then
+  sed -i "s/__BUILD_HASH__/$HASH/g" $TRUNK_STAGING_DIR/sw.js
+  echo "Injected build hash $HASH into sw.js"
+fi
+"""]
+
 [watch]
 watch = ["src", "index.html", "styles.css", "manifest.json", "sw.js", "favicon.svg", "icons"]
 

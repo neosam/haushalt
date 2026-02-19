@@ -59,20 +59,36 @@ The service worker handles caching and offline functionality.
 
 #### Cache Versioning
 
+The cache name includes the build hash, injected at build time by a Trunk post_build hook:
+
 ```javascript
-let CACHE_NAME = 'household-v3';
+let CACHE_NAME = 'household-34c00ad0a2cae6e8';  // Hash injected at build time
 ```
 
-The cache name is dynamically updated during installation by extracting the JS bundle hash from `index.html`:
+**Build-time injection** (Trunk.toml):
+```toml
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["-c", """
+HASH=$(grep -oP 'frontend-\\K[a-f0-9]+(?=\\.js)' $TRUNK_STAGING_DIR/index.html | head -1)
+sed -i "s/__BUILD_HASH__/$HASH/g" $TRUNK_STAGING_DIR/sw.js
+"""]
+```
+
+The source `sw.js` contains a placeholder `__BUILD_HASH__` which is replaced with the actual WASM bundle hash during each build. This ensures:
+1. Each deployment gets a unique cache name automatically
+2. The service worker file content changes, triggering browser updates
+3. No manual version bumping required
+
+**Runtime fallback**: If the placeholder isn't replaced (e.g., during development), the service worker extracts the hash from `index.html` at install time:
 
 ```javascript
-const match = html.match(/frontend-([a-f0-9]+)_bg\.js/);
+const match = html.match(/frontend-([a-f0-9]+)\.js/);
 if (match) {
   CACHE_NAME = `household-${match[1]}`;
 }
 ```
-
-This ensures each deployment gets a unique cache, enabling automatic updates.
 
 #### Lifecycle Events
 

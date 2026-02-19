@@ -1,6 +1,6 @@
-// Dynamic cache name based on app version - extracted from index.html
-// Changed to v3 to force cache invalidation (fix CSS caching issue)
-let CACHE_NAME = 'household-v3';
+// Cache name with build hash - replaced at build time by post_build hook
+// Falls back to extracting hash from index.html if placeholder not replaced
+let CACHE_NAME = 'household-__BUILD_HASH__';
 
 // Assets to always try to cache
 const SHELL_URLS = [
@@ -20,8 +20,8 @@ self.addEventListener('install', event => {
     fetch('/index.html', { cache: 'no-store' })
       .then(response => response.text())
       .then(html => {
-        // Extract hash from script src like: frontend-abc123_bg.js
-        const match = html.match(/frontend-([a-f0-9]+)_bg\.js/);
+        // Extract hash from script src like: frontend-abc123.js
+        const match = html.match(/frontend-([a-f0-9]+)\.js/);
         if (match) {
           CACHE_NAME = `household-${match[1]}`;
           console.log('SW: Cache version:', CACHE_NAME);

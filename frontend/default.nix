@@ -36,6 +36,7 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = [
     rustToolchain
     wasm-bindgen-cli
+    pkgs.trunk
     pkgs.binaryen
     pkgs.lld
   ];
@@ -59,33 +60,8 @@ pkgs.stdenv.mkDerivation {
 
     cd frontend
 
-    # Build WASM
-    cargo build --target wasm32-unknown-unknown --release --offline
-
-    # Run wasm-bindgen
-    mkdir -p dist
-    wasm-bindgen \
-      --target web \
-      --out-dir dist \
-      --out-name frontend \
-      ../target/wasm32-unknown-unknown/release/frontend.wasm
-
-    # Optimize WASM
-    wasm-opt -Oz -o dist/frontend_bg.wasm dist/frontend_bg.wasm || true
-
-    # Copy static assets
-    cp index.html dist/
-    cp styles.css dist/
-    cp manifest.json dist/
-    cp sw.js dist/
-    cp favicon.svg dist/
-    cp -r icons dist/
-
-    # Update index.html to load the WASM module
-    sed -i 's|<link data-trunk rel="rust" data-wasm-opt="z" />|<script type="module">import init from "/frontend.js"; init();</script>|' dist/index.html
-    sed -i 's|<link data-trunk rel="css" href="styles.css">|<link rel="stylesheet" href="/styles.css">|' dist/index.html
-    sed -i 's|<link data-trunk rel="copy-file"[^>]*>||g' dist/index.html
-    sed -i 's|<link data-trunk rel="copy-dir"[^>]*>||g' dist/index.html
+    # Build with trunk (handles WASM, assets, and post_build hooks)
+    trunk build --release --offline
 
     runHook postBuild
   '';
