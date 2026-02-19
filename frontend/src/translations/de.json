@@ -340,6 +340,8 @@
   "activity.task_completion_rejected": "{actor} hat {user}s Erledigung von Aufgabe '{name}' abgelehnt",
   "activity.task_completion_rejected_no_name": "{actor} hat {user}s Aufgabenerledigung abgelehnt",
   "activity.task_completion_rejected_no_user": "{actor} hat eine Aufgabenerledigung abgelehnt",
+  "activity.task_auto_archived": "Aufgabe '{name}' wurde automatisch archiviert",
+  "activity.task_auto_archived_no_name": "Eine Aufgabe wurde automatisch archiviert",
 
   "activity.reward_created": "{actor} hat Belohnung '{name}' erstellt",
   "activity.reward_created_no_name": "{actor} hat eine Belohnung erstellt",
@@ -484,6 +486,11 @@
   "settings.vacation_start_hint": "Leer lassen, um sofort bei aktiviertem Urlaubsmodus zu starten",
   "settings.vacation_end": "Urlaubs-Enddatum",
   "settings.vacation_end_hint": "Leer lassen für einen unbefristeten Urlaubszeitraum",
+  "settings.task_cleanup": "Aufgabenbereinigung",
+  "settings.enable_auto_archive": "Erledigte einmalige und benutzerdefinierte Aufgaben automatisch archivieren",
+  "settings.auto_archive_hint": "Automatische Archivierung von erledigten einmaligen Aufgaben und benutzerdefinierten Aufgaben (nach ihrem letzten Datum) nach einer Karenzzeit",
+  "settings.auto_archive_days": "Tage bis zur automatischen Archivierung",
+  "settings.auto_archive_days_hint": "Anzahl der Tage nach Erledigung, bevor die Aufgabe automatisch archiviert wird (1-90)",
 
   "hierarchy.equals": "Gleichberechtigt",
   "hierarchy.equals_desc": "Jeder kann Aufgaben, Belohnungen und Strafen verwalten",

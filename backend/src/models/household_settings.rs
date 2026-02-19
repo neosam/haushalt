@@ -20,6 +20,7 @@ pub struct HouseholdSettingsRow {
     pub vacation_mode: bool,
     pub vacation_start: Option<NaiveDate>,
     pub vacation_end: Option<NaiveDate>,
+    pub auto_archive_days: Option<i32>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -40,6 +41,7 @@ impl HouseholdSettingsRow {
             vacation_mode: self.vacation_mode,
             vacation_start: self.vacation_start,
             vacation_end: self.vacation_end,
+            auto_archive_days: self.auto_archive_days,
             updated_at: self.updated_at,
         }
     }
@@ -68,6 +70,7 @@ mod tests {
             vacation_mode: false,
             vacation_start: None,
             vacation_end: None,
+            auto_archive_days: Some(7),
             updated_at: now,
         };
 
@@ -86,6 +89,7 @@ mod tests {
         assert!(!shared.vacation_mode);
         assert!(shared.vacation_start.is_none());
         assert!(shared.vacation_end.is_none());
+        assert_eq!(shared.auto_archive_days, Some(7));
     }
 
     #[test]
@@ -107,6 +111,7 @@ mod tests {
             vacation_mode: false,
             vacation_start: None,
             vacation_end: None,
+            auto_archive_days: None,
             updated_at: now,
         };
 

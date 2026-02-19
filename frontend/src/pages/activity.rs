@@ -215,6 +215,13 @@ fn format_activity_description(activity: &ActivityLogWithUsers, i18n: &I18nConte
                 replace_placeholders(&i18n.t("activity.task_completion_rejected_no_user"), &[("{actor}", actor)])
             }
         }
+        ActivityType::TaskAutoArchived => {
+            if entity_name.is_empty() {
+                i18n.t("activity.task_auto_archived_no_name")
+            } else {
+                replace_placeholders(&i18n.t("activity.task_auto_archived"), &[("{name}", entity_name)])
+            }
+        }
 
         // Reward events
         ActivityType::RewardCreated => {

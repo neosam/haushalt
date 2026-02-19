@@ -39,6 +39,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let vacation_mode = create_rw_signal(false);
     let vacation_start = create_rw_signal(Option::<NaiveDate>::None);
     let vacation_end = create_rw_signal(Option::<NaiveDate>::None);
+    let auto_archive_days = create_rw_signal(Option::<i32>::Some(7));
 
     // Load settings and check permissions
     create_effect(move |_| {
@@ -66,6 +67,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     vacation_mode.set(s.vacation_mode);
                     vacation_start.set(s.vacation_start);
                     vacation_end.set(s.vacation_end);
+                    auto_archive_days.set(s.auto_archive_days);
                     settings.set(Some(s));
                 }
                 Err(e) => error.set(Some(e)),
@@ -107,6 +109,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             vacation_mode: Some(vacation_mode.get()),
             vacation_start: Some(vacation_start.get()),
             vacation_end: Some(vacation_end.get()),
+            auto_archive_days: Some(auto_archive_days.get()),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -338,6 +341,55 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                         }
                                     />
                                     <small class="form-hint">{i18n_stored.get_value().t("settings.vacation_end_hint")}</small>
+                                </div>
+                            </div>
+                        </Show>
+
+                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+
+                        <h3 style="margin-bottom: 1rem;">{i18n_stored.get_value().t("settings.task_cleanup")}</h3>
+
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input
+                                    type="checkbox"
+                                    id="auto-archive-enabled"
+                                    prop:checked=move || auto_archive_days.get().map(|d| d > 0).unwrap_or(false)
+                                    on:change=move |ev| {
+                                        let checked = event_target_checked(&ev);
+                                        if checked {
+                                            auto_archive_days.set(Some(7));
+                                        } else {
+                                            auto_archive_days.set(None);
+                                        }
+                                    }
+                                />
+                                <label for="auto-archive-enabled">{i18n_stored.get_value().t("settings.enable_auto_archive")}</label>
+                            </div>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.auto_archive_hint")}</small>
+                        </div>
+
+                        <Show when=move || auto_archive_days.get().map(|d| d > 0).unwrap_or(false) fallback=|| ()>
+                            <div style="margin-left: 1.5rem; padding-left: 1rem; border-left: 2px solid var(--border-color);">
+                                <div class="form-group">
+                                    <label class="form-label" for="auto-archive-days">{i18n_stored.get_value().t("settings.auto_archive_days")}</label>
+                                    <input
+                                        type="number"
+                                        id="auto-archive-days"
+                                        class="form-input"
+                                        min="1"
+                                        max="90"
+                                        prop:value=move || auto_archive_days.get().unwrap_or(7).to_string()
+                                        on:input=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if let Ok(days) = value.parse::<i32>() {
+                                                if (1..=90).contains(&days) {
+                                                    auto_archive_days.set(Some(days));
+                                                }
+                                            }
+                                        }
+                                    />
+                                    <small class="form-hint">{i18n_stored.get_value().t("settings.auto_archive_days_hint")}</small>
                                 </div>
                             </div>
                         </Show>

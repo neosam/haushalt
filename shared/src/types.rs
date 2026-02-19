@@ -145,6 +145,8 @@ pub struct HouseholdSettings {
     pub vacation_start: Option<NaiveDate>,
     /// Optional end date for vacation mode (None = indefinite)
     pub vacation_end: Option<NaiveDate>,
+    /// Days after completion before auto-archiving one-time/custom tasks (None or 0 = disabled)
+    pub auto_archive_days: Option<i32>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -164,6 +166,7 @@ impl Default for HouseholdSettings {
             vacation_mode: false,
             vacation_start: None,
             vacation_end: None,
+            auto_archive_days: Some(7),
             updated_at: Utc::now(),
         }
     }
@@ -186,6 +189,8 @@ pub struct UpdateHouseholdSettingsRequest {
     pub vacation_start: Option<Option<NaiveDate>>,
     /// Set vacation end date (Some(None) to clear)
     pub vacation_end: Option<Option<NaiveDate>>,
+    /// Set auto-archive days (Some(None) or Some(Some(0)) to disable)
+    pub auto_archive_days: Option<Option<i32>>,
 }
 
 // ============================================================================
@@ -1167,6 +1172,7 @@ pub enum ActivityType {
     TaskMissed,
     TaskCompletionApproved,
     TaskCompletionRejected,
+    TaskAutoArchived,
 
     // Reward events
     RewardCreated,
@@ -1211,6 +1217,7 @@ impl ActivityType {
             ActivityType::TaskMissed => "task_missed",
             ActivityType::TaskCompletionApproved => "task_completion_approved",
             ActivityType::TaskCompletionRejected => "task_completion_rejected",
+            ActivityType::TaskAutoArchived => "task_auto_archived",
             ActivityType::RewardCreated => "reward_created",
             ActivityType::RewardDeleted => "reward_deleted",
             ActivityType::RewardAssigned => "reward_assigned",
@@ -1249,6 +1256,7 @@ impl FromStr for ActivityType {
             "task_missed" => Ok(ActivityType::TaskMissed),
             "task_completion_approved" => Ok(ActivityType::TaskCompletionApproved),
             "task_completion_rejected" => Ok(ActivityType::TaskCompletionRejected),
+            "task_auto_archived" => Ok(ActivityType::TaskAutoArchived),
             "reward_created" => Ok(ActivityType::RewardCreated),
             "reward_deleted" => Ok(ActivityType::RewardDeleted),
             "reward_assigned" => Ok(ActivityType::RewardAssigned),

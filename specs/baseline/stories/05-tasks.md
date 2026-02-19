@@ -409,14 +409,13 @@
   - Last specified date (for custom tasks)
 - Tasks are archived when: `current_date >= (completion_date + auto_archive_days)`
 
-#### Implementation Options
-- **Option A**: Background job runs periodically (e.g., daily) to archive eligible tasks
-- **Option B**: Check and archive on task list load (lazy evaluation)
-- **Option C**: Triggered by task completion with scheduled archive
+#### Implementation
+- **Background job** runs periodically (every minute, integrated with existing scheduler) to archive eligible tasks
+- Runs alongside existing missed-task processing in `background_jobs.rs`
 
 #### Activity Logging
-- Auto-archived tasks are logged in household activity
-- Log entry distinguishes auto-archive from manual archive
+- Auto-archived tasks are logged in household activity with dedicated `TaskAutoArchived` activity type
+- This distinguishes auto-archive from manual archive (`TaskUpdated`)
 
 ### Design Decisions
 - **Never archive uncompleted**: Users should explicitly decide to archive tasks they didn't complete

@@ -35,8 +35,8 @@ pub async fn get_or_create_settings(
     let default_timezone = "UTC";
     sqlx::query(
         r#"
-        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, updated_at)
-        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, ?)
+        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, auto_archive_days, updated_at)
+        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, 7, ?)
         "#,
     )
     .bind(household_id.to_string())
@@ -60,6 +60,7 @@ pub async fn get_or_create_settings(
         vacation_mode: false,
         vacation_start: None,
         vacation_end: None,
+        auto_archive_days: Some(7),
         updated_at: now,
     })
 }
@@ -110,6 +111,9 @@ pub async fn update_settings(
     if let Some(ref vacation_end) = request.vacation_end {
         settings.vacation_end = *vacation_end;
     }
+    if let Some(ref auto_archive_days) = request.auto_archive_days {
+        settings.auto_archive_days = *auto_archive_days;
+    }
 
     let now = Utc::now();
     settings.updated_at = now;
@@ -117,7 +121,7 @@ pub async fn update_settings(
     sqlx::query(
         r#"
         UPDATE household_settings
-        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, rewards_enabled = ?, punishments_enabled = ?, chat_enabled = ?, vacation_mode = ?, vacation_start = ?, vacation_end = ?, updated_at = ?
+        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, rewards_enabled = ?, punishments_enabled = ?, chat_enabled = ?, vacation_mode = ?, vacation_start = ?, vacation_end = ?, auto_archive_days = ?, updated_at = ?
         WHERE household_id = ?
         "#,
     )
@@ -133,6 +137,7 @@ pub async fn update_settings(
     .bind(settings.vacation_mode)
     .bind(settings.vacation_start)
     .bind(settings.vacation_end)
+    .bind(settings.auto_archive_days)
     .bind(now)
     .bind(household_id.to_string())
     .execute(pool)

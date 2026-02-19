@@ -340,6 +340,8 @@
   "activity.task_completion_rejected": "{actor} rejected {user}'s completion of task '{name}'",
   "activity.task_completion_rejected_no_name": "{actor} rejected {user}'s task completion",
   "activity.task_completion_rejected_no_user": "{actor} rejected a task completion",
+  "activity.task_auto_archived": "Task '{name}' was automatically archived",
+  "activity.task_auto_archived_no_name": "A task was automatically archived",
 
   "activity.reward_created": "{actor} created reward '{name}'",
   "activity.reward_created_no_name": "{actor} created a reward",
@@ -484,6 +486,11 @@
   "settings.vacation_start_hint": "Leave empty to start immediately when vacation mode is enabled",
   "settings.vacation_end": "Vacation End Date",
   "settings.vacation_end_hint": "Leave empty for an indefinite vacation period",
+  "settings.task_cleanup": "Task Cleanup",
+  "settings.enable_auto_archive": "Auto-archive completed one-time and custom tasks",
+  "settings.auto_archive_hint": "Automatically archive completed one-time tasks and custom tasks (after their last date) after a grace period",
+  "settings.auto_archive_days": "Days before auto-archive",
+  "settings.auto_archive_days_hint": "Number of days after completion before the task is automatically archived (1-90)",
 
   "hierarchy.equals": "Equals",
   "hierarchy.equals_desc": "Everyone can manage tasks, rewards, and punishments",
