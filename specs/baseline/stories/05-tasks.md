@@ -382,3 +382,43 @@
 - **Read-only focus**: This view emphasizes readability; editing is done through a separate edit modal
 - **Statistics periods**: Completion rates shown for week, month, and all-time to provide both recent and historical context
 - **Mobile-friendly**: Layout adapts for smaller screens with stacked sections
+
+---
+
+## US-TASK-021: Auto-Archive Obsolete Tasks
+
+**As a** household Owner or Admin
+**I want** completed one-time and custom tasks to be automatically archived after a configurable period
+**So that** the task list stays clean without manual intervention
+
+### Acceptance Criteria
+
+#### Eligible Tasks for Auto-Archive
+- **One-time tasks**: Auto-archived when completed, after the grace period has elapsed
+- **Custom tasks**: Auto-archived when completed AND the last specified date has passed, after the grace period has elapsed
+- **Uncompleted tasks**: NEVER auto-archived, regardless of task type or dates
+
+#### Household Settings
+- New setting: `auto_archive_days` (integer, default: 7, range: 1-90)
+- Setting is configurable by Owner/Admin in household settings
+- Value of 0 or null disables auto-archiving for the household
+
+#### Archive Timing
+- Grace period starts from the later of:
+  - Task completion date
+  - Last specified date (for custom tasks)
+- Tasks are archived when: `current_date >= (completion_date + auto_archive_days)`
+
+#### Implementation Options
+- **Option A**: Background job runs periodically (e.g., daily) to archive eligible tasks
+- **Option B**: Check and archive on task list load (lazy evaluation)
+- **Option C**: Triggered by task completion with scheduled archive
+
+#### Activity Logging
+- Auto-archived tasks are logged in household activity
+- Log entry distinguishes auto-archive from manual archive
+
+### Design Decisions
+- **Never archive uncompleted**: Users should explicitly decide to archive tasks they didn't complete
+- **Grace period**: Allows users to review recent completions before archival
+- **Household-level setting**: Different households may have different cleanup preferences
