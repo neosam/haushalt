@@ -250,11 +250,15 @@ The background job respects each household's timezone setting:
 | Styles | `frontend/styles.css` | Period tracker CSS styles |
 | Translations | `frontend/src/translations/*.json` | "Recent Periods" / "Letzte Perioden" |
 
-### Pending
+### Streak Calculation (Implemented)
 
-| Item | Description | Impact |
-|------|-------------|--------|
-| **Streak calculation** | Update to use period results instead of completions | Streaks still use old completion-based calculation |
+Streaks are now calculated from `task_period_results`:
+- `calculate_current_streak()` - counts consecutive completed periods from most recent
+- `calculate_best_streak()` - finds longest consecutive run of completed periods
+- Skipped periods do NOT break streaks
+- Failed periods break streaks
+
+Functions in `backend/src/services/period_results.rs`.
 
 ### Denied
 

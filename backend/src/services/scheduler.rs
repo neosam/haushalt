@@ -52,6 +52,7 @@ pub fn is_task_due_on_date(task: &Task, date: NaiveDate) -> bool {
 }
 
 /// Get the previous due date for a task before the given date
+#[allow(dead_code)]
 pub fn get_previous_due_date(task: &Task, current_date: NaiveDate) -> NaiveDate {
     match task.recurrence_type {
         RecurrenceType::OneTime => {

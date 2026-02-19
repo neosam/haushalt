@@ -229,6 +229,69 @@ pub async fn count_period_results(
     })
 }
 
+/// Calculate current streak from period results
+/// Counts consecutive completed periods from most recent, skipped periods don't break streak
+pub async fn calculate_current_streak(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+) -> Result<i32, PeriodResultError> {
+    // Get all period results ordered by period_start DESC (most recent first)
+    let rows: Vec<TaskPeriodResultRow> = sqlx::query_as(
+        r#"SELECT * FROM task_period_results
+        WHERE task_id = ?
+        ORDER BY period_start DESC"#,
+    )
+    .bind(task_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    let mut streak = 0;
+    for row in rows {
+        let status: PeriodStatus = row.status.parse().unwrap_or(PeriodStatus::Failed);
+        match status {
+            PeriodStatus::Completed => streak += 1,
+            PeriodStatus::Skipped => continue, // Skip doesn't break streak
+            PeriodStatus::Failed => break,     // Failed breaks streak
+        }
+    }
+
+    Ok(streak)
+}
+
+/// Calculate best (longest) streak from period results
+/// Finds longest consecutive run of completed periods, skipped periods don't break streak
+pub async fn calculate_best_streak(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+) -> Result<i32, PeriodResultError> {
+    // Get all period results ordered by period_start ASC (oldest first)
+    let rows: Vec<TaskPeriodResultRow> = sqlx::query_as(
+        r#"SELECT * FROM task_period_results
+        WHERE task_id = ?
+        ORDER BY period_start ASC"#,
+    )
+    .bind(task_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    let mut best_streak = 0;
+    let mut current_streak = 0;
+
+    for row in rows {
+        let status: PeriodStatus = row.status.parse().unwrap_or(PeriodStatus::Failed);
+        match status {
+            PeriodStatus::Completed => {
+                current_streak += 1;
+                best_streak = best_streak.max(current_streak);
+            }
+            PeriodStatus::Skipped => continue, // Skip doesn't break streak
+            PeriodStatus::Failed => current_streak = 0, // Failed breaks streak
+        }
+    }
+
+    Ok(best_streak)
+}
+
 /// Manually update a period result's status (for admin corrections)
 #[allow(dead_code)]
 pub async fn update_period_status(
@@ -675,5 +738,102 @@ mod tests {
             .await
             .unwrap();
         assert!(!deleted_again);
+    }
+
+    #[tokio::test]
+    async fn test_calculate_current_streak() {
+        let pool = setup_test_db().await;
+        let task_id = Uuid::new_v4();
+
+        // Create 5 consecutive completed periods
+        for day in 1..=5 {
+            let date = NaiveDate::from_ymd_opt(2024, 1, day).unwrap();
+            finalize_period(&pool, &task_id, date, date, PeriodStatus::Completed, 1, 1, "system", None)
+                .await
+                .unwrap();
+        }
+
+        let streak = calculate_current_streak(&pool, &task_id).await.unwrap();
+        assert_eq!(streak, 5);
+    }
+
+    #[tokio::test]
+    async fn test_calculate_current_streak_with_skipped() {
+        let pool = setup_test_db().await;
+        let task_id = Uuid::new_v4();
+
+        // Create: completed, completed, skipped, completed, completed (most recent)
+        for (day, status) in [(1, PeriodStatus::Completed), (2, PeriodStatus::Completed), (3, PeriodStatus::Skipped), (4, PeriodStatus::Completed), (5, PeriodStatus::Completed)] {
+            let date = NaiveDate::from_ymd_opt(2024, 1, day).unwrap();
+            finalize_period(&pool, &task_id, date, date, status, 1, 1, "system", None)
+                .await
+                .unwrap();
+        }
+
+        // Skipped doesn't break streak, so we should have 4 completed
+        let streak = calculate_current_streak(&pool, &task_id).await.unwrap();
+        assert_eq!(streak, 4);
+    }
+
+    #[tokio::test]
+    async fn test_calculate_current_streak_broken_by_failed() {
+        let pool = setup_test_db().await;
+        let task_id = Uuid::new_v4();
+
+        // Create: completed, failed, completed, completed (most recent)
+        for (day, status) in [(1, PeriodStatus::Completed), (2, PeriodStatus::Failed), (3, PeriodStatus::Completed), (4, PeriodStatus::Completed)] {
+            let date = NaiveDate::from_ymd_opt(2024, 1, day).unwrap();
+            finalize_period(&pool, &task_id, date, date, status, 1, 1, "system", None)
+                .await
+                .unwrap();
+        }
+
+        // Failed breaks streak, so we should have 2 (days 3 and 4)
+        let streak = calculate_current_streak(&pool, &task_id).await.unwrap();
+        assert_eq!(streak, 2);
+    }
+
+    #[tokio::test]
+    async fn test_calculate_best_streak() {
+        let pool = setup_test_db().await;
+        let task_id = Uuid::new_v4();
+
+        // Create: completed x3, failed, completed x5 (best streak)
+        for (day, status) in [
+            (1, PeriodStatus::Completed), (2, PeriodStatus::Completed), (3, PeriodStatus::Completed),
+            (4, PeriodStatus::Failed),
+            (5, PeriodStatus::Completed), (6, PeriodStatus::Completed), (7, PeriodStatus::Completed),
+            (8, PeriodStatus::Completed), (9, PeriodStatus::Completed),
+        ] {
+            let date = NaiveDate::from_ymd_opt(2024, 1, day).unwrap();
+            finalize_period(&pool, &task_id, date, date, status, 1, 1, "system", None)
+                .await
+                .unwrap();
+        }
+
+        let streak = calculate_best_streak(&pool, &task_id).await.unwrap();
+        assert_eq!(streak, 5);
+    }
+
+    #[tokio::test]
+    async fn test_calculate_best_streak_with_skipped() {
+        let pool = setup_test_db().await;
+        let task_id = Uuid::new_v4();
+
+        // Create: completed x2, skipped, completed x3 (all count as one streak of 5)
+        for (day, status) in [
+            (1, PeriodStatus::Completed), (2, PeriodStatus::Completed),
+            (3, PeriodStatus::Skipped),
+            (4, PeriodStatus::Completed), (5, PeriodStatus::Completed), (6, PeriodStatus::Completed),
+        ] {
+            let date = NaiveDate::from_ymd_opt(2024, 1, day).unwrap();
+            finalize_period(&pool, &task_id, date, date, status, 1, 1, "system", None)
+                .await
+                .unwrap();
+        }
+
+        // Skipped doesn't break, so best streak is 5
+        let streak = calculate_best_streak(&pool, &task_id).await.unwrap();
+        assert_eq!(streak, 5);
     }
 }

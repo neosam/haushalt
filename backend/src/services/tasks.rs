@@ -250,8 +250,15 @@ async fn calculate_task_statistics(
     // Get current streak
     let current_streak = calculate_streak(pool, task, user_id).await?;
 
-    // Calculate best streak
-    let best_streak = calculate_best_streak(task, completions);
+    // Calculate best streak from period results
+    let best_streak = if task.recurrence_type == shared::RecurrenceType::OneTime {
+        // For one-time tasks, best streak is total completions
+        completions.len() as i32
+    } else {
+        period_results::calculate_best_streak(pool, &task.id)
+            .await
+            .unwrap_or(0)
+    };
 
     // Total completions
     let total_completions = completions.len() as i64;
@@ -341,60 +348,6 @@ async fn calculate_task_statistics(
         last_completed,
         next_due,
     })
-}
-
-/// Calculate the best (longest) streak ever achieved for a task
-fn calculate_best_streak(task: &Task, completions: &[TaskCompletionRow]) -> i32 {
-    if completions.is_empty() {
-        return 0;
-    }
-
-    // For OneTime tasks, best streak is total completions
-    if task.recurrence_type == shared::RecurrenceType::OneTime {
-        return completions.len() as i32;
-    }
-
-    let mut best_streak = 0;
-    let mut current_streak = 0;
-    let mut last_due_date: Option<NaiveDate> = None;
-
-    // Group completions by due_date and check consecutive periods
-    let mut due_dates: Vec<NaiveDate> = completions.iter()
-        .map(|c| c.due_date)
-        .collect();
-    due_dates.sort();
-    due_dates.dedup();
-
-    for due_date in due_dates {
-        // Count completions for this date
-        let count = completions.iter()
-            .filter(|c| c.due_date == due_date)
-            .count() as i32;
-
-        // Check if target was met
-        if count >= task.target_count {
-            if let Some(last) = last_due_date {
-                // Check if this is the expected next due date (get next due date after the last one)
-                let expected_next = scheduler::get_next_due_date(task, last + chrono::Duration::days(1));
-                if expected_next == Some(due_date) {
-                    current_streak += 1;
-                } else {
-                    // Streak broken, start new one
-                    current_streak = 1;
-                }
-            } else {
-                current_streak = 1;
-            }
-            last_due_date = Some(due_date);
-            best_streak = best_streak.max(current_streak);
-        } else {
-            // Target not met, streak broken
-            current_streak = 0;
-            last_due_date = None;
-        }
-    }
-
-    best_streak
 }
 
 /// Get the start of the current week (Monday)
@@ -1172,35 +1125,11 @@ async fn calculate_streak(pool: &SqlitePool, task: &Task, _user_id: &Uuid) -> Re
         }
     }
 
-    // Get all completions ordered by due date descending (household-wide)
-    let completions: Vec<TaskCompletionRow> = sqlx::query_as(
-        "SELECT * FROM task_completions WHERE task_id = ? ORDER BY due_date DESC",
-    )
-    .bind(task.id.to_string())
-    .fetch_all(pool)
-    .await?;
-
-    if completions.is_empty() {
-        return Ok(0);
-    }
-
-    let today = Utc::now().date_naive();
-    let mut streak = 0;
-    // Start with next_due_date to match how completions are stored
-    let mut expected_date = scheduler::get_next_due_date(task, today).unwrap_or(today);
-
-    for completion in completions {
-        // For daily tasks, we expect consecutive days
-        // For other recurrence types, we check if the completion matches expected due dates
-        if completion.due_date == expected_date
-            || (completion.due_date == expected_date - chrono::Duration::days(1) && streak == 0)
-        {
-            streak += 1;
-            expected_date = scheduler::get_previous_due_date(task, completion.due_date);
-        } else {
-            break;
-        }
-    }
+    // Use period results for streak calculation
+    // Counts consecutive completed periods, skipped periods don't break streak
+    let streak = period_results::calculate_current_streak(pool, &task.id)
+        .await
+        .unwrap_or(0);
 
     Ok(streak)
 }
