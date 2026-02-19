@@ -1785,6 +1785,7 @@ mod tests {
             last_completion: None,
             next_due_date: None,
             is_user_assigned,
+            recent_periods: Vec::new(),
         }
     }
 

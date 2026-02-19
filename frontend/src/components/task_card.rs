@@ -687,6 +687,7 @@ mod tests {
             last_completion: None,
             next_due_date: None,
             is_user_assigned: true,
+            recent_periods: Vec::new(),
         }
     }
 
@@ -797,6 +798,7 @@ mod tests {
             last_completion: None,
             next_due_date: None,
             is_user_assigned: true,
+            recent_periods: Vec::new(),
         };
         let streak_text = if task.current_streak > 0 {
             format!(" | Streak: {}", task.current_streak)

@@ -1525,6 +1525,27 @@ mod tests {
         .await
         .unwrap();
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS task_period_results (
+                id TEXT PRIMARY KEY NOT NULL,
+                task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                period_start DATE NOT NULL,
+                period_end DATE NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('completed', 'failed', 'skipped')),
+                completions_count INTEGER NOT NULL,
+                target_count INTEGER NOT NULL,
+                finalized_at DATETIME NOT NULL,
+                finalized_by TEXT NOT NULL DEFAULT 'system',
+                notes TEXT,
+                UNIQUE(task_id, period_start)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
         pool
     }
 
