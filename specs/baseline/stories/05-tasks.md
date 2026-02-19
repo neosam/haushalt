@@ -369,7 +369,7 @@
   - Shows punishment name with amount
 
 #### Navigation and Actions
-- "Edit" button for users with edit permission (opens edit modal)
+- "Edit" button for users with edit permission (opens edit modal from any location - dashboard, household overview, or tasks page)
 - Close button (X) to dismiss the modal
 - Quick complete/uncomplete action available in the modal
 
