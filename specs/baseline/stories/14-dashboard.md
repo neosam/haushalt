@@ -94,3 +94,20 @@
 - Archived tasks are excluded
 - Overrides the whitelist behavior (whitelist is ignored when this mode is enabled)
 - Toggle state resets to off when navigating away from the dashboard
+
+---
+
+## US-DASH-008: Household Name as Link
+
+> **Status:** Implemented
+> **Implemented:** 2026-02-19
+
+**As an** authenticated user
+**I want to** click on the household name in a task card
+**So that** I can quickly navigate to that household's page
+
+### Acceptance Criteria
+- Household name in task card meta line is a clickable link
+- Link navigates to `/household/{household_id}`
+- Link is styled distinctly (primary color, underline on hover)
+- Works in dashboard task list view
