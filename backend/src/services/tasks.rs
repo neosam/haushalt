@@ -794,25 +794,20 @@ pub async fn complete_task(
         };
 
         // If target is met, finalize the period as completed
+        // This will create a new record or update an existing one (e.g., failed -> completed)
         if completions_for_period >= task.target_count as i64 {
-            // Only finalize if not already finalized
-            if !period_results::is_period_finalized(pool, task_id, period_start)
-                .await
-                .unwrap_or(false)
-            {
-                let _ = period_results::finalize_period(
-                    pool,
-                    task_id,
-                    period_start,
-                    period_end,
-                    PeriodStatus::Completed,
-                    completions_for_period as i32,
-                    task.target_count,
-                    "system",
-                    None,
-                )
-                .await;
-            }
+            let _ = period_results::finalize_period(
+                pool,
+                task_id,
+                period_start,
+                period_end,
+                PeriodStatus::Completed,
+                completions_for_period as i32,
+                task.target_count,
+                "system",
+                None,
+            )
+            .await;
         }
     }
 
