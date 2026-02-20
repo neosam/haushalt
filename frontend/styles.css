@@ -1829,6 +1829,7 @@ body.dark-mode .fab-message-content {
     cursor: pointer;
     transition: background-color 0.2s;
     touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .household-picker-item:hover {

@@ -35,7 +35,7 @@ pub fn HouseholdPickerModal(
                             view! {
                                 <li
                                     class="household-picker-item"
-                                    on:click=move |_| on_select.call(eh_clone.clone())
+                                    on:pointerup=move |_| on_select.call(eh_clone.clone())
                                 >
                                     <div class="household-picker-name">{eh.household.name.clone()}</div>
                                     <div class="household-picker-role">{eh.role.as_str()}</div>
