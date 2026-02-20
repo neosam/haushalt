@@ -178,7 +178,24 @@ if ('serviceWorker' in navigator) {
 - `reg.update()` - Proactively checks for SW updates on page load
 - `controllerchange` listener - Auto-reloads page when new SW activates
 
-### 4. iOS PWA Support
+### 4. Mobile Viewport Configuration
+
+> **Status:** Implemented
+
+The viewport must be configured to prevent zoom and make the app feel native on mobile devices:
+
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+```
+
+**Key settings:**
+- `maximum-scale=1.0` - Prevents pinch-to-zoom
+- `user-scalable=no` - Disables manual zooming
+- `viewport-fit=cover` - Extends content to screen edges (notch support)
+
+This ensures the app behaves like a native mobile application rather than a zoomable website.
+
+### 5. iOS PWA Support
 
 Special meta tags in `index.html` for iOS Safari:
 
@@ -189,7 +206,7 @@ Special meta tags in `index.html` for iOS Safari:
 <link rel="apple-touch-icon" href="/icons/icon.svg">
 ```
 
-### 5. Build Integration
+### 6. Build Integration
 
 **Trunk.toml** watches PWA files for development:
 ```toml
