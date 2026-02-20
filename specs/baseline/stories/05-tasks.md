@@ -454,10 +454,16 @@
 #### Suggesting Tasks
 - Members without task creation permission (based on `HierarchyType.can_manage()`) can suggest tasks
 - Suggestion includes all fields available in normal task creation (reuses the same task form)
-- Quick task FAB shows "Suggest Task" option for members without create permission
+- Quick task FAB shows "Suggest Task" option for members without create permission (if suggestions are enabled)
 - Suggested tasks are stored in the tasks table with additional columns:
   - `suggestion` (enum): `suggested`, `approved`, `denied` (NULL for regular tasks)
   - `suggested_by` (user_id): The user who suggested the task
+
+#### Household Setting
+- `allow_task_suggestions` setting in household settings (default: enabled)
+- Owners can disable task suggestions for their household
+- When disabled, members without create permission cannot suggest tasks
+- Setting appears in household settings under "Optional Features"
 
 #### Reviewing Suggestions
 - Owners and Admins can view pending task suggestions
@@ -473,8 +479,9 @@
 - Owners/Admins are notified when new suggestions are submitted
 
 #### Permissions
-- Any household member can suggest tasks
+- Any household member can suggest tasks (if `allow_task_suggestions` is enabled)
 - Only users who can manage tasks (Owner/Admin in Organized/Hierarchy mode, anyone in Equals mode) can approve/reject
+- Owners can enable/disable task suggestions in household settings
 
 ### Design Decisions
 - **Same table as tasks**: Suggestions are stored in the tasks table with `suggestion` enum for simplicity
@@ -482,3 +489,4 @@
 - **Full task form**: Reuse existing task creation form - suggester can fill in all details
 - **No execution until approved**: Tasks with `suggestion = 'suggested'` don't trigger completions, streaks, or punishments
 - **History preservation**: Denied suggestions remain in the database for reference
+- **Opt-out setting**: Suggestions enabled by default but can be disabled per household
