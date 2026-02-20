@@ -15,6 +15,13 @@ struct HouseholdData {
     categories: Vec<TaskCategory>,
 }
 
+/// Whether the user is creating a task or suggesting one
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskAction {
+    Create,
+    Suggest,
+}
+
 #[component]
 pub fn QuickTaskFab() -> impl IntoView {
     let i18n = use_i18n();
@@ -28,6 +35,7 @@ pub fn QuickTaskFab() -> impl IntoView {
     let selected_household = create_rw_signal(Option::<EligibleHousehold>::None);
     let household_data = create_rw_signal(HouseholdData::default());
     let no_permission_message = create_rw_signal(false);
+    let task_action = create_rw_signal(TaskAction::Create);
 
     // Handle FAB click
     let on_fab_click = move |_| {
@@ -51,8 +59,9 @@ pub fn QuickTaskFab() -> impl IntoView {
                 }
             };
 
-            // For each household, check if user has permission to create tasks
-            let mut eligible = Vec::new();
+            // For each household, check if user has permission to create or suggest tasks
+            let mut can_create = Vec::new();
+            let mut can_suggest = Vec::new();
 
             for household in households {
                 let household_id = household.id.to_string();
@@ -68,7 +77,14 @@ pub fn QuickTaskFab() -> impl IntoView {
 
                         // Check if user can manage tasks based on hierarchy type
                         if settings.hierarchy_type.can_manage(&role) {
-                            eligible.push(EligibleHousehold {
+                            can_create.push(EligibleHousehold {
+                                household,
+                                role,
+                                settings,
+                            });
+                        } else {
+                            // User can suggest tasks in this household
+                            can_suggest.push(EligibleHousehold {
                                 household,
                                 role,
                                 settings,
@@ -80,18 +96,37 @@ pub fn QuickTaskFab() -> impl IntoView {
 
             loading.set(false);
 
-            if eligible.is_empty() {
+            // Determine what action to take
+            // Priority: create > suggest
+            if !can_create.is_empty() {
+                // User can create tasks in at least one household
+                task_action.set(TaskAction::Create);
+                if can_create.len() == 1 {
+                    // Single household - load data and open modal directly
+                    let eh = can_create.into_iter().next().unwrap();
+                    selected_household.set(Some(eh.clone()));
+                    load_household_data_and_open_modal(eh.household.id.to_string(), household_data, show_task_modal);
+                } else {
+                    // Multiple households - show picker
+                    eligible_households.set(can_create);
+                    show_picker.set(true);
+                }
+            } else if !can_suggest.is_empty() {
+                // User can only suggest tasks
+                task_action.set(TaskAction::Suggest);
+                if can_suggest.len() == 1 {
+                    // Single household - load data and open modal directly
+                    let eh = can_suggest.into_iter().next().unwrap();
+                    selected_household.set(Some(eh.clone()));
+                    load_household_data_and_open_modal(eh.household.id.to_string(), household_data, show_task_modal);
+                } else {
+                    // Multiple households - show picker
+                    eligible_households.set(can_suggest);
+                    show_picker.set(true);
+                }
+            } else {
                 // No permission in any household
                 no_permission_message.set(true);
-            } else if eligible.len() == 1 {
-                // Single household - load data and open modal directly
-                let eh = eligible.into_iter().next().unwrap();
-                selected_household.set(Some(eh.clone()));
-                load_household_data_and_open_modal(eh.household.id.to_string(), household_data, show_task_modal);
-            } else {
-                // Multiple households - show picker
-                eligible_households.set(eligible);
-                show_picker.set(true);
             }
         });
     };
@@ -160,11 +195,12 @@ pub fn QuickTaskFab() -> impl IntoView {
             />
         </Show>
 
-        // Task creation modal
+        // Task creation/suggestion modal
         <Show when=move || show_task_modal.get()>
             {move || {
                 let sh = selected_household.get();
                 let data = household_data.get();
+                let is_suggestion = task_action.get() == TaskAction::Suggest;
 
                 if let Some(eh) = sh {
                     view! {
@@ -178,6 +214,7 @@ pub fn QuickTaskFab() -> impl IntoView {
                             linked_punishments=vec![]
                             categories=data.categories.clone()
                             default_recurrence="onetime".to_string()
+                            is_suggestion=is_suggestion
                             on_close=on_task_modal_close
                             on_save=on_task_save
                         />

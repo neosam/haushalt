@@ -380,6 +380,8 @@ mod tests {
             category_name: None,
             archived: false,
             paused: false,
+            suggestion: None,
+            suggested_by: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

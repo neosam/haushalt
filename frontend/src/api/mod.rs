@@ -718,6 +718,37 @@ impl ApiClient {
         .await
     }
 
+    // Task suggestion endpoints
+    pub async fn list_suggestions(household_id: &str) -> Result<Vec<Task>, String> {
+        Self::request::<Vec<Task>>(
+            "GET",
+            &format!("/households/{}/tasks/suggestions", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn approve_suggestion(household_id: &str, task_id: &str) -> Result<Task, String> {
+        Self::request::<Task>(
+            "POST",
+            &format!("/households/{}/tasks/{}/approve", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn deny_suggestion(household_id: &str, task_id: &str) -> Result<Task, String> {
+        Self::request::<Task>(
+            "POST",
+            &format!("/households/{}/tasks/{}/deny", household_id, task_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // Point condition endpoints
     pub async fn list_point_conditions(household_id: &str) -> Result<Vec<PointCondition>, String> {
         Self::request::<Vec<PointCondition>>(

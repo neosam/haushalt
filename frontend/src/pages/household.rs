@@ -13,6 +13,7 @@ use crate::components::loading::Loading;
 use crate::components::modal::Modal;
 use crate::components::pending_confirmations::PendingConfirmations;
 use crate::components::pending_reviews::PendingReviews;
+use crate::components::pending_suggestions::PendingSuggestions;
 use crate::components::points_display::PointsBadge;
 use crate::components::task_card::GroupedTaskList;
 use crate::components::task_detail_modal::TaskDetailModal;
@@ -543,6 +544,21 @@ pub fn HouseholdPage() -> impl IntoView {
                                                         }
                                                         if let Ok(l) = ApiClient::get_leaderboard(&hid).await {
                                                             leaderboard.set(l);
+                                                        }
+                                                    });
+                                                }
+                                            />
+                                        </div>
+                                        <div style="margin-top: 1rem;">
+                                            <PendingSuggestions
+                                                household_id=hid2.clone()
+                                                members=members.get()
+                                                on_suggestion_handled=move |_| {
+                                                    // Refresh tasks after suggestion is approved
+                                                    let hid = household_id();
+                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                        if let Ok(t) = ApiClient::get_all_tasks_with_status(&hid).await {
+                                                            tasks.set(t);
                                                         }
                                                     });
                                                 }

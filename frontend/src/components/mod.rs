@@ -8,6 +8,7 @@ pub mod task_detail_modal;
 pub mod household_tabs;
 pub mod calendar_picker;
 pub mod pending_reviews;
+pub mod pending_suggestions;
 pub mod pending_confirmations;
 pub mod reward_modal;
 pub mod punishment_modal;

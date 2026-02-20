@@ -53,6 +53,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             // Review endpoints
             .route("/completions/{completion_id}/approve", web::post().to(approve_completion))
             .route("/completions/{completion_id}/reject", web::post().to(reject_completion))
+            // Suggestion endpoints
+            .route("/suggestions", web::get().to(list_suggestions))
+            .route("/{task_id}/approve", web::post().to(approve_suggestion))
+            .route("/{task_id}/deny", web::post().to(deny_suggestion))
     );
 }
 
@@ -141,14 +145,21 @@ async fn create_task(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    let can_manage = role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false);
+
+    let request = body.into_inner();
+    let is_suggestion = request.is_suggestion.unwrap_or(false);
+
+    // If user can't manage and this is not a suggestion, deny access
+    if !can_manage && !is_suggestion {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to create tasks".to_string(),
         }));
     }
 
-    let request = body.into_inner();
+    // If user can manage but is_suggestion is set, ignore it (create normal task)
+    // Suggestions are only for users without manage permission
     if request.title.is_empty() {
         return Ok(HttpResponse::BadRequest().json(ApiError {
             error: "validation_error".to_string(),
@@ -169,7 +180,14 @@ async fn create_task(
         }
     }
 
-    match task_service::create_task(&state.db, &household_id, &request).await {
+    // Determine if this should be created as a suggestion
+    let suggested_by = if is_suggestion && !can_manage {
+        Some(&user_id)
+    } else {
+        None
+    };
+
+    match task_service::create_task(&state.db, &household_id, &request, suggested_by).await {
         Ok(task) => {
             // Log activity
             let details = serde_json::json!({ "title": task.title }).to_string();
@@ -1959,6 +1977,232 @@ async fn reject_completion(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to reject completion".to_string(),
+            }))
+        }
+    }
+}
+
+// ============================================================================
+// Task Suggestion Endpoints
+// ============================================================================
+
+async fn list_suggestions(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to view suggestions".to_string(),
+        }));
+    }
+
+    match task_service::list_suggested_tasks(&state.db, &household_id).await {
+        Ok(tasks) => Ok(HttpResponse::Ok().json(ApiSuccess::new(tasks))),
+        Err(e) => {
+            log::error!("Error listing suggestions: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to list suggestions".to_string(),
+            }))
+        }
+    }
+}
+
+async fn approve_suggestion(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to approve suggestions".to_string(),
+        }));
+    }
+
+    match task_service::approve_suggestion(&state.db, &task_id).await {
+        Ok(task) => {
+            // Log activity
+            let details = serde_json::json!({ "title": task.title }).to_string();
+            let _ = activity_logs::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                task.suggested_by.as_ref(),
+                ActivityType::TaskCreated, // Task is now active
+                Some("task"),
+                Some(&task.id),
+                Some(&details),
+            ).await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(task)))
+        }
+        Err(task_service::TaskError::NotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Suggestion not found".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error approving suggestion: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to approve suggestion".to_string(),
+            }))
+        }
+    }
+}
+
+async fn deny_suggestion(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let (household_id_str, task_id_str) = path.into_inner();
+
+    let household_id = match Uuid::parse_str(&household_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    let task_id = match Uuid::parse_str(&task_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid task ID format".to_string(),
+            }));
+        }
+    };
+
+    // Check if user can manage tasks based on hierarchy type
+    let settings = match household_settings::get_or_create_settings(&state.db, &household_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Error fetching settings: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to fetch household settings".to_string(),
+            }));
+        }
+    };
+
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You do not have permission to deny suggestions".to_string(),
+        }));
+    }
+
+    match task_service::deny_suggestion(&state.db, &task_id).await {
+        Ok(task) => Ok(HttpResponse::Ok().json(ApiSuccess::new(task))),
+        Err(task_service::TaskError::NotFound) => {
+            Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Suggestion not found".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error denying suggestion: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to deny suggestion".to_string(),
             }))
         }
     }

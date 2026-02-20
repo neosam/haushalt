@@ -9,6 +9,7 @@ use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::markdown::MarkdownView;
 use crate::components::pending_reviews::PendingReviews;
+use crate::components::pending_suggestions::PendingSuggestions;
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
 use crate::i18n::use_i18n;
@@ -302,6 +303,32 @@ pub fn TasksPage() -> impl IntoView {
                                 on_review_complete=move |_| {
                                     // Trigger refresh
                                     pending_reviews_version.update(|v| *v += 1);
+                                }
+                            />
+                        </div>
+                    }
+                }
+            </Show>
+
+            // Pending Suggestions Section (only for managers/owners)
+            <Show when=move || can_manage.get() fallback=|| ()>
+                {
+                    let hid = household_id();
+                    let members_for_suggestions = members.get();
+                    let _ = pending_reviews_version.get(); // Subscribe to version changes for refresh
+                    view! {
+                        <div style="margin-bottom: 1.5rem;">
+                            <PendingSuggestions
+                                household_id=hid
+                                members=members_for_suggestions
+                                on_suggestion_handled=move |_| {
+                                    // Refresh the task list when a suggestion is approved
+                                    let id = household_id();
+                                    wasm_bindgen_futures::spawn_local(async move {
+                                        if let Ok(t) = ApiClient::list_tasks(&id).await {
+                                            tasks.set(t);
+                                        }
+                                    });
                                 }
                             />
                         </div>
@@ -714,6 +741,8 @@ mod tests {
             assigned_user_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            suggestion: None,
+            suggested_by: None,
         }
     }
 

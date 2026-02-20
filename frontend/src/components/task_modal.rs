@@ -21,6 +21,8 @@ pub fn TaskModal(
     #[prop(optional)] prefill_from: Option<Task>,
     /// Override default recurrence type (e.g., "onetime" for quick task creation)
     #[prop(default = "daily".to_string())] default_recurrence: String,
+    /// If true, this is a suggestion rather than a direct task creation
+    #[prop(default = false)] is_suggestion: bool,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
@@ -353,6 +355,7 @@ pub fn TaskModal(
                         due_time: due_time_val,
                         habit_type: Some(habit_type_val),
                         category_id: category_id_val,
+                        is_suggestion: if is_suggestion { Some(true) } else { None },
                     };
 
                     match ApiClient::create_task(&household_id, request).await {
@@ -392,9 +395,27 @@ pub fn TaskModal(
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n.clone());
 
-    let modal_title = if is_edit { i18n.t("task_modal.edit_title") } else { i18n.t("task_modal.create_title") };
-    let submit_button_text = if is_edit { i18n.t("task_modal.save_changes") } else { i18n.t("common.create") };
-    let saving_text = if is_edit { i18n.t("task_modal.saving") } else { i18n.t("task_modal.creating") };
+    let modal_title = if is_edit {
+        i18n.t("task_modal.edit_title")
+    } else if is_suggestion {
+        i18n.t("task_modal.suggest_title")
+    } else {
+        i18n.t("task_modal.create_title")
+    };
+    let submit_button_text = if is_edit {
+        i18n.t("task_modal.save_changes")
+    } else if is_suggestion {
+        i18n.t("suggestions.suggest_task")
+    } else {
+        i18n.t("common.create")
+    };
+    let saving_text = if is_edit {
+        i18n.t("task_modal.saving")
+    } else if is_suggestion {
+        i18n.t("suggestions.suggesting")
+    } else {
+        i18n.t("task_modal.creating")
+    };
 
     // Weekday labels - short forms for checkbox display
     let weekday_mon = i18n.t("weekday.monday").chars().take(3).collect::<String>();
@@ -1261,6 +1282,8 @@ mod tests {
             paused: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            suggestion: None,
+            suggested_by: None,
         };
         let prefill_from = Some(prefill_task);
         let source_task = task.as_ref().or(prefill_from.as_ref());
@@ -1296,6 +1319,8 @@ mod tests {
             paused: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            suggestion: None,
+            suggested_by: None,
         };
         let task = Some(edit_task);
         let prefill_task = Task {
@@ -1320,6 +1345,8 @@ mod tests {
             paused: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            suggestion: None,
+            suggested_by: None,
         };
         let prefill_from = Some(prefill_task);
         let source_task = task.as_ref().or(prefill_from.as_ref());
@@ -1354,6 +1381,8 @@ mod tests {
             paused: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            suggestion: None,
+            suggested_by: None,
         });
         let task_none: Option<Task> = None;
 

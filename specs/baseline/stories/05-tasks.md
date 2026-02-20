@@ -438,3 +438,47 @@
 - **Never archive uncompleted**: Users should explicitly decide to archive tasks they didn't complete
 - **Grace period**: Allows users to review recent completions before archival
 - **Household-level setting**: Different households may have different cleanup preferences
+
+---
+
+## US-TASK-022: Suggest Task
+
+> **Status:** Implemented (Notifications pending)
+
+**As a** household member without task creation permission
+**I want to** suggest a task to the household
+**So that** Owners/Admins can review and approve it
+
+### Acceptance Criteria
+
+#### Suggesting Tasks
+- Members without task creation permission (based on `HierarchyType.can_manage()`) can suggest tasks
+- Suggestion includes all fields available in normal task creation (reuses the same task form)
+- Quick task FAB shows "Suggest Task" option for members without create permission
+- Suggested tasks are stored in the tasks table with additional columns:
+  - `suggestion` (enum): `suggested`, `approved`, `denied` (NULL for regular tasks)
+  - `suggested_by` (user_id): The user who suggested the task
+
+#### Reviewing Suggestions
+- Owners and Admins can view pending task suggestions
+- Suggestions appear in a dedicated section (e.g., "Pending Suggestions" on tasks page or household overview)
+- Tasks with `suggestion = 'suggested'` are excluded from normal task lists and due tasks
+- Reviewers can:
+  - **Approve**: Sets `suggestion = 'approved'`, task becomes active
+  - **Deny**: Sets `suggestion = 'denied'`, task remains in history
+- Suggestion count badge shown when there are pending suggestions (where `suggestion = 'suggested'`)
+
+#### Notifications
+- Suggester is notified when their suggestion is approved or rejected
+- Owners/Admins are notified when new suggestions are submitted
+
+#### Permissions
+- Any household member can suggest tasks
+- Only users who can manage tasks (Owner/Admin in Organized/Hierarchy mode, anyone in Equals mode) can approve/reject
+
+### Design Decisions
+- **Same table as tasks**: Suggestions are stored in the tasks table with `suggestion` enum for simplicity
+- **Enum states**: `suggested` (pending), `approved` (active), `denied` (rejected but preserved)
+- **Full task form**: Reuse existing task creation form - suggester can fill in all details
+- **No execution until approved**: Tasks with `suggestion = 'suggested'` don't trigger completions, streaks, or punishments
+- **History preservation**: Denied suggestions remain in the database for reference

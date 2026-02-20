@@ -594,6 +594,17 @@
   "quick_task.fab_label": "Schnellaufgabe",
   "quick_task.select_household": "Haushalt auswählen",
   "quick_task.no_permission": "Sie haben keine Berechtigung, Aufgaben in einem Haushalt zu erstellen.",
+  "quick_task.suggest_task": "Aufgabe vorschlagen",
+
+  "suggestions.title": "Ausstehende Vorschläge",
+  "suggestions.empty": "Keine ausstehenden Vorschläge",
+  "suggestions.approve": "Genehmigen",
+  "suggestions.deny": "Ablehnen",
+  "suggestions.suggested_by": "Vorgeschlagen von",
+  "suggestions.suggest_task": "Aufgabe vorschlagen",
+  "suggestions.suggesting": "Vorschlagen...",
+
+  "task_modal.suggest_title": "Aufgabe vorschlagen",
 
   "common.ok": "OK",
 

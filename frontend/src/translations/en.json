@@ -594,6 +594,17 @@
   "quick_task.fab_label": "Quick Task",
   "quick_task.select_household": "Select Household",
   "quick_task.no_permission": "You don't have permission to create tasks in any household.",
+  "quick_task.suggest_task": "Suggest Task",
+
+  "suggestions.title": "Pending Suggestions",
+  "suggestions.empty": "No pending suggestions",
+  "suggestions.approve": "Approve",
+  "suggestions.deny": "Deny",
+  "suggestions.suggested_by": "Suggested by",
+  "suggestions.suggest_task": "Suggest Task",
+  "suggestions.suggesting": "Suggesting...",
+
+  "task_modal.suggest_title": "Suggest Task",
 
   "common.ok": "OK",
 

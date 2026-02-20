@@ -478,6 +478,41 @@ impl FromStr for HabitType {
     }
 }
 
+/// Status of a task suggestion
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SuggestionStatus {
+    /// Task has been suggested but not yet reviewed
+    Suggested,
+    /// Task suggestion has been approved and is now active
+    Approved,
+    /// Task suggestion has been denied
+    Denied,
+}
+
+impl SuggestionStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SuggestionStatus::Suggested => "suggested",
+            SuggestionStatus::Approved => "approved",
+            SuggestionStatus::Denied => "denied",
+        }
+    }
+}
+
+impl FromStr for SuggestionStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "suggested" => Ok(SuggestionStatus::Suggested),
+            "approved" => Ok(SuggestionStatus::Approved),
+            "denied" => Ok(SuggestionStatus::Denied),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: Uuid,
@@ -510,6 +545,10 @@ pub struct Task {
     pub archived: bool,
     /// Whether the task is paused (no automated punishments while paused)
     pub paused: bool,
+    /// Suggestion status: None for regular tasks, Some for suggested tasks
+    pub suggestion: Option<SuggestionStatus>,
+    /// User who suggested this task (only set when suggestion is Some)
+    pub suggested_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -537,6 +576,8 @@ pub struct CreateTaskRequest {
     pub habit_type: Option<HabitType>,
     /// Optional category for grouping tasks
     pub category_id: Option<Uuid>,
+    /// If true, this is a task suggestion from a member without create permission
+    pub is_suggestion: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1777,6 +1818,8 @@ mod tests {
                 category_name: None,
                 archived: false,
                 paused: false,
+                suggestion: None,
+                suggested_by: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             },
@@ -1991,5 +2034,23 @@ mod tests {
         assert_eq!(PeriodStatus::Completed.as_str(), "completed");
         assert_eq!(PeriodStatus::Failed.as_str(), "failed");
         assert_eq!(PeriodStatus::Skipped.as_str(), "skipped");
+    }
+
+    #[test]
+    fn test_suggestion_status_from_str() {
+        assert_eq!("suggested".parse(), Ok(SuggestionStatus::Suggested));
+        assert_eq!("SUGGESTED".parse(), Ok(SuggestionStatus::Suggested));
+        assert_eq!("approved".parse(), Ok(SuggestionStatus::Approved));
+        assert_eq!("APPROVED".parse(), Ok(SuggestionStatus::Approved));
+        assert_eq!("denied".parse(), Ok(SuggestionStatus::Denied));
+        assert_eq!("DENIED".parse(), Ok(SuggestionStatus::Denied));
+        assert!("invalid".parse::<SuggestionStatus>().is_err());
+    }
+
+    #[test]
+    fn test_suggestion_status_as_str() {
+        assert_eq!(SuggestionStatus::Suggested.as_str(), "suggested");
+        assert_eq!(SuggestionStatus::Approved.as_str(), "approved");
+        assert_eq!(SuggestionStatus::Denied.as_str(), "denied");
     }
 }

@@ -24,6 +24,8 @@ pub struct TaskRow {
     pub category_id: Option<String>,
     pub archived: bool,
     pub paused: bool,
+    pub suggestion: Option<String>,
+    pub suggested_by: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -51,6 +53,8 @@ pub struct TaskRowWithCategory {
     pub category_name: Option<String>,
     pub archived: bool,
     pub paused: bool,
+    pub suggestion: Option<String>,
+    pub suggested_by: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -83,6 +87,8 @@ impl TaskRow {
             category_name: None,
             archived: self.archived,
             paused: self.paused,
+            suggestion: self.suggestion.as_ref().and_then(|s| s.parse().ok()),
+            suggested_by: self.suggested_by.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -118,6 +124,8 @@ impl TaskRowWithCategory {
             category_name: self.category_name.clone(),
             archived: self.archived,
             paused: self.paused,
+            suggestion: self.suggestion.as_ref().and_then(|s| s.parse().ok()),
+            suggested_by: self.suggested_by.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -154,6 +162,8 @@ mod tests {
             category_id: None,
             archived: false,
             paused: false,
+            suggestion: None,
+            suggested_by: None,
             created_at: now,
             updated_at: now,
         };
@@ -195,6 +205,8 @@ mod tests {
             category_id: None,
             archived: false,
             paused: false,
+            suggestion: None,
+            suggested_by: None,
             created_at: now,
             updated_at: now,
         };
@@ -231,6 +243,8 @@ mod tests {
             category_id: None,
             archived: false,
             paused: false,
+            suggestion: None,
+            suggested_by: None,
             created_at: now,
             updated_at: now,
         };
@@ -256,6 +270,8 @@ mod tests {
             category_id: None,
             archived: false,
             paused: false,
+            suggestion: None,
+            suggested_by: None,
             created_at: now,
             updated_at: now,
         };
@@ -286,6 +302,8 @@ mod tests {
             category_id: None,
             archived: false,
             paused: false,
+            suggestion: None,
+            suggested_by: None,
             created_at: now,
             updated_at: now,
         };
@@ -312,6 +330,8 @@ mod tests {
             category_id: None,
             archived: false,
             paused: false,
+            suggestion: None,
+            suggested_by: None,
             created_at: now,
             updated_at: now,
         };

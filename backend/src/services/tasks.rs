@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::models::{TaskCompletionRow, TaskRow, TaskRowWithCategory, UserRow};
 use crate::services::{households as household_service, period_results, points as points_service, scheduler, task_consequences};
-use shared::{CompletionStatus, CreateTaskRequest, PendingReview, PeriodStatus, Task, TaskCompletion, TaskStatistics, TaskWithDetails, TaskWithStatus, UpdateTaskRequest};
+use shared::{CompletionStatus, CreateTaskRequest, PendingReview, PeriodStatus, SuggestionStatus, Task, TaskCompletion, TaskStatistics, TaskWithDetails, TaskWithStatus, UpdateTaskRequest};
 
 #[derive(Debug, Error)]
 pub enum TaskError {
@@ -27,6 +27,7 @@ pub async fn create_task(
     pool: &SqlitePool,
     household_id: &Uuid,
     request: &CreateTaskRequest,
+    suggested_by: Option<&Uuid>,
 ) -> Result<Task, TaskError> {
     let id = Uuid::new_v4();
     let now = Utc::now();
@@ -42,10 +43,17 @@ pub async fn create_task(
 
     let time_period_str = request.time_period.as_ref().map(|p| p.as_str());
 
+    // Set suggestion status if this is a suggestion
+    let suggestion_status = if suggested_by.is_some() {
+        Some(SuggestionStatus::Suggested)
+    } else {
+        None
+    };
+
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, due_time, habit_type, category_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, due_time, habit_type, category_id, suggestion, suggested_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -64,6 +72,8 @@ pub async fn create_task(
     .bind(&request.due_time)
     .bind(habit_type.as_str())
     .bind(request.category_id.map(|c| c.to_string()))
+    .bind(suggestion_status.as_ref().map(|s| s.as_str()))
+    .bind(suggested_by.map(|u| u.to_string()))
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -89,6 +99,8 @@ pub async fn create_task(
         category_name: None,
         archived: false,
         paused: false,
+        suggestion: suggestion_status,
+        suggested_by: suggested_by.copied(),
         created_at: now,
         updated_at: now,
     })
@@ -368,6 +380,7 @@ pub async fn list_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Ta
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.household_id = ? AND t.archived = 0
+        AND (t.suggestion IS NULL OR t.suggestion = 'approved')
         ORDER BY t.title COLLATE NOCASE ASC
         "#,
     )
@@ -406,6 +419,7 @@ pub async fn list_user_assigned_tasks(
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.household_id = ? AND t.assigned_user_id = ? AND t.archived = 0
+        AND (t.suggestion IS NULL OR t.suggestion = 'approved')
         ORDER BY t.title COLLATE NOCASE ASC
         "#,
     )
@@ -955,6 +969,8 @@ pub async fn list_pending_reviews(
                     category_name: None,
                     archived: false, // Pending reviews are for active tasks
                     paused: false, // Pending reviews are for active tasks
+                    suggestion: None,
+                    suggested_by: None,
                     created_at: row.t_created_at,
                     updated_at: row.t_updated_at,
                 },
@@ -1138,7 +1154,7 @@ async fn calculate_streak(pool: &SqlitePool, task: &Task, _user_id: &Uuid) -> Re
 // Dashboard Task Whitelist
 // ============================================================================
 
-/// Get all task IDs that the user has added to their dashboard (excluding archived tasks)
+/// Get all task IDs that the user has added to their dashboard (excluding archived and pending suggestion tasks)
 pub async fn get_dashboard_task_ids(
     pool: &SqlitePool,
     user_id: &str,
@@ -1146,7 +1162,8 @@ pub async fn get_dashboard_task_ids(
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT udt.task_id FROM user_dashboard_tasks udt
          JOIN tasks t ON udt.task_id = t.id
-         WHERE udt.user_id = ? AND t.archived = 0",
+         WHERE udt.user_id = ? AND t.archived = 0
+         AND (t.suggestion IS NULL OR t.suggestion = 'approved')",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -1241,6 +1258,86 @@ pub async fn get_dashboard_tasks_with_status(
     });
 
     Ok(results)
+}
+
+/// Get all pending task suggestions for a household
+pub async fn list_suggested_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Task>, TaskError> {
+    let tasks: Vec<TaskRowWithCategory> = sqlx::query_as(
+        r#"
+        SELECT t.*, tc.name as category_name
+        FROM tasks t
+        LEFT JOIN task_categories tc ON t.category_id = tc.id
+        WHERE t.household_id = ? AND t.suggestion = 'suggested'
+        ORDER BY t.created_at DESC
+        "#,
+    )
+    .bind(household_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tasks.into_iter().map(|t| t.to_shared()).collect())
+}
+
+/// Approve a task suggestion (makes it an active task)
+pub async fn approve_suggestion(pool: &SqlitePool, task_id: &Uuid) -> Result<Task, TaskError> {
+    let now = Utc::now();
+
+    // Check if task exists and is a pending suggestion
+    let task: Option<TaskRow> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+        .bind(task_id.to_string())
+        .fetch_optional(pool)
+        .await?;
+
+    let task = task.ok_or(TaskError::NotFound)?;
+
+    if task.suggestion.as_deref() != Some("suggested") {
+        return Err(TaskError::NotFound); // Not a pending suggestion
+    }
+
+    sqlx::query("UPDATE tasks SET suggestion = 'approved', updated_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(task_id.to_string())
+        .execute(pool)
+        .await?;
+
+    // Return updated task
+    let updated: TaskRow = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+        .bind(task_id.to_string())
+        .fetch_one(pool)
+        .await?;
+
+    Ok(updated.to_shared())
+}
+
+/// Deny a task suggestion
+pub async fn deny_suggestion(pool: &SqlitePool, task_id: &Uuid) -> Result<Task, TaskError> {
+    let now = Utc::now();
+
+    // Check if task exists and is a pending suggestion
+    let task: Option<TaskRow> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+        .bind(task_id.to_string())
+        .fetch_optional(pool)
+        .await?;
+
+    let task = task.ok_or(TaskError::NotFound)?;
+
+    if task.suggestion.as_deref() != Some("suggested") {
+        return Err(TaskError::NotFound); // Not a pending suggestion
+    }
+
+    sqlx::query("UPDATE tasks SET suggestion = 'denied', updated_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(task_id.to_string())
+        .execute(pool)
+        .await?;
+
+    // Return updated task
+    let updated: TaskRow = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+        .bind(task_id.to_string())
+        .fetch_one(pool)
+        .await?;
+
+    Ok(updated.to_shared())
 }
 
 /// Get all tasks with status from all households the user is a member of
@@ -1368,6 +1465,8 @@ mod tests {
                 category_id TEXT REFERENCES task_categories(id),
                 archived BOOLEAN NOT NULL DEFAULT 0,
                 paused BOOLEAN NOT NULL DEFAULT 0,
+                suggestion TEXT CHECK(suggestion IN ('suggested', 'approved', 'denied')),
+                suggested_by TEXT REFERENCES users(id),
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -1625,8 +1724,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // First completion should succeed
         let result1 = complete_task(&pool, &task.id, &user_id, &household_id).await;
@@ -1663,8 +1763,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // First completion should succeed
         let result1 = complete_task(&pool, &task.id, &user_id, &household_id).await;
@@ -1697,8 +1798,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // First completion should succeed
         let result1 = complete_task(&pool, &task.id, &user_id, &household_id).await;
@@ -1735,8 +1837,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Verify default is true
         assert!(task.allow_exceed_target);
@@ -1772,8 +1875,9 @@ mod tests {
             due_time: None,
             habit_type: None, // Default to Good
             category_id: None,
+            is_suggestion: None,
         };
-        let task_good = create_task(&pool, &household_id, &request_good).await.unwrap();
+        let task_good = create_task(&pool, &household_id, &request_good, None).await.unwrap();
         assert_eq!(task_good.habit_type, shared::HabitType::Good);
         assert!(!task_good.habit_type.is_inverted());
 
@@ -1793,8 +1897,9 @@ mod tests {
             due_time: None,
             habit_type: Some(shared::HabitType::Bad),
             category_id: None,
+            is_suggestion: None,
         };
-        let task_bad = create_task(&pool, &household_id, &request_bad).await.unwrap();
+        let task_bad = create_task(&pool, &household_id, &request_bad, None).await.unwrap();
         assert_eq!(task_bad.habit_type, shared::HabitType::Bad);
         assert!(task_bad.habit_type.is_inverted());
     }
@@ -1830,8 +1935,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Add to dashboard
         add_task_to_dashboard(&pool, &user_id.to_string(), &task.id.to_string())
@@ -1868,8 +1974,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let _task = create_task(&pool, &household_id, &request).await.unwrap();
+        let _task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Get dashboard tasks - should be empty since task is not on dashboard
         let dashboard_tasks = get_dashboard_tasks_with_status(&pool, &user_id).await.unwrap();
@@ -1898,8 +2005,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task1 = create_task(&pool, &household_id, &request1).await.unwrap();
+        let task1 = create_task(&pool, &household_id, &request1, None).await.unwrap();
 
         let request2 = CreateTaskRequest {
             title: "Archived Dashboard Task".to_string(),
@@ -1916,8 +2024,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task2 = create_task(&pool, &household_id, &request2).await.unwrap();
+        let task2 = create_task(&pool, &household_id, &request2, None).await.unwrap();
 
         // Add both to dashboard
         add_task_to_dashboard(&pool, &user_id.to_string(), &task1.id.to_string())
@@ -1963,8 +2072,9 @@ mod tests {
                 due_time: None,
                 habit_type: None,
                 category_id: None,
+                is_suggestion: None,
             };
-            create_task(&pool, &household_id, &request).await.unwrap();
+            create_task(&pool, &household_id, &request, None).await.unwrap();
         }
 
         let tasks = list_tasks(&pool, &household_id).await.unwrap();
@@ -1998,8 +2108,9 @@ mod tests {
                 due_time: None,
                 habit_type: None,
                 category_id: None,
+                is_suggestion: None,
             };
-            create_task(&pool, &household_id, &request).await.unwrap();
+            create_task(&pool, &household_id, &request, None).await.unwrap();
         }
 
         let tasks = list_tasks(&pool, &household_id).await.unwrap();
@@ -2033,8 +2144,9 @@ mod tests {
                 due_time: None,
                 habit_type: None,
                 category_id: None,
+                is_suggestion: None,
             };
-            create_task(&pool, &household_id, &request).await.unwrap();
+            create_task(&pool, &household_id, &request, None).await.unwrap();
         }
 
         let tasks = get_all_tasks_with_status(&pool, &household_id, &user_id).await.unwrap();
@@ -2068,8 +2180,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
         assert!(!task.archived);
 
         let archived_task = archive_task(&pool, &task.id).await.unwrap();
@@ -2098,8 +2211,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Archive the task first
         let archived_task = archive_task(&pool, &task.id).await.unwrap();
@@ -2134,8 +2248,9 @@ mod tests {
                 due_time: None,
                 habit_type: None,
                 category_id: None,
+                is_suggestion: None,
             };
-            create_task(&pool, &household_id, &request).await.unwrap();
+            create_task(&pool, &household_id, &request, None).await.unwrap();
         }
 
         let tasks = list_tasks(&pool, &household_id).await.unwrap();
@@ -2174,8 +2289,9 @@ mod tests {
                 due_time: None,
                 habit_type: None,
                 category_id: None,
+                is_suggestion: None,
             };
-            create_task(&pool, &household_id, &request).await.unwrap();
+            create_task(&pool, &household_id, &request, None).await.unwrap();
         }
 
         let tasks = list_tasks(&pool, &household_id).await.unwrap();
@@ -2249,8 +2365,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        create_task(&pool, &household1_id, &request1).await.unwrap();
+        create_task(&pool, &household1_id, &request1, None).await.unwrap();
 
         // Create task in household 2
         let request2 = CreateTaskRequest {
@@ -2268,8 +2385,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        create_task(&pool, &household2_id, &request2).await.unwrap();
+        create_task(&pool, &household2_id, &request2, None).await.unwrap();
 
         // Get all tasks across households
         let all_tasks = get_all_tasks_across_households(&pool, &user_id).await.unwrap();
@@ -2305,8 +2423,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task1 = create_task(&pool, &household_id, &request1).await.unwrap();
+        let task1 = create_task(&pool, &household_id, &request1, None).await.unwrap();
 
         let request2 = CreateTaskRequest {
             title: "Archived Task".to_string(),
@@ -2323,8 +2442,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task2 = create_task(&pool, &household_id, &request2).await.unwrap();
+        let task2 = create_task(&pool, &household_id, &request2, None).await.unwrap();
 
         // Archive the second task
         archive_task(&pool, &task2.id).await.unwrap();
@@ -2360,8 +2480,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Get task details
         let details = get_task_with_details(&pool, &task.id, &user_id)
@@ -2412,8 +2533,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Complete the task
         complete_task(&pool, &task.id, &user_id, &household_id).await.unwrap();
@@ -2463,8 +2585,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Get task details
         let details = get_task_with_details(&pool, &task.id, &user_id)
@@ -2542,8 +2665,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Assigned user should be able to complete the task
         let result = complete_task(&pool, &task.id, &user_id, &household_id).await;
@@ -2574,8 +2698,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Both users should be able to complete the task
         let result1 = complete_task(&pool, &task.id, &user1, &household_id).await;
@@ -2609,8 +2734,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // User2 should NOT be able to complete user1's task
         let result = complete_task(&pool, &task.id, &user2, &household_id).await;
@@ -2641,8 +2767,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // User1 completes the task first
         complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
@@ -2674,8 +2801,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Get task with status for the assigned user
         let status = get_task_with_status(&pool, &task.id, &user_id)
@@ -2710,8 +2838,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Get task with status for user2 (not assigned)
         let status = get_task_with_status(&pool, &task.id, &user2)
@@ -2746,8 +2875,9 @@ mod tests {
             due_time: None,
             habit_type: None,
             category_id: None,
+            is_suggestion: None,
         };
-        let task = create_task(&pool, &household_id, &request).await.unwrap();
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
 
         // Both users should have is_user_assigned = true
         let status1 = get_task_with_status(&pool, &task.id, &user1)

@@ -379,8 +379,9 @@ pub async fn process_auto_archive(pool: &SqlitePool) -> Result<AutoArchiveReport
     let mut tasks_archived: u32 = 0;
 
     // Get all non-archived tasks that are candidates for auto-archive (OneTime or Custom)
+    // Exclude suggestions (only process regular or approved tasks)
     let tasks: Vec<TaskRow> = sqlx::query_as(
-        "SELECT * FROM tasks WHERE archived = 0 AND (recurrence_type = 'onetime' OR recurrence_type = 'custom')",
+        "SELECT * FROM tasks WHERE archived = 0 AND (recurrence_type = 'onetime' OR recurrence_type = 'custom') AND (suggestion IS NULL OR suggestion = 'approved')",
     )
     .fetch_all(pool)
     .await?;
@@ -513,9 +514,9 @@ pub async fn process_period_finalization(pool: &SqlitePool) -> Result<PeriodFina
     let mut periods_failed: u32 = 0;
     let mut periods_skipped: u32 = 0;
 
-    // Get all scheduled tasks (not OneTime, not archived)
+    // Get all scheduled tasks (not OneTime, not archived, not pending suggestions)
     let tasks: Vec<TaskRow> = sqlx::query_as(
-        "SELECT * FROM tasks WHERE recurrence_type != 'onetime' AND archived = 0",
+        "SELECT * FROM tasks WHERE recurrence_type != 'onetime' AND archived = 0 AND (suggestion IS NULL OR suggestion = 'approved')",
     )
     .fetch_all(pool)
     .await?;
@@ -734,6 +735,8 @@ mod tests {
                 category_id TEXT REFERENCES task_categories(id),
                 archived BOOLEAN NOT NULL DEFAULT 0,
                 paused BOOLEAN NOT NULL DEFAULT 0,
+                suggestion TEXT CHECK(suggestion IN ('suggested', 'approved', 'denied')),
+                suggested_by TEXT REFERENCES users(id),
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
