@@ -71,6 +71,7 @@
   "dashboard.decline": "Decline",
   "dashboard.households": "Households",
   "dashboard.show_all": "Show all",
+  "dashboard.filter_households": "Filter by household:",
 
   "household.name": "Household Name",
   "household.name_placeholder": "e.g., Smith Family",

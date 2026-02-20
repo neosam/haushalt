@@ -71,6 +71,7 @@
   "dashboard.decline": "Ablehnen",
   "dashboard.households": "Haushalte",
   "dashboard.show_all": "Alle anzeigen",
+  "dashboard.filter_households": "Nach Haushalt filtern:",
 
   "household.name": "Haushaltsname",
   "household.name_placeholder": "z.B. Familie Müller",

@@ -112,3 +112,23 @@
 - Link is styled distinctly (primary color, underline on hover)
 - Works in dashboard task list view
 - **Must work on iOS PWA** (use same event handler fix as task clicking)
+
+---
+
+## US-DASH-009: Filter Tasks by Household
+
+> **Status:** Implemented
+> **Implemented:** 2026-02-20
+
+**As an** authenticated user
+**I want to** filter dashboard tasks by household
+**So that** I can focus on tasks from specific households
+
+### Acceptance Criteria
+- Filter UI displayed above the task list on the dashboard
+- Shows list of all user's households as toggleable filters
+- All households are enabled by default
+- User can disable/enable individual households
+- Disabled households' tasks are hidden from the task list
+- Filter state resets when navigating away from the dashboard
+- Works in combination with "Show all" mode (US-DASH-007)

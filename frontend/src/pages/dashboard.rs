@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use leptos::*;
 use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
 
@@ -23,6 +25,10 @@ pub fn Dashboard() -> impl IntoView {
     let new_household_name = create_rw_signal(String::new());
     let show_all = create_rw_signal(false);
 
+    // Household filter state
+    let enabled_households = create_rw_signal(HashSet::<String>::new());
+    let all_households_enabled = create_rw_signal(true);
+
     // Task detail modal state
     let detail_task_id = create_rw_signal(Option::<String>::None);
     let detail_household_id = create_rw_signal(Option::<String>::None);
@@ -42,6 +48,9 @@ pub fn Dashboard() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             // Load households
             if let Ok(data) = ApiClient::list_households().await {
+                // Initialize enabled_households with all household IDs
+                let all_ids: HashSet<String> = data.iter().map(|h| h.id.to_string()).collect();
+                enabled_households.set(all_ids);
                 households.set(data);
             }
 
@@ -361,14 +370,64 @@ pub fn Dashboard() -> impl IntoView {
                 }
             }}
 
+            // Household filter controls
+            {move || {
+                let h = households.get();
+                if h.len() > 1 {
+                    // Only show filter when there are multiple households
+                    let mut sorted_households = h.clone();
+                    sorted_households.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+                    view! {
+                        <div class="filter-controls">
+                            <span class="filter-label">{i18n_stored.get_value().t("dashboard.filter_households")}</span>
+                            {sorted_households.into_iter().map(|household| {
+                                let hid = household.id.to_string();
+                                let hid_check = hid.clone();
+                                let hid_toggle = hid.clone();
+                                let name = household.name.clone();
+                                view! {
+                                    <label class="filter-checkbox">
+                                        <input
+                                            type="checkbox"
+                                            prop:checked=move || enabled_households.get().contains(&hid_check)
+                                            on:change=move |ev| {
+                                                let checked = event_target_checked(&ev);
+                                                enabled_households.update(|set| {
+                                                    if checked {
+                                                        set.insert(hid_toggle.clone());
+                                                    } else {
+                                                        set.remove(&hid_toggle);
+                                                    }
+                                                });
+                                                all_households_enabled.set(false);
+                                            }
+                                        />
+                                        <span>{name}</span>
+                                    </label>
+                                }
+                            }).collect_view()}
+                        </div>
+                    }.into_view()
+                } else {
+                    ().into_view()
+                }
+            }}
+
             // Tasks section
             {move || {
                 let tasks = all_tasks.get();
-                if !tasks.is_empty() {
+                // Filter tasks by enabled households
+                let filtered_tasks: Vec<_> = tasks
+                    .into_iter()
+                    .filter(|t| enabled_households.get().contains(&t.household_id))
+                    .collect();
+
+                if !filtered_tasks.is_empty() {
                     view! {
                         <div style="margin-bottom: 1.5rem;">
                             <DashboardGroupedTaskList
-                                tasks=tasks
+                                tasks=filtered_tasks
                                 on_complete=on_complete_task
                                 on_uncomplete=on_uncomplete_task
                                 timezone="Europe/Berlin".to_string()
@@ -528,5 +587,66 @@ mod tests {
     fn test_invitations_not_empty_check() {
         let invitations = vec!["invite1".to_string()];
         assert!(!invitations.is_empty());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_household_filter_all_enabled() {
+        let mut enabled: HashSet<String> = HashSet::new();
+        enabled.insert("h1".to_string());
+        enabled.insert("h2".to_string());
+
+        let task_household_ids = vec!["h1", "h2", "h1"];
+        let filtered: Vec<_> = task_household_ids
+            .into_iter()
+            .filter(|hid| enabled.contains(*hid))
+            .collect();
+
+        assert_eq!(filtered.len(), 3);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_household_filter_one_disabled() {
+        let mut enabled: HashSet<String> = HashSet::new();
+        enabled.insert("h1".to_string());
+        // h2 not enabled
+
+        let task_household_ids = vec!["h1", "h2", "h1", "h2"];
+        let filtered: Vec<_> = task_household_ids
+            .into_iter()
+            .filter(|hid| enabled.contains(*hid))
+            .collect();
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|h| *h == "h1"));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_household_filter_none_enabled() {
+        let enabled: HashSet<String> = HashSet::new();
+
+        let task_household_ids = vec!["h1", "h2"];
+        let filtered: Vec<_> = task_household_ids
+            .into_iter()
+            .filter(|hid| enabled.contains(*hid))
+            .collect();
+
+        assert!(filtered.is_empty());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_household_filter_toggle() {
+        let mut enabled: HashSet<String> = HashSet::new();
+        enabled.insert("h1".to_string());
+        enabled.insert("h2".to_string());
+
+        // Toggle off h1
+        enabled.remove("h1");
+        assert!(!enabled.contains("h1"));
+        assert!(enabled.contains("h2"));
+
+        // Toggle on h1
+        enabled.insert("h1".to_string());
+        assert!(enabled.contains("h1"));
+        assert!(enabled.contains("h2"));
     }
 }
