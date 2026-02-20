@@ -454,10 +454,17 @@
 #### Suggesting Tasks
 - Members without task creation permission (based on `HierarchyType.can_manage()`) can suggest tasks
 - Suggestion includes all fields available in normal task creation (reuses the same task form)
-- Quick task FAB shows "Suggest Task" option for members without create permission (if suggestions are enabled)
 - Suggested tasks are stored in the tasks table with additional columns:
   - `suggestion` (enum): `suggested`, `approved`, `denied` (NULL for regular tasks)
   - `suggested_by` (user_id): The user who suggested the task
+
+#### Quick Task FAB Behavior
+- FAB displays all households where the user can create tasks OR suggest tasks
+- For each household, determines action based on user's permission:
+  - **Create**: User has task creation permission (`HierarchyType.can_manage()`)
+  - **Suggest**: User lacks creation permission but `allow_task_suggestions` is enabled
+- If user has access to multiple households, shows household picker with all eligible households
+- If user has no permission in any household, shows "no permission" message
 
 #### Household Setting
 - `allow_task_suggestions` setting in household settings (default: enabled)
