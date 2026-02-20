@@ -597,6 +597,8 @@
   "quick_task.select_household": "Haushalt auswählen",
   "quick_task.no_permission": "Sie haben keine Berechtigung, Aufgaben in einem Haushalt zu erstellen.",
   "quick_task.suggest_task": "Aufgabe vorschlagen",
+  "quick_task.action_create": "Erstellen",
+  "quick_task.action_suggest": "Vorschlagen",
 
   "suggestions.title": "Ausstehende Vorschläge",
   "suggestions.empty": "Keine ausstehenden Vorschläge",

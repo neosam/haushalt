@@ -4,12 +4,20 @@ use shared::{Household, HouseholdSettings, Role};
 use crate::components::modal::Modal;
 use crate::i18n::use_i18n;
 
-/// Household with the user's role and settings for permission checking
+/// Whether the user is creating a task or suggesting one
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskAction {
+    Create,
+    Suggest,
+}
+
+/// Household with the user's role, settings, and action for permission checking
 #[derive(Clone, Debug)]
 pub struct EligibleHousehold {
     pub household: Household,
     pub role: Role,
     pub settings: HouseholdSettings,
+    pub action: TaskAction,
 }
 
 #[component]
@@ -30,15 +38,29 @@ pub fn HouseholdPickerModal(
             <div class="modal-body">
                 <ul class="household-picker-list">
                     {move || {
+                        let create_label = i18n_stored.get_value().t("quick_task.action_create");
+                        let suggest_label = i18n_stored.get_value().t("quick_task.action_suggest");
+
                         households_stored.get_value().into_iter().map(|eh| {
                             let eh_clone = eh.clone();
+                            let action_label = match eh.action {
+                                TaskAction::Create => create_label.clone(),
+                                TaskAction::Suggest => suggest_label.clone(),
+                            };
+                            let action_class = match eh.action {
+                                TaskAction::Create => "household-picker-action create",
+                                TaskAction::Suggest => "household-picker-action suggest",
+                            };
                             view! {
                                 <li
                                     class="household-picker-item"
                                     on:pointerup=move |_| on_select.call(eh_clone.clone())
                                 >
                                     <div class="household-picker-name">{eh.household.name.clone()}</div>
-                                    <div class="household-picker-role">{eh.role.as_str()}</div>
+                                    <div class="household-picker-meta">
+                                        <span class="household-picker-role">{eh.role.as_str()}</span>
+                                        <span class=action_class>{action_label}</span>
+                                    </div>
                                 </li>
                             }
                         }).collect_view()

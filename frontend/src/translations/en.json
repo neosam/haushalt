@@ -597,6 +597,8 @@
   "quick_task.select_household": "Select Household",
   "quick_task.no_permission": "You don't have permission to create tasks in any household.",
   "quick_task.suggest_task": "Suggest Task",
+  "quick_task.action_create": "Create",
+  "quick_task.action_suggest": "Suggest",
 
   "suggestions.title": "Pending Suggestions",
   "suggestions.empty": "No pending suggestions",

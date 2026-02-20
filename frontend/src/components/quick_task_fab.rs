@@ -2,7 +2,7 @@ use leptos::*;
 use shared::{MemberWithUser, Punishment, Reward, Task, TaskCategory};
 
 use crate::api::ApiClient;
-use crate::components::household_picker_modal::{EligibleHousehold, HouseholdPickerModal};
+use crate::components::household_picker_modal::{EligibleHousehold, HouseholdPickerModal, TaskAction};
 use crate::components::task_modal::TaskModal;
 use crate::i18n::use_i18n;
 
@@ -13,13 +13,6 @@ struct HouseholdData {
     rewards: Vec<Reward>,
     punishments: Vec<Punishment>,
     categories: Vec<TaskCategory>,
-}
-
-/// Whether the user is creating a task or suggesting one
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TaskAction {
-    Create,
-    Suggest,
 }
 
 #[component]
@@ -60,8 +53,7 @@ pub fn QuickTaskFab() -> impl IntoView {
             };
 
             // For each household, check if user has permission to create or suggest tasks
-            let mut can_create = Vec::new();
-            let mut can_suggest = Vec::new();
+            let mut eligible = Vec::new();
 
             for household in households {
                 let household_id = household.id.to_string();
@@ -77,17 +69,19 @@ pub fn QuickTaskFab() -> impl IntoView {
 
                         // Check if user can manage tasks based on hierarchy type
                         if settings.hierarchy_type.can_manage(&role) {
-                            can_create.push(EligibleHousehold {
+                            eligible.push(EligibleHousehold {
                                 household,
                                 role,
                                 settings,
+                                action: TaskAction::Create,
                             });
                         } else if settings.allow_task_suggestions {
                             // User can suggest tasks in this household (if suggestions are enabled)
-                            can_suggest.push(EligibleHousehold {
+                            eligible.push(EligibleHousehold {
                                 household,
                                 role,
                                 settings,
+                                action: TaskAction::Suggest,
                             });
                         }
                     }
@@ -96,43 +90,27 @@ pub fn QuickTaskFab() -> impl IntoView {
 
             loading.set(false);
 
-            // Determine what action to take
-            // Priority: create > suggest
-            if !can_create.is_empty() {
-                // User can create tasks in at least one household
-                task_action.set(TaskAction::Create);
-                if can_create.len() == 1 {
-                    // Single household - load data and open modal directly
-                    let eh = can_create.into_iter().next().unwrap();
-                    selected_household.set(Some(eh.clone()));
-                    load_household_data_and_open_modal(eh.household.id.to_string(), household_data, show_task_modal);
-                } else {
-                    // Multiple households - show picker
-                    eligible_households.set(can_create);
-                    show_picker.set(true);
-                }
-            } else if !can_suggest.is_empty() {
-                // User can only suggest tasks
-                task_action.set(TaskAction::Suggest);
-                if can_suggest.len() == 1 {
-                    // Single household - load data and open modal directly
-                    let eh = can_suggest.into_iter().next().unwrap();
-                    selected_household.set(Some(eh.clone()));
-                    load_household_data_and_open_modal(eh.household.id.to_string(), household_data, show_task_modal);
-                } else {
-                    // Multiple households - show picker
-                    eligible_households.set(can_suggest);
-                    show_picker.set(true);
-                }
-            } else {
+            // Determine what action to take based on eligible households
+            if eligible.is_empty() {
                 // No permission in any household
                 no_permission_message.set(true);
+            } else if eligible.len() == 1 {
+                // Single household - load data and open modal directly
+                let eh = eligible.into_iter().next().unwrap();
+                task_action.set(eh.action);
+                selected_household.set(Some(eh.clone()));
+                load_household_data_and_open_modal(eh.household.id.to_string(), household_data, show_task_modal);
+            } else {
+                // Multiple households - show picker with all eligible households
+                eligible_households.set(eligible);
+                show_picker.set(true);
             }
         });
     };
 
     // Handle household selection from picker
     let on_household_select = move |eh: EligibleHousehold| {
+        task_action.set(eh.action);
         show_picker.set(false);
         selected_household.set(Some(eh.clone()));
         load_household_data_and_open_modal(eh.household.id.to_string(), household_data, show_task_modal);
@@ -298,6 +276,7 @@ mod tests {
             },
             role: Role::Owner,
             settings: HouseholdSettings::default(),
+            action: TaskAction::Create,
         }];
 
         // When there's only one household, picker should be skipped
@@ -317,6 +296,7 @@ mod tests {
                 },
                 role: Role::Owner,
                 settings: HouseholdSettings::default(),
+                action: TaskAction::Create,
             },
             EligibleHousehold {
                 household: Household {
@@ -328,6 +308,7 @@ mod tests {
                 },
                 role: Role::Admin,
                 settings: HouseholdSettings::default(),
+                action: TaskAction::Suggest,
             },
         ];
 
