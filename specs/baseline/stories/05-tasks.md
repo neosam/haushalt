@@ -464,6 +464,8 @@
   - **Create**: User has task creation permission (`HierarchyType.can_manage()`)
   - **Suggest**: User lacks creation permission but `allow_task_suggestions` is enabled
 - If user has access to multiple households, shows household picker with all eligible households
+  - Each household entry shows the user's role and a colored action badge (green "Create" or blue "Suggest")
+- If user has exactly one eligible household, opens modal directly without picker
 - If user has no permission in any household, shows "no permission" message
 
 #### Household Setting
