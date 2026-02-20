@@ -16,12 +16,16 @@
 
 ## US-AUTH-002: User Login
 
+> **Status:** Implemented
+> **Implemented:** 2026-02-20
+
 **As a** registered user
-**I want to** log in with my username and password
+**I want to** log in with my username or email and password
 **So that** I can access my account
 
 ### Acceptance Criteria
-- User provides username and password
+- User provides username or email address, and password
+- Username/email lookup is case insensitive
 - JWT access token and refresh token are issued on success
 - Failed login attempts are rate-limited by IP address
 - Invalid credentials return an error message

@@ -91,9 +91,11 @@ pub async fn register_user(pool: &SqlitePool, request: &CreateUserRequest) -> Re
 }
 
 pub async fn login_user(pool: &SqlitePool, request: &shared::LoginRequest) -> Result<User, AuthError> {
+    // Accept username or email, case insensitive
     let user: UserRow = sqlx::query_as(
-        "SELECT * FROM users WHERE username = ?"
+        "SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)"
     )
+    .bind(&request.username)
     .bind(&request.username)
     .fetch_optional(pool)
     .await?
@@ -401,5 +403,119 @@ mod tests {
         // Hash should match the token
         assert_eq!(hash_refresh_token(&token1), hash1);
         assert_eq!(hash_refresh_token(&token2), hash2);
+    }
+
+    // Helper function to set up a test database
+    async fn setup_test_db() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY NOT NULL,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT,
+                oidc_subject TEXT,
+                oidc_provider TEXT,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        pool
+    }
+
+    // Helper function to create a test user with a known password
+    async fn create_test_user_with_password(
+        pool: &SqlitePool,
+        username: &str,
+        email: &str,
+        password: &str,
+    ) -> Uuid {
+        let user_id = Uuid::new_v4();
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
+        let password_hash = argon2
+            .hash_password(password.as_bytes(), &salt)
+            .unwrap()
+            .to_string();
+
+        sqlx::query(
+            "INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
+        )
+        .bind(user_id.to_string())
+        .bind(username)
+        .bind(email)
+        .bind(&password_hash)
+        .execute(pool)
+        .await
+        .unwrap();
+
+        user_id
+    }
+
+    #[tokio::test]
+    async fn test_login_with_username() {
+        let pool = setup_test_db().await;
+        create_test_user_with_password(&pool, "testuser", "test@example.com", "password123").await;
+
+        let request = shared::LoginRequest {
+            username: "testuser".to_string(),
+            password: "password123".to_string(),
+        };
+
+        let result = login_user(&pool, &request).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().username, "testuser");
+    }
+
+    #[tokio::test]
+    async fn test_login_with_email() {
+        let pool = setup_test_db().await;
+        create_test_user_with_password(&pool, "testuser", "test@example.com", "password123").await;
+
+        let request = shared::LoginRequest {
+            username: "test@example.com".to_string(),
+            password: "password123".to_string(),
+        };
+
+        let result = login_user(&pool, &request).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().username, "testuser");
+    }
+
+    #[tokio::test]
+    async fn test_login_case_insensitive_username() {
+        let pool = setup_test_db().await;
+        create_test_user_with_password(&pool, "TestUser", "test@example.com", "password123").await;
+
+        let request = shared::LoginRequest {
+            username: "testuser".to_string(), // lowercase
+            password: "password123".to_string(),
+        };
+
+        let result = login_user(&pool, &request).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().username, "TestUser");
+    }
+
+    #[tokio::test]
+    async fn test_login_case_insensitive_email() {
+        let pool = setup_test_db().await;
+        create_test_user_with_password(&pool, "testuser", "Test@Example.com", "password123").await;
+
+        let request = shared::LoginRequest {
+            username: "test@example.com".to_string(), // lowercase
+            password: "password123".to_string(),
+        };
+
+        let result = login_user(&pool, &request).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().username, "testuser");
     }
 }
