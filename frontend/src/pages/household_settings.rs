@@ -40,6 +40,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let vacation_start = create_rw_signal(Option::<NaiveDate>::None);
     let vacation_end = create_rw_signal(Option::<NaiveDate>::None);
     let auto_archive_days = create_rw_signal(Option::<i32>::Some(7));
+    let allow_task_suggestions = create_rw_signal(true);
 
     // Load settings and check permissions
     create_effect(move |_| {
@@ -68,6 +69,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     vacation_start.set(s.vacation_start);
                     vacation_end.set(s.vacation_end);
                     auto_archive_days.set(s.auto_archive_days);
+                    allow_task_suggestions.set(s.allow_task_suggestions);
                     settings.set(Some(s));
                 }
                 Err(e) => error.set(Some(e)),
@@ -110,6 +112,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             vacation_start: Some(vacation_start.get()),
             vacation_end: Some(vacation_end.get()),
             auto_archive_days: Some(auto_archive_days.get()),
+            allow_task_suggestions: Some(allow_task_suggestions.get()),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -282,6 +285,21 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                 <label for="chat-enabled">{i18n_stored.get_value().t("settings.enable_chat")}</label>
                             </div>
                             <small class="form-hint">{i18n_stored.get_value().t("settings.chat_hint")}</small>
+                        </div>
+
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input
+                                    type="checkbox"
+                                    id="allow-task-suggestions"
+                                    prop:checked=move || allow_task_suggestions.get()
+                                    on:change=move |ev| {
+                                        allow_task_suggestions.set(event_target_checked(&ev));
+                                    }
+                                />
+                                <label for="allow-task-suggestions">{i18n_stored.get_value().t("settings.allow_task_suggestions")}</label>
+                            </div>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.task_suggestions_hint")}</small>
                         </div>
 
                         <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />

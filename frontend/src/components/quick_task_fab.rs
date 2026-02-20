@@ -82,8 +82,8 @@ pub fn QuickTaskFab() -> impl IntoView {
                                 role,
                                 settings,
                             });
-                        } else {
-                            // User can suggest tasks in this household
+                        } else if settings.allow_task_suggestions {
+                            // User can suggest tasks in this household (if suggestions are enabled)
                             can_suggest.push(EligibleHousehold {
                                 household,
                                 role,

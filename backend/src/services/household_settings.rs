@@ -35,8 +35,8 @@ pub async fn get_or_create_settings(
     let default_timezone = "UTC";
     sqlx::query(
         r#"
-        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, auto_archive_days, updated_at)
-        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, 7, ?)
+        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, auto_archive_days, allow_task_suggestions, updated_at)
+        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, 7, TRUE, ?)
         "#,
     )
     .bind(household_id.to_string())
@@ -61,6 +61,7 @@ pub async fn get_or_create_settings(
         vacation_start: None,
         vacation_end: None,
         auto_archive_days: Some(7),
+        allow_task_suggestions: true,
         updated_at: now,
     })
 }
@@ -114,6 +115,9 @@ pub async fn update_settings(
     if let Some(ref auto_archive_days) = request.auto_archive_days {
         settings.auto_archive_days = *auto_archive_days;
     }
+    if let Some(allow_task_suggestions) = request.allow_task_suggestions {
+        settings.allow_task_suggestions = allow_task_suggestions;
+    }
 
     let now = Utc::now();
     settings.updated_at = now;
@@ -121,7 +125,7 @@ pub async fn update_settings(
     sqlx::query(
         r#"
         UPDATE household_settings
-        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, rewards_enabled = ?, punishments_enabled = ?, chat_enabled = ?, vacation_mode = ?, vacation_start = ?, vacation_end = ?, auto_archive_days = ?, updated_at = ?
+        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, rewards_enabled = ?, punishments_enabled = ?, chat_enabled = ?, vacation_mode = ?, vacation_start = ?, vacation_end = ?, auto_archive_days = ?, allow_task_suggestions = ?, updated_at = ?
         WHERE household_id = ?
         "#,
     )
@@ -138,6 +142,7 @@ pub async fn update_settings(
     .bind(settings.vacation_start)
     .bind(settings.vacation_end)
     .bind(settings.auto_archive_days)
+    .bind(settings.allow_task_suggestions)
     .bind(now)
     .bind(household_id.to_string())
     .execute(pool)

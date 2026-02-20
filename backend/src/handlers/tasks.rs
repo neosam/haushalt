@@ -159,6 +159,14 @@ async fn create_task(
         }));
     }
 
+    // If user is trying to suggest but suggestions are disabled, deny access
+    if !can_manage && is_suggestion && !settings.allow_task_suggestions {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Task suggestions are disabled for this household".to_string(),
+        }));
+    }
+
     // If user can manage but is_suggestion is set, ignore it (create normal task)
     // Suggestions are only for users without manage permission
     if request.title.is_empty() {

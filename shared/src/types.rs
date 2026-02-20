@@ -147,6 +147,8 @@ pub struct HouseholdSettings {
     pub vacation_end: Option<NaiveDate>,
     /// Days after completion before auto-archiving one-time/custom tasks (None or 0 = disabled)
     pub auto_archive_days: Option<i32>,
+    /// Whether members can suggest tasks (default: true)
+    pub allow_task_suggestions: bool,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -167,6 +169,7 @@ impl Default for HouseholdSettings {
             vacation_start: None,
             vacation_end: None,
             auto_archive_days: Some(7),
+            allow_task_suggestions: true,
             updated_at: Utc::now(),
         }
     }
@@ -191,6 +194,8 @@ pub struct UpdateHouseholdSettingsRequest {
     pub vacation_end: Option<Option<NaiveDate>>,
     /// Set auto-archive days (Some(None) or Some(Some(0)) to disable)
     pub auto_archive_days: Option<Option<i32>>,
+    /// Enable/disable task suggestions from members
+    pub allow_task_suggestions: Option<bool>,
 }
 
 // ============================================================================

@@ -482,6 +482,8 @@
   "settings.rewards_hint": "Allow members to earn and redeem rewards",
   "settings.punishments_hint": "Allow assigning punishments for missed tasks",
   "settings.chat_hint": "Enable real-time chat for household members",
+  "settings.allow_task_suggestions": "Allow Task Suggestions",
+  "settings.task_suggestions_hint": "Allow members without task creation permission to suggest tasks for approval",
   "settings.vacation_mode": "Vacation Mode",
   "settings.enable_vacation_mode": "Enable Vacation Mode",
   "settings.vacation_mode_hint": "When enabled, no automated punishments will be given for missed tasks during the vacation period",

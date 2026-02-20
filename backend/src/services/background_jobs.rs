@@ -691,6 +691,7 @@ mod tests {
                 vacation_start DATE,
                 vacation_end DATE,
                 auto_archive_days INTEGER DEFAULT 7,
+                allow_task_suggestions BOOLEAN NOT NULL DEFAULT 1,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             "#,

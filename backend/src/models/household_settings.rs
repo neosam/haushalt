@@ -21,6 +21,7 @@ pub struct HouseholdSettingsRow {
     pub vacation_start: Option<NaiveDate>,
     pub vacation_end: Option<NaiveDate>,
     pub auto_archive_days: Option<i32>,
+    pub allow_task_suggestions: bool,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -42,6 +43,7 @@ impl HouseholdSettingsRow {
             vacation_start: self.vacation_start,
             vacation_end: self.vacation_end,
             auto_archive_days: self.auto_archive_days,
+            allow_task_suggestions: self.allow_task_suggestions,
             updated_at: self.updated_at,
         }
     }
@@ -71,6 +73,7 @@ mod tests {
             vacation_start: None,
             vacation_end: None,
             auto_archive_days: Some(7),
+            allow_task_suggestions: true,
             updated_at: now,
         };
 
@@ -112,6 +115,7 @@ mod tests {
             vacation_start: None,
             vacation_end: None,
             auto_archive_days: None,
+            allow_task_suggestions: true,
             updated_at: now,
         };
 

@@ -482,6 +482,8 @@
   "settings.rewards_hint": "Ermöglicht Mitgliedern, Belohnungen zu verdienen und einzulösen",
   "settings.punishments_hint": "Ermöglicht das Zuweisen von Strafen für verpasste Aufgaben",
   "settings.chat_hint": "Aktiviert Echtzeit-Chat für Haushaltsmitglieder",
+  "settings.allow_task_suggestions": "Aufgabenvorschläge erlauben",
+  "settings.task_suggestions_hint": "Mitglieder ohne Aufgabenerstellungsberechtigung können Aufgaben zur Genehmigung vorschlagen",
   "settings.vacation_mode": "Urlaubsmodus",
   "settings.enable_vacation_mode": "Urlaubsmodus aktivieren",
   "settings.vacation_mode_hint": "Wenn aktiviert, werden keine automatischen Strafen für verpasste Aufgaben während des Urlaubszeitraums vergeben",
