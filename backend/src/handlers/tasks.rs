@@ -32,6 +32,12 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/assigned-to-me", web::get().to(get_assigned_tasks))
             .route("/pending-reviews", web::get().to(get_pending_reviews))
             .route("/archived", web::get().to(list_archived_tasks))
+            // Review endpoints (must come before /{task_id} routes)
+            .route("/completions/{completion_id}/approve", web::post().to(approve_completion))
+            .route("/completions/{completion_id}/reject", web::post().to(reject_completion))
+            // Suggestion endpoints (must come before /{task_id} routes)
+            .route("/suggestions", web::get().to(list_suggestions))
+            // Task CRUD (/{task_id} routes must come last as they're catch-all patterns)
             .route("/{task_id}", web::get().to(get_task))
             .route("/{task_id}", web::put().to(update_task))
             .route("/{task_id}", web::delete().to(delete_task))
@@ -42,6 +48,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{task_id}/unarchive", web::post().to(unarchive_task))
             .route("/{task_id}/pause", web::post().to(pause_task))
             .route("/{task_id}/unpause", web::post().to(unpause_task))
+            .route("/{task_id}/approve", web::post().to(approve_suggestion))
+            .route("/{task_id}/deny", web::post().to(deny_suggestion))
             // Task rewards endpoints
             .route("/{task_id}/rewards", web::get().to(get_task_rewards))
             .route("/{task_id}/rewards/{reward_id}", web::post().to(add_task_reward))
@@ -50,13 +58,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{task_id}/punishments", web::get().to(get_task_punishments))
             .route("/{task_id}/punishments/{punishment_id}", web::post().to(add_task_punishment))
             .route("/{task_id}/punishments/{punishment_id}", web::delete().to(remove_task_punishment))
-            // Review endpoints
-            .route("/completions/{completion_id}/approve", web::post().to(approve_completion))
-            .route("/completions/{completion_id}/reject", web::post().to(reject_completion))
-            // Suggestion endpoints
-            .route("/suggestions", web::get().to(list_suggestions))
-            .route("/{task_id}/approve", web::post().to(approve_suggestion))
-            .route("/{task_id}/deny", web::post().to(deny_suggestion))
     );
 }
 
