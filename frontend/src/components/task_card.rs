@@ -187,9 +187,15 @@ pub fn TaskCard(
                 </div>
                 <div class="task-meta">
                     {if let (Some(name), Some(hid)) = (household_name_display.clone(), household_id_for_link.clone()) {
-                        let href = format!("/households/{}", hid);
+                        let navigate = leptos_router::use_navigate();
+                        let hid_clone = hid.clone();
                         view! {
-                            <a href=href class="household-link">{name}</a>
+                            <span
+                                class="household-link"
+                                on:pointerup=move |_| {
+                                    navigate(&format!("/households/{}", hid_clone), Default::default());
+                                }
+                            >{name}</span>
                             " | "
                         }.into_view()
                     } else {

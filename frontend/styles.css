@@ -354,6 +354,9 @@ body {
     color: var(--primary-color);
     text-decoration: none;
     font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .task-meta .household-link:hover {

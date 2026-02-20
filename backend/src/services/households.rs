@@ -81,7 +81,7 @@ pub async fn list_user_households(pool: &SqlitePool, user_id: &Uuid) -> Result<V
         SELECT h.* FROM households h
         JOIN household_memberships m ON h.id = m.household_id
         WHERE m.user_id = ?
-        ORDER BY h.created_at DESC
+        ORDER BY h.name ASC
         "#,
     )
     .bind(user_id.to_string())

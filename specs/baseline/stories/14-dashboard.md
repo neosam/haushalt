@@ -99,7 +99,7 @@
 
 ## US-DASH-008: Household Name as Link
 
-> **Status:** Implemented
+> **Status:** Implemented (Bug: iOS PWA click not working)
 > **Implemented:** 2026-02-19
 
 **As an** authenticated user
@@ -111,3 +111,4 @@
 - Link navigates to `/households/{household_id}`
 - Link is styled distinctly (primary color, underline on hover)
 - Works in dashboard task list view
+- **Must work on iOS PWA** (use same event handler fix as task clicking)

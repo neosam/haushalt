@@ -271,6 +271,7 @@
   - If user has permission in exactly one household: opens the task creation modal directly for that household
   - If user has permission in multiple households: shows a household selection modal first, then opens task creation modal
   - If user has no permission in any household: shows appropriate message
+- **Household selection list is ordered alphabetically by household name**
 - Uses the existing task creation modal (US-TASK-001)
 - Recurrence type defaults to "OneTime" (instead of the usual "Daily" default) for quick task creation
 - After successful task creation, the modal closes and the new task appears in the appropriate household
