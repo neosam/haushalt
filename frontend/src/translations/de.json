@@ -494,6 +494,10 @@
   "settings.auto_archive_days": "Tage bis zur automatischen Archivierung",
   "settings.auto_archive_days_hint": "Anzahl der Tage nach Erledigung, bevor die Aufgabe automatisch archiviert wird (1-90)",
 
+  "vacation.banner_title": "Urlaubsmodus aktiv",
+  "vacation.until": "Bis",
+  "vacation.indefinite": "Aufgaben sind pausiert bis der Urlaubsmodus deaktiviert wird",
+
   "hierarchy.equals": "Gleichberechtigt",
   "hierarchy.equals_desc": "Jeder kann Aufgaben, Belohnungen und Strafen verwalten",
   "hierarchy.organized": "Organisiert",

@@ -79,7 +79,40 @@ pub fn HouseholdTabs(
         tabs
     };
 
+    // Check for vacation mode
+    let vacation_banner = if let Some(ref s) = settings {
+        if s.vacation_mode {
+            let end_date = s.vacation_end.map(|d| d.format("%d.%m.%Y").to_string());
+            Some(view! {
+                <div class="vacation-banner">
+                    <span class="vacation-banner-icon">"🏖️"</span>
+                    <div class="vacation-banner-text">
+                        <div class="vacation-banner-title">{i18n_stored.get_value().t("vacation.banner_title")}</div>
+                        {if let Some(end) = end_date {
+                            view! {
+                                <div class="vacation-banner-dates">
+                                    {i18n_stored.get_value().t("vacation.until")} ": " {end}
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! {
+                                <div class="vacation-banner-dates">
+                                    {i18n_stored.get_value().t("vacation.indefinite")}
+                                </div>
+                            }.into_view()
+                        }}
+                    </div>
+                </div>
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     view! {
+        {vacation_banner}
         <nav class="household-tabs">
             {tabs.into_iter().map(|tab| {
                 let href = tab.path(&household_id);

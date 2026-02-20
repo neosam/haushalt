@@ -494,6 +494,10 @@
   "settings.auto_archive_days": "Days before auto-archive",
   "settings.auto_archive_days_hint": "Number of days after completion before the task is automatically archived (1-90)",
 
+  "vacation.banner_title": "Vacation Mode Active",
+  "vacation.until": "Until",
+  "vacation.indefinite": "Tasks are paused until vacation mode is disabled",
+
   "hierarchy.equals": "Equals",
   "hierarchy.equals_desc": "Everyone can manage tasks, rewards, and punishments",
   "hierarchy.organized": "Organized",

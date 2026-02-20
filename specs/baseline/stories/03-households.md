@@ -185,3 +185,21 @@
   - Only visible to managers (Owner/Admin)
   - **Hidden when there are no pending confirmations**
   - **Hidden when rewards/punishments features are disabled** (treats "feature not enabled" errors as empty)
+
+---
+
+## US-HH-014: Vacation Mode Banner
+
+> **Status:** Implemented
+> **Implemented:** 2026-02-20
+
+**As a** household member
+**I want to** see a banner when the household is in vacation mode
+**So that** I understand why tasks are paused and know when vacation ends
+
+### Acceptance Criteria
+- Banner is displayed at the top of the household view when vacation mode is active
+- Banner shows that the household is on vacation
+- If vacation end date is set, banner shows when vacation ends
+- Banner is visually distinct (e.g., info/warning style)
+- Banner is visible to all household members

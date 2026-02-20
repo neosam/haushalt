@@ -1563,6 +1563,40 @@ body.dark-mode .announcement-list-item {
 }
 
 /* ============================
+   Vacation Banner
+   ============================ */
+
+.vacation-banner {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.vacation-banner-icon {
+    font-size: 1.5rem;
+}
+
+.vacation-banner-text {
+    flex: 1;
+}
+
+.vacation-banner-title {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.vacation-banner-dates {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+
+/* ============================
    Household List (Dashboard)
    ============================ */
 
