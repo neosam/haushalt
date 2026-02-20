@@ -578,6 +578,27 @@ body {
     color: var(--text-muted);
 }
 
+/* Dashboard Two-Column Layout */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.dashboard-column-left,
+.dashboard-column-right {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+@media (max-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .stat-card {
     text-align: center;
     padding: 1.5rem;

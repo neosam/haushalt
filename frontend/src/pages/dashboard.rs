@@ -256,18 +256,8 @@ pub fn Dashboard() -> impl IntoView {
 
     view! {
         <div class="dashboard-header">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                    <h1 class="dashboard-title">{move || i18n_stored.get_value().t("dashboard.title")}</h1>
-                    <p class="dashboard-subtitle">{move || i18n_stored.get_value().t("dashboard.subtitle")}</p>
-                </div>
-                <button
-                    class=move || if show_all.get() { "btn btn-primary" } else { "btn btn-outline" }
-                    on:click=move |_| show_all.update(|v| *v = !*v)
-                >
-                    {move || i18n_stored.get_value().t("dashboard.show_all")}
-                </button>
-            </div>
+            <h1 class="dashboard-title">{move || i18n_stored.get_value().t("dashboard.title")}</h1>
+            <p class="dashboard-subtitle">{move || i18n_stored.get_value().t("dashboard.subtitle")}</p>
         </div>
 
         {move || error.get().map(|e| view! {
@@ -279,166 +269,184 @@ pub fn Dashboard() -> impl IntoView {
         </Show>
 
         <Show when=move || !loading.get() fallback=|| ()>
-            // Pending Invitations Section
-            <Show when=move || !invitations.get().is_empty() fallback=|| ()>
-                <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--primary-color);">
-                    <div class="card-header">
-                        <h3 class="card-title">{move || i18n_stored.get_value().t("dashboard.pending_invitations")}</h3>
+            <div class="dashboard-grid">
+                // Left column: Tasks (wider)
+                <div class="dashboard-column-left">
+                    // Show all toggle
+                    <div>
+                        <button
+                            class=move || if show_all.get() { "btn btn-primary" } else { "btn btn-outline" }
+                            on:click=move |_| show_all.update(|v| *v = !*v)
+                        >
+                            {move || i18n_stored.get_value().t("dashboard.show_all")}
+                        </button>
                     </div>
+
+                    // Household filter controls
                     {move || {
-                        invitations.get().into_iter().map(|inv| {
-                            let inv_id = inv.invitation.id.to_string();
-                            let accept_id = inv_id.clone();
-                            let decline_id = inv_id.clone();
-                            let household_for_accept = inv.household.clone();
-                            let role_badge = if inv.invitation.role == Role::Admin {
-                                "badge badge-admin"
-                            } else {
-                                "badge badge-member"
-                            };
-                            let role_text = if inv.invitation.role == Role::Admin { "Admin" } else { "Member" };
+                        let h = households.get();
+                        if h.len() > 1 {
+                            // Only show filter when there are multiple households
+                            let mut sorted_households = h.clone();
+                            sorted_households.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
                             view! {
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border-color);">
-                                    <div>
-                                        <div style="font-weight: 600; font-size: 1rem;">{inv.household.name.clone()}</div>
-                                        <div style="font-size: 0.875rem; color: var(--text-muted);">
-                                            {i18n_stored.get_value().t("dashboard.invited_by")} " "
-                                            <span style="font-weight: 500;">{inv.invited_by_user.username.clone()}</span>
-                                            " " {i18n_stored.get_value().t("dashboard.as_role")} " "
-                                            <span class=role_badge style="margin-left: 0.25rem;">{role_text}</span>
-                                        </div>
-                                    </div>
-                                    <div style="display: flex; gap: 0.5rem;">
-                                        <button
-                                            class="btn btn-outline"
-                                            style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
-                                            on:click=move |_| on_decline_invitation(decline_id.clone())
-                                        >
-                                            {i18n_stored.get_value().t("dashboard.decline")}
-                                        </button>
-                                        <button
-                                            class="btn btn-primary"
-                                            style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
-                                            on:click=move |_| on_accept_invitation(accept_id.clone(), household_for_accept.clone())
-                                        >
-                                            {i18n_stored.get_value().t("dashboard.accept")}
-                                        </button>
-                                    </div>
+                                <div class="filter-controls">
+                                    <span class="filter-label">{i18n_stored.get_value().t("dashboard.filter_households")}</span>
+                                    {sorted_households.into_iter().map(|household| {
+                                        let hid = household.id.to_string();
+                                        let hid_check = hid.clone();
+                                        let hid_toggle = hid.clone();
+                                        let name = household.name.clone();
+                                        view! {
+                                            <label class="filter-checkbox">
+                                                <input
+                                                    type="checkbox"
+                                                    prop:checked=move || enabled_households.get().contains(&hid_check)
+                                                    on:change=move |ev| {
+                                                        let checked = event_target_checked(&ev);
+                                                        enabled_households.update(|set| {
+                                                            if checked {
+                                                                set.insert(hid_toggle.clone());
+                                                            } else {
+                                                                set.remove(&hid_toggle);
+                                                            }
+                                                        });
+                                                        all_households_enabled.set(false);
+                                                    }
+                                                />
+                                                <span>{name}</span>
+                                            </label>
+                                        }
+                                    }).collect_view()}
                                 </div>
-                            }
-                        }).collect_view()
+                            }.into_view()
+                        } else {
+                            ().into_view()
+                        }
+                    }}
+
+                    // Tasks section
+                    {move || {
+                        let tasks = all_tasks.get();
+                        // Filter tasks by enabled households
+                        let filtered_tasks: Vec<_> = tasks
+                            .into_iter()
+                            .filter(|t| enabled_households.get().contains(&t.household_id))
+                            .collect();
+
+                        if !filtered_tasks.is_empty() {
+                            view! {
+                                <div>
+                                    <DashboardGroupedTaskList
+                                        tasks=filtered_tasks
+                                        on_complete=on_complete_task
+                                        on_uncomplete=on_uncomplete_task
+                                        timezone="Europe/Berlin".to_string()
+                                        on_click_title=on_click_task_title
+                                    />
+                                </div>
+                            }.into_view()
+                        } else {
+                            ().into_view()
+                        }
                     }}
                 </div>
-            </Show>
 
-            <div style="margin-bottom: 1rem;">
-                <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
-                    {move || i18n_stored.get_value().t("dashboard.create_household")}
-                </button>
-            </div>
-
-            // Households section
-            {move || {
-                let mut h = households.get();
-                h.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-                if h.is_empty() {
-                    view! {
-                        <div class="card empty-state">
-                            <p>{i18n_stored.get_value().t("dashboard.no_households")}</p>
-                            <p>{i18n_stored.get_value().t("dashboard.get_started")}</p>
-                        </div>
-                    }.into_view()
-                } else {
-                    view! {
-                        <div class="card">
+                // Right column: Households
+                <div class="dashboard-column-right">
+                    // Pending Invitations Section
+                    <Show when=move || !invitations.get().is_empty() fallback=|| ()>
+                        <div class="card" style="border-left: 4px solid var(--primary-color);">
                             <div class="card-header">
-                                <h3 class="card-title">{i18n_stored.get_value().t("dashboard.households")}</h3>
+                                <h3 class="card-title">{move || i18n_stored.get_value().t("dashboard.pending_invitations")}</h3>
                             </div>
-                            <ul class="household-list">
-                                {h.into_iter().map(|household| {
-                                    let id = household.id.to_string();
+                            {move || {
+                                invitations.get().into_iter().map(|inv| {
+                                    let inv_id = inv.invitation.id.to_string();
+                                    let accept_id = inv_id.clone();
+                                    let decline_id = inv_id.clone();
+                                    let household_for_accept = inv.household.clone();
+                                    let role_badge = if inv.invitation.role == Role::Admin {
+                                        "badge badge-admin"
+                                    } else {
+                                        "badge badge-member"
+                                    };
+                                    let role_text = if inv.invitation.role == Role::Admin { "Admin" } else { "Member" };
+
                                     view! {
-                                        <li>
-                                            <a href=format!("/households/{}", id)>{household.name}</a>
-                                        </li>
+                                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border-color);">
+                                            <div>
+                                                <div style="font-weight: 600; font-size: 1rem;">{inv.household.name.clone()}</div>
+                                                <div style="font-size: 0.875rem; color: var(--text-muted);">
+                                                    {i18n_stored.get_value().t("dashboard.invited_by")} " "
+                                                    <span style="font-weight: 500;">{inv.invited_by_user.username.clone()}</span>
+                                                    " " {i18n_stored.get_value().t("dashboard.as_role")} " "
+                                                    <span class=role_badge style="margin-left: 0.25rem;">{role_text}</span>
+                                                </div>
+                                            </div>
+                                            <div style="display: flex; gap: 0.5rem;">
+                                                <button
+                                                    class="btn btn-outline"
+                                                    style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                                    on:click=move |_| on_decline_invitation(decline_id.clone())
+                                                >
+                                                    {i18n_stored.get_value().t("dashboard.decline")}
+                                                </button>
+                                                <button
+                                                    class="btn btn-primary"
+                                                    style="padding: 0.25rem 0.75rem; font-size: 0.875rem;"
+                                                    on:click=move |_| on_accept_invitation(accept_id.clone(), household_for_accept.clone())
+                                                >
+                                                    {i18n_stored.get_value().t("dashboard.accept")}
+                                                </button>
+                                            </div>
+                                        </div>
                                     }
-                                }).collect_view()}
-                            </ul>
+                                }).collect_view()
+                            }}
                         </div>
-                    }.into_view()
-                }
-            }}
+                    </Show>
 
-            // Household filter controls
-            {move || {
-                let h = households.get();
-                if h.len() > 1 {
-                    // Only show filter when there are multiple households
-                    let mut sorted_households = h.clone();
-                    sorted_households.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                    <div>
+                        <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
+                            {move || i18n_stored.get_value().t("dashboard.create_household")}
+                        </button>
+                    </div>
 
-                    view! {
-                        <div class="filter-controls">
-                            <span class="filter-label">{i18n_stored.get_value().t("dashboard.filter_households")}</span>
-                            {sorted_households.into_iter().map(|household| {
-                                let hid = household.id.to_string();
-                                let hid_check = hid.clone();
-                                let hid_toggle = hid.clone();
-                                let name = household.name.clone();
-                                view! {
-                                    <label class="filter-checkbox">
-                                        <input
-                                            type="checkbox"
-                                            prop:checked=move || enabled_households.get().contains(&hid_check)
-                                            on:change=move |ev| {
-                                                let checked = event_target_checked(&ev);
-                                                enabled_households.update(|set| {
-                                                    if checked {
-                                                        set.insert(hid_toggle.clone());
-                                                    } else {
-                                                        set.remove(&hid_toggle);
-                                                    }
-                                                });
-                                                all_households_enabled.set(false);
+                    // Households section
+                    {move || {
+                        let mut h = households.get();
+                        h.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                        if h.is_empty() {
+                            view! {
+                                <div class="card empty-state">
+                                    <p>{i18n_stored.get_value().t("dashboard.no_households")}</p>
+                                    <p>{i18n_stored.get_value().t("dashboard.get_started")}</p>
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! {
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3 class="card-title">{i18n_stored.get_value().t("dashboard.households")}</h3>
+                                    </div>
+                                    <ul class="household-list">
+                                        {h.into_iter().map(|household| {
+                                            let id = household.id.to_string();
+                                            view! {
+                                                <li>
+                                                    <a href=format!("/households/{}", id)>{household.name}</a>
+                                                </li>
                                             }
-                                        />
-                                        <span>{name}</span>
-                                    </label>
-                                }
-                            }).collect_view()}
-                        </div>
-                    }.into_view()
-                } else {
-                    ().into_view()
-                }
-            }}
-
-            // Tasks section
-            {move || {
-                let tasks = all_tasks.get();
-                // Filter tasks by enabled households
-                let filtered_tasks: Vec<_> = tasks
-                    .into_iter()
-                    .filter(|t| enabled_households.get().contains(&t.household_id))
-                    .collect();
-
-                if !filtered_tasks.is_empty() {
-                    view! {
-                        <div style="margin-bottom: 1.5rem;">
-                            <DashboardGroupedTaskList
-                                tasks=filtered_tasks
-                                on_complete=on_complete_task
-                                on_uncomplete=on_uncomplete_task
-                                timezone="Europe/Berlin".to_string()
-                                on_click_title=on_click_task_title
-                            />
-                        </div>
-                    }.into_view()
-                } else {
-                    ().into_view()
-                }
-            }}
+                                        }).collect_view()}
+                                    </ul>
+                                </div>
+                            }.into_view()
+                        }
+                    }}
+                </div>
+            </div>
         </Show>
 
         // Task detail modal

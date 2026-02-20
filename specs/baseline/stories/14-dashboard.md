@@ -132,3 +132,22 @@
 - Disabled households' tasks are hidden from the task list
 - Filter state resets when navigating away from the dashboard
 - Works in combination with "Show all" mode (US-DASH-007)
+
+---
+
+## US-DASH-010: Responsive Two-Column Layout
+
+> **Status:** Implemented
+> **Implemented:** 2026-02-20
+
+**As an** authenticated user on a desktop device
+**I want to** see households and tasks in separate columns
+**So that** I can view more information at once on larger screens
+
+### Acceptance Criteria
+- On desktop/wide screens: display tasks and households side by side in two columns
+  - Left column (wider): Show all toggle, Household filter, Tasks list
+  - Right column: Pending invitations, Create household button, Households list
+- On mobile/narrow screens: maintain current single-column stacked layout
+- Use CSS media queries for responsive breakpoint (768px)
+- Column ratio 2:1 (tasks column is wider)
