@@ -207,7 +207,7 @@ pub fn TaskCard(
                 </div>
                 {if has_recent_periods {
                     view! {
-                        <PeriodTrackerCompact periods=recent_periods.clone() show_in_progress=true />
+                        <PeriodTrackerCompact periods=recent_periods.clone() show_in_progress=true is_bad_habit=is_bad_habit />
                     }.into_view()
                 } else {
                     ().into_view()

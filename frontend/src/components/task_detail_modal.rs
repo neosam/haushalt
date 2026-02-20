@@ -194,7 +194,7 @@ fn TaskDetailContent(
                 Some(view! {
                     <div class="period-tracker-section">
                         <span class="detail-label">{i18n.t("tasks.detail.recent_periods")}</span>
-                        <PeriodTracker periods=recent_periods.clone() show_in_progress=true />
+                        <PeriodTracker periods=recent_periods.clone() show_in_progress=true is_bad_habit=is_bad_habit />
                     </div>
                 })
             } else {

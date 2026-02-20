@@ -170,6 +170,7 @@ streak: completed +1, skipped continue, failed break
 - Today's period shown as "in progress" (○ or similar)
 - Display in **both** list views (Dashboard, Household Overview, Task List) and detail view
 - Statistics show completed/failed/skipped counts
+- **Bad habits: colors are inverted** (completed = red/bad, failed = green/good)
 
 ### UI Mockup
 
