@@ -148,6 +148,21 @@
 - On desktop/wide screens: display tasks and households side by side in two columns
   - Left column (wider): Show all toggle, Household filter, Tasks list
   - Right column: Pending invitations, Create household button, Households list
-- On mobile/narrow screens: maintain current single-column stacked layout
+- On mobile/narrow screens: single-column stacked layout with households on top, tasks below
 - Use CSS media queries for responsive breakpoint (768px)
 - Column ratio 2:1 (tasks column is wider)
+
+---
+
+## US-DASH-011: Highlight All Day Headers in Task List
+
+**As an** authenticated user
+**I want to** see all day headers (Today, Tomorrow, weekdays, dates) visually highlighted
+**So that** I can easily see where each day's tasks begin and end
+
+### Acceptance Criteria
+- All day group headers should be visually distinct and highlighted
+- "Today" header uses primary color (most prominent)
+- Other day headers (Tomorrow, weekdays, future dates) use secondary highlighting
+- Clear visual separation between different days' task groups
+- Applies to both Dashboard and Household overview task lists
