@@ -6,6 +6,9 @@ use shared::{HouseholdSettings, MemberStatistic, MonthlyStatisticsResponse, Week
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::components::{
+    Accordion, Alert, AlertVariant, Button, ButtonVariant, Card, ProgressBar,
+};
 use crate::i18n::use_i18n;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -170,7 +173,7 @@ pub fn StatisticsPage() -> impl IntoView {
         </div>
 
         {move || error.get().map(|e| view! {
-            <div class="alert alert-error">{e}</div>
+            <Alert variant=AlertVariant::Error>{e}</Alert>
         })}
 
         <Show when=move || loading.get() fallback=|| ()>
@@ -179,21 +182,21 @@ pub fn StatisticsPage() -> impl IntoView {
 
         <Show when=move || !loading.get() fallback=|| ()>
             // View switcher
-            <div class="card" style="margin-bottom: 1rem;">
+            <Card style="margin-bottom: 1rem;">
                 <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
                     <div style="display: flex; gap: 0.5rem;">
-                        <button
-                            class=move || if current_view.get() == StatisticsView::Weekly { "btn btn-primary" } else { "btn" }
-                            on:click=move |_| current_view.set(StatisticsView::Weekly)
+                        <Button
+                            variant=MaybeSignal::derive(move || if current_view.get() == StatisticsView::Weekly { ButtonVariant::Primary } else { ButtonVariant::Secondary })
+                            on_click=Callback::new(move |_| current_view.set(StatisticsView::Weekly))
                         >
                             {i18n_stored.get_value().t("statistics.weekly")}
-                        </button>
-                        <button
-                            class=move || if current_view.get() == StatisticsView::Monthly { "btn btn-primary" } else { "btn" }
-                            on:click=move |_| current_view.set(StatisticsView::Monthly)
+                        </Button>
+                        <Button
+                            variant=MaybeSignal::derive(move || if current_view.get() == StatisticsView::Monthly { ButtonVariant::Primary } else { ButtonVariant::Secondary })
+                            on_click=Callback::new(move |_| current_view.set(StatisticsView::Monthly))
                         >
                             {i18n_stored.get_value().t("statistics.monthly")}
-                        </button>
+                        </Button>
                     </div>
 
                     // Period selector
@@ -253,19 +256,18 @@ pub fn StatisticsPage() -> impl IntoView {
                         }
                     }}
 
-                    <button
-                        class="btn"
-                        disabled=move || calculating.get()
-                        on:click=on_calculate
+                    <Button
+                        disabled=MaybeSignal::derive(move || calculating.get())
+                        on_click=Callback::new(on_calculate)
                     >
                         {move || if calculating.get() {
                             i18n_stored.get_value().t("statistics.calculating")
                         } else {
                             i18n_stored.get_value().t("statistics.calculate")
                         }}
-                    </button>
+                    </Button>
                 </div>
-            </div>
+            </Card>
 
             // Statistics display
             {move || {
@@ -274,20 +276,20 @@ pub fn StatisticsPage() -> impl IntoView {
                         view! { <WeeklyStatsView stats=stats i18n=i18n_stored /> }.into_view()
                     } else {
                         view! {
-                            <div class="card empty-state">
+                            <Card class="empty-state">
                                 <p>{i18n_stored.get_value().t("statistics.no_weekly_data")}</p>
                                 <p>{i18n_stored.get_value().t("statistics.click_calculate")}</p>
-                            </div>
+                            </Card>
                         }.into_view()
                     }
                 } else if let Some(stats) = monthly_stats.get() {
                     view! { <MonthlyStatsView stats=stats i18n=i18n_stored /> }.into_view()
                 } else {
                     view! {
-                        <div class="card empty-state">
+                        <Card class="empty-state">
                             <p>{i18n_stored.get_value().t("statistics.no_monthly_data")}</p>
                             <p>{i18n_stored.get_value().t("statistics.click_calculate")}</p>
-                        </div>
+                        </Card>
                     }.into_view()
                 }
             }}
@@ -306,11 +308,10 @@ fn WeeklyStatsView(
         stats.week_end.format("%d.%m.%Y")
     );
 
+    let title = format!("{} {}", i18n.get_value().t("statistics.week_of"), week_range);
+
     view! {
-        <div class="card">
-            <h3 style="margin-bottom: 1rem;">
-                {i18n.get_value().t("statistics.week_of")} " " {week_range}
-            </h3>
+        <Card title=title>
             {if stats.members.is_empty() {
                 view! {
                     <p>{i18n.get_value().t("statistics.no_member_data")}</p>
@@ -322,7 +323,7 @@ fn WeeklyStatsView(
                     }).collect_view()}
                 }.into_view()
             }}
-        </div>
+        </Card>
     }
 }
 
@@ -331,11 +332,10 @@ fn MonthlyStatsView(
     stats: MonthlyStatisticsResponse,
     i18n: StoredValue<crate::i18n::I18nContext>,
 ) -> impl IntoView {
-    let month_display = stats.month.format("%B %Y").to_string();
+    let title = stats.month.format("%B %Y").to_string();
 
     view! {
-        <div class="card">
-            <h3 style="margin-bottom: 1rem;">{month_display}</h3>
+        <Card title=title>
             {if stats.members.is_empty() {
                 view! {
                     <p>{i18n.get_value().t("statistics.no_member_data")}</p>
@@ -347,7 +347,7 @@ fn MonthlyStatsView(
                     }).collect_view()}
                 }.into_view()
             }}
-        </div>
+        </Card>
     }
 }
 
@@ -378,42 +378,39 @@ fn MemberStatsCard(
             </div>
 
             // Progress bar
-            <div style="background: var(--border-color); border-radius: 4px; height: 10px; overflow: hidden; margin-bottom: 1rem;">
-                <div style=format!(
-                    "background: {}; width: {:.1}%; height: 10px; display: block; transition: width 0.3s;",
-                    completion_color,
-                    member.completion_rate.min(100.0).max(0.0)
-                )></div>
+            <div style="margin-bottom: 1rem;">
+                <ProgressBar value=member.completion_rate />
             </div>
 
             // Task breakdown
             {if !member.task_stats.is_empty() {
+                let summary = format!(
+                    "{} ({} {})",
+                    i18n.get_value().t("statistics.task_breakdown"),
+                    member.task_stats.len(),
+                    i18n.get_value().t("statistics.tasks")
+                );
                 view! {
-                    <details>
-                        <summary style="cursor: pointer; user-select: none; padding: 0.5rem 0;">
-                            {i18n.get_value().t("statistics.task_breakdown")} " (" {member.task_stats.len()} " " {i18n.get_value().t("statistics.tasks")} ")"
-                        </summary>
-                        <div style="margin-top: 0.75rem; padding-left: 1rem;">
-                            {member.task_stats.into_iter().map(|task| {
-                                let task_color = if task.completion_rate >= 80.0 {
-                                    "var(--success-color)"
-                                } else if task.completion_rate >= 50.0 {
-                                    "var(--warning-color)"
-                                } else {
-                                    "var(--danger-color)"
-                                };
-                                view! {
-                                    <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border-color);">
-                                        <span>{&task.task_title}</span>
-                                        <span style=format!("color: {};", task_color)>
-                                            {task.completed} "/" {task.expected}
-                                            " (" {format!("{:.0}%", task.completion_rate)} ")"
-                                        </span>
-                                    </div>
-                                }
-                            }).collect_view()}
-                        </div>
-                    </details>
+                    <Accordion summary=summary>
+                        {member.task_stats.into_iter().map(|task| {
+                            let task_color = if task.completion_rate >= 80.0 {
+                                "var(--success-color)"
+                            } else if task.completion_rate >= 50.0 {
+                                "var(--warning-color)"
+                            } else {
+                                "var(--danger-color)"
+                            };
+                            view! {
+                                <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border-color);">
+                                    <span>{&task.task_title}</span>
+                                    <span style=format!("color: {};", task_color)>
+                                        {task.completed} "/" {task.expected}
+                                        " (" {format!("{:.0}%", task.completion_rate)} ")"
+                                    </span>
+                                </div>
+                            }
+                        }).collect_view()}
+                    </Accordion>
                 }.into_view()
             } else {
                 view! {}.into_view()

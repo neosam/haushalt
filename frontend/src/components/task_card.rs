@@ -367,43 +367,49 @@ impl DueDateGroup {
     }
 }
 
-/// Sub-group TaskWithStatus by category within a date group
-fn group_tasks_by_category(tasks: Vec<TaskWithStatus>, other_label: &str) -> Vec<(String, Vec<TaskWithStatus>)> {
-    let mut by_category: BTreeMap<String, Vec<TaskWithStatus>> = BTreeMap::new();
-    let mut uncategorized: Vec<TaskWithStatus> = Vec::new();
+/// Group tasks by category within a date group.
+/// Returns a sorted list of (category_name, tasks) tuples.
+fn group_tasks_by_category(tasks: Vec<TaskWithHousehold>, other_label: &str) -> Vec<(String, Vec<TaskWithHousehold>)> {
+    let mut by_category: BTreeMap<String, Vec<TaskWithHousehold>> = BTreeMap::new();
+    let mut uncategorized: Vec<TaskWithHousehold> = Vec::new();
 
     for task in tasks {
-        if let Some(ref cat_name) = task.task.category_name {
+        if let Some(cat_name) = task.category_name() {
             by_category.entry(cat_name.clone()).or_default().push(task);
         } else {
             uncategorized.push(task);
         }
     }
 
-    let mut result: Vec<(String, Vec<TaskWithStatus>)> = by_category.into_iter().collect();
+    let mut result: Vec<(String, Vec<TaskWithHousehold>)> = by_category.into_iter().collect();
     // Sort categories alphabetically
     result.sort_by(|a, b| a.0.cmp(&b.0));
     // Sort tasks alphabetically within each category
     for (_, category_tasks) in &mut result {
-        category_tasks.sort_by(|a, b| a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase()));
+        category_tasks.sort_by_key(|a| a.title().to_lowercase());
     }
     if !uncategorized.is_empty() {
         // Sort uncategorized tasks alphabetically
-        uncategorized.sort_by(|a, b| a.task.title.to_lowercase().cmp(&b.task.title.to_lowercase()));
+        uncategorized.sort_by_key(|a| a.title().to_lowercase());
         result.push((other_label.to_string(), uncategorized));
     }
     result
 }
 
+/// Unified grouped task list component.
+/// Displays tasks grouped by due date (Today, Tomorrow, Weekday, Later, No Schedule)
+/// and sub-grouped by category within each date group.
+///
+/// This component handles both single-household context (household page) and
+/// multi-household context (dashboard) based on whether tasks have household info.
 #[component]
 pub fn GroupedTaskList(
-    tasks: Vec<TaskWithStatus>,
+    tasks: Vec<TaskWithHousehold>,
     #[prop(into)] on_complete: Callback<String>,
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
     #[prop(optional)] dashboard_task_ids: Option<HashSet<String>>,
     #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
-    #[prop(optional)] household_id: Option<String>,
     #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
@@ -413,14 +419,14 @@ pub fn GroupedTaskList(
     let other_label = i18n_stored.get_value().t("categories.other");
 
     // Group tasks by their due date
-    let mut grouped: BTreeMap<DueDateGroup, Vec<TaskWithStatus>> = BTreeMap::new();
+    let mut grouped: BTreeMap<DueDateGroup, Vec<TaskWithHousehold>> = BTreeMap::new();
 
     for task in tasks {
-        let group = DueDateGroup::from_date(task.next_due_date, today);
+        let group = DueDateGroup::from_date(task.next_due_date(), today);
         grouped.entry(group).or_default().push(task);
     }
 
-    let groups: Vec<(DueDateGroup, Vec<TaskWithStatus>)> = grouped.into_iter().collect();
+    let groups: Vec<(DueDateGroup, Vec<TaskWithHousehold>)> = grouped.into_iter().collect();
 
     view! {
         <div class="card">
@@ -477,178 +483,50 @@ pub fn GroupedTaskList(
                                                     } else {
                                                         ().into_view()
                                                     }}
-                                                    {cat_tasks.into_iter().map(|task| {
-                                                        let tz_task = tz_cat.clone();
-                                                        let task_id = task.task.id.to_string();
-                                                        let hh_id = household_id.clone();
-                                                        // Only pass dashboard props if the feature is enabled
-                                                        match (&dashboard_ids_cat, on_toggle_dashboard, on_click_title, hh_id) {
-                                                            (Some(ids), Some(callback), Some(title_callback), Some(hid)) => {
-                                                                let is_on_dashboard = ids.contains(&task_id);
-                                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=callback household_id=hid on_click_title=title_callback /> }.into_view()
-                                                            }
-                                                            (Some(ids), Some(callback), _, _) => {
-                                                                let is_on_dashboard = ids.contains(&task_id);
-                                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=callback /> }.into_view()
-                                                            }
-                                                            (_, _, Some(title_callback), Some(hid)) => {
-                                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_click_title=title_callback /> }.into_view()
-                                                            }
-                                                            _ => {
-                                                                view! { <TaskCard task=task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }.into_view()
-                                                            }
-                                                        }
-                                                    }).collect_view()}
-                                                </div>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                </div>
-                            }
-                        }).collect_view()}
-                    </div>
-                }.into_any()
-            }}
-        </div>
-    }
-}
-
-/// Task with associated household name for dashboard display
-#[derive(Clone)]
-pub struct TaskWithHousehold {
-    pub task: TaskWithStatus,
-    pub household_name: String,
-    pub household_id: String,
-}
-
-/// Sub-group tasks by category within a date group
-fn group_by_category(tasks: Vec<TaskWithHousehold>, other_label: &str) -> Vec<(String, Vec<TaskWithHousehold>)> {
-    let mut by_category: BTreeMap<String, Vec<TaskWithHousehold>> = BTreeMap::new();
-    let mut uncategorized: Vec<TaskWithHousehold> = Vec::new();
-
-    for task in tasks {
-        if let Some(ref cat_name) = task.task.task.category_name {
-            by_category.entry(cat_name.clone()).or_default().push(task);
-        } else {
-            uncategorized.push(task);
-        }
-    }
-
-    let mut result: Vec<(String, Vec<TaskWithHousehold>)> = by_category.into_iter().collect();
-    // Sort categories alphabetically
-    result.sort_by(|a, b| a.0.cmp(&b.0));
-    // Sort tasks alphabetically within each category
-    for (_, category_tasks) in &mut result {
-        category_tasks.sort_by(|a, b| a.task.task.title.to_lowercase().cmp(&b.task.task.title.to_lowercase()));
-    }
-    // Add uncategorized tasks at the end
-    if !uncategorized.is_empty() {
-        // Sort uncategorized tasks alphabetically
-        uncategorized.sort_by(|a, b| a.task.task.title.to_lowercase().cmp(&b.task.task.title.to_lowercase()));
-        result.push((other_label.to_string(), uncategorized));
-    }
-    result
-}
-
-#[component]
-pub fn DashboardGroupedTaskList(
-    tasks: Vec<TaskWithHousehold>,
-    #[prop(into)] on_complete: Callback<String>,
-    #[prop(into)] on_uncomplete: Callback<String>,
-    #[prop(default = "UTC".to_string())] timezone: String,
-    #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
-    #[prop(optional)] dashboard_task_ids: Option<HashSet<String>>,
-    #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
-) -> impl IntoView {
-    let i18n = use_i18n();
-    let i18n_stored = store_value(i18n);
-
-    let today = today_in_tz(&timezone);
-    let other_label = i18n_stored.get_value().t("categories.other");
-
-    // Group tasks by their due date
-    let mut grouped: BTreeMap<DueDateGroup, Vec<TaskWithHousehold>> = BTreeMap::new();
-
-    for task in tasks {
-        let group = DueDateGroup::from_date(task.task.next_due_date, today);
-        grouped.entry(group).or_default().push(task);
-    }
-
-    let groups: Vec<(DueDateGroup, Vec<TaskWithHousehold>)> = grouped.into_iter().collect();
-
-    view! {
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">{i18n_stored.get_value().t("tasks.title")}</h3>
-            </div>
-            {if groups.is_empty() {
-                view! {
-                    <div class="empty-state">
-                        <p>{i18n_stored.get_value().t("tasks.no_tasks")}</p>
-                    </div>
-                }.into_any()
-            } else {
-                let tz = timezone.clone();
-                let other_label_view = other_label.clone();
-                let dashboard_ids = dashboard_task_ids.clone();
-                view! {
-                    <div>
-                        {groups.into_iter().map(|(group, group_tasks)| {
-                            let title = group.title(&i18n_stored.get_value());
-                            let is_today = matches!(group, DueDateGroup::Today);
-                            let tz_inner = tz.clone();
-                            let other_label_inner = other_label_view.clone();
-                            // Sub-group by category
-                            let category_groups = group_by_category(group_tasks, &other_label_inner);
-                            let has_multiple_categories = category_groups.len() > 1 || (category_groups.len() == 1 && category_groups[0].0 != other_label_inner);
-                            view! {
-                                <div class="task-group" style=if is_today { "margin-bottom: 1.5rem;" } else { "margin-bottom: 1rem;" }>
-                                    <div style=if is_today {
-                                        "font-weight: 600; font-size: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border-radius: var(--border-radius);"
-                                    } else {
-                                        "font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: rgba(79, 70, 229, 0.15); color: var(--primary-color); border-radius: var(--border-radius);"
-                                    }>
-                                        {title}
-                                    </div>
-                                    <div style="margin-top: 0.5rem;">
-                                        {category_groups.into_iter().map(|(cat_name, cat_tasks)| {
-                                            let tz_cat = tz_inner.clone();
-                                            let dashboard_ids_cat = dashboard_ids.clone();
-                                            let show_category_header = has_multiple_categories;
-                                            view! {
-                                                <div class="category-group" style=if show_category_header {
-                                                    "border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 0.5rem; overflow: hidden;"
-                                                } else {
-                                                    ""
-                                                }>
-                                                    {if show_category_header {
-                                                        view! {
-                                                            <div style="font-weight: 500; font-size: 0.75rem; padding: 0.5rem 1rem; color: var(--text-muted); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
-                                                                {cat_name}
-                                                            </div>
-                                                        }.into_view()
-                                                    } else {
-                                                        ().into_view()
-                                                    }}
                                                     {cat_tasks.into_iter().map(|twh| {
                                                         let tz_task = tz_cat.clone();
-                                                        let hh_id = twh.household_id.clone();
-                                                        let task_id = twh.task.task.id.to_string();
+                                                        let task_id = twh.task_id();
                                                         let is_on_dashboard = dashboard_ids_cat.as_ref()
                                                             .map(|ids| ids.contains(&task_id))
                                                             .unwrap_or(false);
-                                                        match (on_click_title, on_toggle_dashboard) {
-                                                            (Some(title_cb), Some(toggle_cb)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name household_id=hh_id on_click_title=title_cb on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb /> }.into_view()
+                                                        // Extract household info from the task wrapper
+                                                        let hh_id = twh.household_id.clone();
+                                                        let hh_name = twh.household_name.clone();
+                                                        // Render TaskCard with appropriate props based on available data
+                                                        // Match on household info (both must be Some to display household)
+                                                        match (on_toggle_dashboard, on_click_title, hh_id, hh_name) {
+                                                            // With household info
+                                                            (Some(toggle_cb), Some(title_cb), Some(hid), Some(name)) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb /> }.into_view()
                                                             }
-                                                            (Some(title_cb), None) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name household_id=hh_id on_click_title=title_cb /> }.into_view()
+                                                            (Some(toggle_cb), None, Some(hid), Some(name)) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb /> }.into_view()
                                                             }
-                                                            (None, Some(toggle_cb)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb /> }.into_view()
+                                                            (None, Some(title_cb), Some(hid), Some(name)) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_click_title=title_cb /> }.into_view()
                                                             }
-                                                            (None, None) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name /> }.into_view()
+                                                            (None, None, Some(hid), Some(name)) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid /> }.into_view()
+                                                            }
+                                                            // With household_id only (for title click callback)
+                                                            (Some(toggle_cb), Some(title_cb), Some(hid), None) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb /> }.into_view()
+                                                            }
+                                                            (None, Some(title_cb), Some(hid), None) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_click_title=title_cb /> }.into_view()
+                                                            }
+                                                            // Without household info
+                                                            (Some(toggle_cb), Some(title_cb), None, _) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb /> }.into_view()
+                                                            }
+                                                            (Some(toggle_cb), None, _, _) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb /> }.into_view()
+                                                            }
+                                                            (None, Some(title_cb), _, _) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_click_title=title_cb /> }.into_view()
+                                                            }
+                                                            _ => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }.into_view()
                                                             }
                                                         }
                                                     }).collect_view()}
@@ -665,6 +543,70 @@ pub fn DashboardGroupedTaskList(
         </div>
     }
 }
+
+/// Task with associated household information for display.
+/// This is the unified type used by GroupedTaskList.
+#[derive(Clone)]
+pub struct TaskWithHousehold {
+    pub task: TaskWithStatus,
+    pub household_name: Option<String>,
+    pub household_id: Option<String>,
+}
+
+impl TaskWithHousehold {
+    /// Create a TaskWithHousehold from a TaskWithStatus with household info.
+    pub fn new(task: TaskWithStatus, household_id: Option<String>, household_name: Option<String>) -> Self {
+        Self {
+            task,
+            household_id,
+            household_name,
+        }
+    }
+
+    /// Create a TaskWithHousehold from a TaskWithStatus without household info.
+    /// Used when displaying tasks within a single household context.
+    pub fn from_task(task: TaskWithStatus) -> Self {
+        Self {
+            task,
+            household_id: None,
+            household_name: None,
+        }
+    }
+
+    /// Create a TaskWithHousehold with required household info (for dashboard).
+    pub fn with_household(task: TaskWithStatus, household_id: String, household_name: String) -> Self {
+        Self {
+            task,
+            household_id: Some(household_id),
+            household_name: Some(household_name),
+        }
+    }
+
+    /// Get the next due date from the inner task.
+    pub fn next_due_date(&self) -> Option<NaiveDate> {
+        self.task.next_due_date
+    }
+
+    /// Get the category name from the inner task.
+    pub fn category_name(&self) -> Option<&String> {
+        self.task.task.category_name.as_ref()
+    }
+
+    /// Get the task title from the inner task.
+    pub fn title(&self) -> &str {
+        &self.task.task.title
+    }
+
+    /// Get the task ID from the inner task.
+    pub fn task_id(&self) -> String {
+        self.task.task.id.to_string()
+    }
+}
+
+/// Deprecated: Use GroupedTaskList with TaskWithHousehold instead.
+/// This type alias is kept for backwards compatibility but will be removed.
+#[deprecated(note = "Use GroupedTaskList with TaskWithHousehold::with_household instead")]
+pub type DashboardGroupedTaskList = ();
 
 #[cfg(test)]
 mod tests {

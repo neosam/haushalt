@@ -6,6 +6,9 @@ use shared::{HierarchyType, HouseholdSettings, Role, UpdateHouseholdSettingsRequ
 use crate::api::ApiClient;
 use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
+use crate::components::{
+    Alert, AlertVariant, Button, ButtonVariant, Card, Divider, SectionHeader,
+};
 use crate::i18n::use_i18n;
 use crate::utils::COMMON_TIMEZONES;
 
@@ -151,14 +154,14 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
 
         <Show when=move || !loading.get() fallback=|| ()>
             {move || error.get().map(|e| view! {
-                <div class="alert alert-error">{e}</div>
+                <Alert variant=AlertVariant::Error>{e}</Alert>
             })}
 
             {move || success.get().map(|s| view! {
-                <div class="alert alert-success">{s}</div>
+                <Alert variant=AlertVariant::Success>{s}</Alert>
             })}
 
-            <div class="card">
+            <Card>
                 <Show
                     when=move || is_owner.get()
                     fallback=move || view! {
@@ -196,7 +199,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                             <small class="form-hint">{i18n_stored.get_value().t("settings.structure_hint")}</small>
                         </div>
 
-                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+                        <Divider />
 
                         <div class="form-group">
                             <label class="form-label" for="timezone">{i18n_stored.get_value().t("settings.timezone")}</label>
@@ -245,7 +248,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                             <small class="form-hint">{i18n_stored.get_value().t("settings.week_start_day_hint")}</small>
                         </div>
 
-                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+                        <Divider />
 
                         <div class="form-group">
                             <label class="form-label">{i18n_stored.get_value().t("settings.theme")}</label>
@@ -263,9 +266,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                             <small class="form-hint">{i18n_stored.get_value().t("settings.dark_mode_hint")}</small>
                         </div>
 
-                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+                        <Divider />
 
-                        <h3 style="margin-bottom: 1rem;">{i18n_stored.get_value().t("settings.optional_features")}</h3>
+                        <SectionHeader>{i18n_stored.get_value().t("settings.optional_features")}</SectionHeader>
 
                         <div class="form-group">
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -327,9 +330,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                             <small class="form-hint">{i18n_stored.get_value().t("settings.task_suggestions_hint")}</small>
                         </div>
 
-                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+                        <Divider />
 
-                        <h3 style="margin-bottom: 1rem;">{i18n_stored.get_value().t("settings.vacation_mode")}</h3>
+                        <SectionHeader>{i18n_stored.get_value().t("settings.vacation_mode")}</SectionHeader>
 
                         <div class="form-group">
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -388,9 +391,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                             </div>
                         </Show>
 
-                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+                        <Divider />
 
-                        <h3 style="margin-bottom: 1rem;">{i18n_stored.get_value().t("settings.task_cleanup")}</h3>
+                        <SectionHeader>{i18n_stored.get_value().t("settings.task_cleanup")}</SectionHeader>
 
                         <div class="form-group">
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -437,9 +440,9 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                             </div>
                         </Show>
 
-                        <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />
+                        <Divider />
 
-                        <h3 style="margin-bottom: 1rem;">{i18n_stored.get_value().t("settings.custom_role_labels")}</h3>
+                        <SectionHeader>{i18n_stored.get_value().t("settings.custom_role_labels")}</SectionHeader>
                         <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.875rem;">
                             {i18n_stored.get_value().t("settings.role_labels_hint")}
                         </p>
@@ -481,17 +484,17 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                         </div>
 
                         <div style="margin-top: 2rem;">
-                            <button
-                                type="submit"
-                                class="btn btn-primary"
-                                disabled=move || saving.get()
+                            <Button
+                                variant=ButtonVariant::Primary
+                                button_type="submit"
+                                disabled=MaybeSignal::derive(move || saving.get())
                             >
                                 {move || if saving.get() { i18n_stored.get_value().t("common.saving") } else { i18n_stored.get_value().t("settings.save_settings") }}
-                            </button>
+                            </Button>
                         </div>
                     </form>
                 </Show>
-            </div>
+            </Card>
         </Show>
     }
 }

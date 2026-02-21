@@ -1127,6 +1127,11 @@ body.dark-mode hr {
     font-size: 0.75rem;
 }
 
+.btn-xs {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+}
+
 .btn-icon {
     background: none;
     border: none;
@@ -1430,6 +1435,28 @@ body.dark-mode .chat-input-area {
     text-align: center;
     padding: 3rem;
     color: var(--text-muted);
+}
+
+/* Divider */
+.divider {
+    margin: 1.5rem 0;
+    border: none;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Card Body and Footer */
+.card-body {
+    padding: 1rem;
+}
+
+.card-footer {
+    padding: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Progress Bar Container */
+.progress-bar-container {
+    width: 100%;
 }
 
 /* Dark mode for notes */

@@ -543,3 +543,55 @@ nix build .#frontend
 3. **Tests required**: Changes need tests
 4. **SQLx offline mode**: Compile-time query verification
 5. **Shared types**: No API type duplication
+
+---
+
+## 14. Code Design Principles
+
+### 14.1 DRY (Don't Repeat Yourself)
+
+All code, especially UI components, must follow the DRY principle:
+
+- **No code duplication**: Extract common logic into shared functions or components
+- **Single source of truth**: Each piece of knowledge should have one authoritative representation
+- **Reuse over rewrite**: Always check for existing components before creating new ones
+
+### 14.2 UI Component Architecture
+
+The frontend must use a component-based architecture with clear separation:
+
+#### Primitive Components
+All basic UI elements must be separate, reusable components that encapsulate styling:
+
+| Component | Purpose |
+|-----------|---------|
+| `Button` | All button variants (primary, secondary, danger, etc.) |
+| `TextInput` | Text input fields with consistent styling |
+| `TextArea` | Multi-line text inputs |
+| `Select` | Dropdown selectors |
+| `Checkbox` | Checkbox inputs |
+| `Modal` | Modal dialog wrapper |
+| `Card` | Card container |
+| `Badge` | Status badges and labels |
+| `ProgressBar` | Progress indicators |
+| `Alert` | Error, warning, success messages |
+
+#### Component Guidelines
+
+1. **Styling encapsulation**: Primitive components handle their own CSS classes
+2. **Props for variants**: Use props (e.g., `variant="primary"`) instead of different components
+3. **Consistent API**: Similar components should have similar prop interfaces
+4. **CSS variables**: Use CSS custom properties for theming
+5. **No inline styles in pages**: Pages should compose components, not define styles
+
+#### Composition Pattern
+
+```
+Pages (compose components, no styling)
+    ↓
+Feature Components (task cards, member lists)
+    ↓
+Primitive Components (buttons, inputs, modals)
+    ↓
+CSS Variables (colors, spacing, typography)
+```

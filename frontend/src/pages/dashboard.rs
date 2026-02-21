@@ -6,7 +6,7 @@ use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, MemberW
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
-use crate::components::task_card::{DashboardGroupedTaskList, TaskWithHousehold};
+use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
 use crate::i18n::use_i18n;
@@ -85,11 +85,11 @@ pub fn Dashboard() -> impl IntoView {
                 Ok(dashboard_tasks) => {
                     let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
                         .into_iter()
-                        .map(|t| TaskWithHousehold {
-                            task: t.task_with_status,
-                            household_name: t.household_name,
-                            household_id: t.household_id.to_string(),
-                        })
+                        .map(|t| TaskWithHousehold::with_household(
+                            t.task_with_status,
+                            t.household_id.to_string(),
+                            t.household_name,
+                        ))
                         .collect();
                     all_tasks.set(tasks_with_households);
                 }
@@ -158,11 +158,11 @@ pub fn Dashboard() -> impl IntoView {
         if let Ok(dashboard_tasks) = result {
             let tasks_with_households: Vec<TaskWithHousehold> = dashboard_tasks
                 .into_iter()
-                .map(|t| TaskWithHousehold {
-                    task: t.task_with_status,
-                    household_name: t.household_name,
-                    household_id: t.household_id.to_string(),
-                })
+                .map(|t| TaskWithHousehold::with_household(
+                    t.task_with_status,
+                    t.household_id.to_string(),
+                    t.household_name,
+                ))
                 .collect();
             all_tasks.set(tasks_with_households);
         }
@@ -173,14 +173,15 @@ pub fn Dashboard() -> impl IntoView {
         // Find the household_id for this task
         let tasks = all_tasks.get();
         if let Some(twh) = tasks.iter().find(|t| t.task.task.id.to_string() == task_id) {
-            let household_id = twh.household_id.clone();
-            let task_id_clone = task_id.clone();
-            let show_all_mode = show_all.get();
-            wasm_bindgen_futures::spawn_local(async move {
-                if ApiClient::complete_task(&household_id, &task_id_clone).await.is_ok() {
-                    reload_tasks(show_all_mode).await;
-                }
-            });
+            if let Some(household_id) = twh.household_id.clone() {
+                let task_id_clone = task_id.clone();
+                let show_all_mode = show_all.get();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if ApiClient::complete_task(&household_id, &task_id_clone).await.is_ok() {
+                        reload_tasks(show_all_mode).await;
+                    }
+                });
+            }
         }
     });
 
@@ -189,14 +190,15 @@ pub fn Dashboard() -> impl IntoView {
         // Find the household_id for this task
         let tasks = all_tasks.get();
         if let Some(twh) = tasks.iter().find(|t| t.task.task.id.to_string() == task_id) {
-            let household_id = twh.household_id.clone();
-            let task_id_clone = task_id.clone();
-            let show_all_mode = show_all.get();
-            wasm_bindgen_futures::spawn_local(async move {
-                if ApiClient::uncomplete_task(&household_id, &task_id_clone).await.is_ok() {
-                    reload_tasks(show_all_mode).await;
-                }
-            });
+            if let Some(household_id) = twh.household_id.clone() {
+                let task_id_clone = task_id.clone();
+                let show_all_mode = show_all.get();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if ApiClient::uncomplete_task(&household_id, &task_id_clone).await.is_ok() {
+                        reload_tasks(show_all_mode).await;
+                    }
+                });
+            }
         }
     });
 
@@ -357,13 +359,13 @@ pub fn Dashboard() -> impl IntoView {
                         // Filter tasks by enabled households
                         let filtered_tasks: Vec<_> = tasks
                             .into_iter()
-                            .filter(|t| enabled_households.get().contains(&t.household_id))
+                            .filter(|t| t.household_id.as_ref().map(|id| enabled_households.get().contains(id)).unwrap_or(false))
                             .collect();
 
                         if !filtered_tasks.is_empty() {
                             view! {
                                 <div>
-                                    <DashboardGroupedTaskList
+                                    <GroupedTaskList
                                         tasks=filtered_tasks
                                         on_complete=on_complete_task
                                         on_uncomplete=on_uncomplete_task

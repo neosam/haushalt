@@ -15,7 +15,7 @@ use crate::components::pending_confirmations::PendingConfirmations;
 use crate::components::pending_reviews::PendingReviews;
 use crate::components::pending_suggestions::PendingSuggestions;
 use crate::components::points_display::PointsBadge;
-use crate::components::task_card::GroupedTaskList;
+use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
 use crate::i18n::use_i18n;
@@ -523,7 +523,12 @@ pub fn HouseholdPage() -> impl IntoView {
                                 let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
                                 let dashboard_ids = dashboard_task_ids.get();
                                 let hh_id = id.clone();
-                                view! { <GroupedTaskList tasks=tasks.get() on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard household_id=hh_id on_click_title=on_click_task_title /> }
+                                // Convert TaskWithStatus to TaskWithHousehold for the unified component
+                                let tasks_with_household: Vec<TaskWithHousehold> = tasks.get()
+                                    .into_iter()
+                                    .map(|t| TaskWithHousehold::new(t, Some(hh_id.clone()), None))
+                                    .collect();
+                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title /> }
                             }
 
                             // Pending Reviews Section (only for managers/owners)
