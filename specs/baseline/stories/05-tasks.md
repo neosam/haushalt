@@ -593,3 +593,150 @@
 - **Styling**: `.assignment-filter-btn` class with `.active` state for primary color
 - **Dashboard**: Also loads `current_user_id` via `ApiClient::get_current_user()`
 - **Filtering logic**: `assigned_user_id == current_user_id` (excludes unassigned tasks when filter active)
+
+---
+
+## US-TASK-025: Bulk Edit Multiple Tasks
+
+**As a** household Owner or Admin
+**I want to** select multiple tasks and edit them at once
+**So that** I can efficiently apply the same changes to many tasks without repetitive editing
+
+### Acceptance Criteria
+
+#### Multi-Select Mode Activation
+- A "Multi-Select" toggle button appears in the task list header (next to filter controls)
+- When activated:
+  - Checkboxes appear next to each task in the list
+  - A selection toolbar appears showing count of selected tasks
+  - "Edit Selected" button becomes available when ≥1 task is selected
+- When deactivated:
+  - Checkboxes disappear
+  - Selection is cleared
+  - Normal task list behavior resumes
+
+#### Task Selection
+- Individual task checkboxes to select/deselect single tasks
+- "Select All" / "Deselect All" controls in selection toolbar
+- Selected tasks are visually highlighted
+- Selection count displayed: "X tasks selected"
+- Selection persists while in multi-select mode (survives scrolling)
+
+#### Bulk Edit Modal
+- Opens when clicking "Edit Selected" with ≥1 task selected
+- Modal header shows: "Edit X Tasks" (where X is the count)
+- **Hidden fields** (not applicable for bulk edit):
+  - Title
+  - Description
+- **Editable fields with "Apply" checkbox**:
+  - Each field has a checkbox: "☐ Apply to all selected tasks"
+  - Field input is disabled until checkbox is checked
+  - When checkbox is checked, field becomes editable
+  - Only fields with checked "Apply" checkbox are included in the update
+
+#### Editable Fields in Bulk Mode
+
+| Field | Apply Checkbox | Notes |
+|-------|----------------|-------|
+| Category | ☐ | Can set or clear (select "None") |
+| Assigned User | ☐ | Can set or clear (select "Unassigned") |
+| Recurrence Type | ☐ | See recurrence note below |
+| Target Count | ☐ | |
+| Time Period | ☐ | |
+| Allow Exceed Target | ☐ | |
+| Requires Review | ☐ | |
+| On Dashboard | ☐ | |
+| Habit Type | ☐ | Good / Bad |
+| Points Reward | ☐ | Can set or clear |
+| Points Penalty | ☐ | Can set or clear |
+| Due Time | ☐ | Can set or clear |
+| Paused | ☐ | Pause/Unpause all selected |
+
+#### Recurrence Type Handling
+- **Simple approach**: Recurrence type change applies the type only
+- Recurrence value (weekday, month day, dates) uses sensible defaults:
+  - Weekly → defaults to Monday
+  - Monthly → defaults to 1st
+  - Weekdays → defaults to Mon-Fri
+  - Custom → not available in bulk mode (requires individual dates)
+- Alternative: Show warning if selected tasks have different recurrence types
+
+#### Excluded from Bulk Edit
+- **Title**: Each task must have unique title
+- **Description**: Task-specific content
+- **Linked Rewards**: Task-specific, complex to merge
+- **Linked Punishments**: Task-specific, complex to merge
+- **Archive/Delete**: Use separate bulk actions (not in edit modal)
+
+#### Save Behavior
+- "Apply Changes" button saves all changes
+- Only fields with checked "Apply" checkbox are updated
+- Progress indicator during save (e.g., "Updating 5 of 12 tasks...")
+- Sequential API calls to existing `PUT /tasks/{id}` endpoint
+- On success: Close modal, refresh task list, show success message
+- On partial failure: Show which tasks failed, offer retry
+
+#### Error Handling
+- If some tasks fail to update:
+  - Show error summary: "3 of 5 tasks updated. 2 failed."
+  - List failed tasks with error reason
+  - Offer "Retry Failed" button
+  - Successful updates are preserved (no rollback)
+
+#### Permissions
+- Only users with task edit permission can enter multi-select mode
+- Permission check uses existing `HierarchyType.can_manage(role)` logic
+- Multi-select toggle hidden for users without permission
+
+### Design Decisions
+
+- **Apply checkboxes required**: Prevents accidental mass changes; user must explicitly choose which fields to apply
+- **Sequential API calls**: Reuses existing endpoint, no backend changes required for MVP
+- **No bulk endpoint initially**: Can be added later as optimization if needed
+- **Excluded linked items**: Rewards/punishments are task-specific; bulk editing would be confusing
+- **Recurrence simplification**: Custom recurrence excluded from bulk edit due to date complexity
+
+### UI Layout
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Edit 5 Tasks                                           [X] │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ☐ Category              [▼ Select Category        ]        │
+│                                                             │
+│  ☑ Assigned User         [▼ Max Mustermann         ]        │
+│                                                             │
+│  ☐ Points on Completion  [_________________________]        │
+│                                                             │
+│  ☑ Points on Miss        [____50___________________]        │
+│                                                             │
+│  ☐ Requires Review       [ ] Yes                            │
+│                                                             │
+│  ☑ On Dashboard          [✓] Yes                            │
+│                                                             │
+│  ☐ Habit Type            [▼ Good Habit             ]        │
+│                                                             │
+│  ...                                                        │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│  [Cancel]                              [Apply Changes]      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Mobile Considerations
+- Multi-select toggle clearly visible in header
+- Checkboxes have sufficient touch target (44px)
+- Selection toolbar fixed at top or bottom for visibility
+- Modal scrollable with fixed header/footer
+
+### Activity Logging
+- Each task update logged individually in activity log
+- Activity type: `TaskUpdated` (existing type)
+- No special "bulk update" activity type needed
+
+### Future Enhancements (Out of Scope)
+- Bulk archive: Select multiple → Archive all
+- Bulk delete: Select multiple → Delete all (with confirmation)
+- Backend bulk endpoint for atomic transactions
+- Undo bulk operation

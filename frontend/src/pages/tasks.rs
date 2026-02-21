@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use leptos::*;
 use leptos_router::*;
 use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
@@ -50,6 +52,11 @@ pub fn TasksPage() -> impl IntoView {
 
     // Detail modal state - holds the task_id to show details for
     let detail_task_id = create_rw_signal(Option::<String>::None);
+
+    // Multi-select/bulk edit state
+    let multi_select_mode = create_rw_signal(false);
+    let selected_task_ids = create_rw_signal(HashSet::<String>::new());
+    let show_bulk_edit_modal = create_rw_signal(false);
 
     // Load tasks and supporting data
     create_effect(move |_| {
@@ -330,14 +337,64 @@ pub fn TasksPage() -> impl IntoView {
                 }
             </Show>
 
-            <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem;">
+            <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                 <button class="btn btn-primary" on:click=move |_| show_create_modal.set(true)>
                     "+ " {i18n_stored.get_value().t("tasks.create")}
                 </button>
                 <button class="btn btn-outline" on:click=move |_| show_category_modal.set(true)>
                     {i18n_stored.get_value().t("tasks.manage_categories")}
                 </button>
+                // Multi-select toggle button
+                <Show when=move || can_manage.get() fallback=|| ()>
+                    <button
+                        class=move || if multi_select_mode.get() { "btn btn-primary" } else { "btn btn-outline" }
+                        on:click=move |_| {
+                            multi_select_mode.update(|v| *v = !*v);
+                            if !multi_select_mode.get() {
+                                selected_task_ids.set(HashSet::new());
+                            }
+                        }
+                    >
+                        {i18n_stored.get_value().t("tasks.multi_select")}
+                    </button>
+                </Show>
             </div>
+
+            // Selection toolbar (when multi-select is active)
+            <Show when=move || multi_select_mode.get() fallback=|| ()>
+                {
+                    let all_task_ids: Vec<String> = tasks.get().iter().map(|t| t.id.to_string()).collect();
+                    let all_ids_clone = all_task_ids.clone();
+                    view! {
+                        <div class="selection-toolbar">
+                            <span class="selection-count">
+                                {move || format!("{} {}", selected_task_ids.get().len(), i18n_stored.get_value().t("tasks.selected"))}
+                            </span>
+                            <button
+                                class="btn btn-outline btn-sm"
+                                on:click=move |_| {
+                                    selected_task_ids.set(all_ids_clone.clone().into_iter().collect());
+                                }
+                            >
+                                {i18n_stored.get_value().t("tasks.select_all")}
+                            </button>
+                            <button
+                                class="btn btn-outline btn-sm"
+                                on:click=move |_| selected_task_ids.set(HashSet::new())
+                            >
+                                {i18n_stored.get_value().t("tasks.deselect_all")}
+                            </button>
+                            <button
+                                class="btn btn-primary btn-sm"
+                                disabled=move || selected_task_ids.get().is_empty()
+                                on:click=move |_| show_bulk_edit_modal.set(true)
+                            >
+                                {i18n_stored.get_value().t("tasks.edit_selected")}
+                            </button>
+                        </div>
+                    }
+                }
+            </Show>
 
             <h3 style="margin-bottom: 1rem; color: var(--text-muted);">{i18n_stored.get_value().t("tasks.all_tasks")}</h3>
 
@@ -414,9 +471,32 @@ pub fn TasksPage() -> impl IntoView {
                                 let task_style = if is_paused { "opacity: 0.6;" } else { "" };
                                 let paused_badge = i18n_stored.get_value().t("tasks.paused_badge");
                                 let detail_id = task_id.clone();
+                                let checkbox_task_id = store_value(task_id.clone());
 
                                 view! {
-                                    <div class="task-item" style=task_style>
+                                    <div
+                                        class=move || format!("task-item{}", if selected_task_ids.get().contains(&checkbox_task_id.get_value()) { " selected" } else { "" })
+                                        style=task_style
+                                    >
+                                        // Checkbox (only in multi-select mode)
+                                        <Show when=move || multi_select_mode.get() fallback=|| ()>
+                                            <input
+                                                type="checkbox"
+                                                class="task-select-checkbox"
+                                                prop:checked=move || selected_task_ids.get().contains(&checkbox_task_id.get_value())
+                                                on:change=move |ev| {
+                                                    let checked = event_target_checked(&ev);
+                                                    let id = checkbox_task_id.get_value();
+                                                    selected_task_ids.update(|ids| {
+                                                        if checked {
+                                                            ids.insert(id);
+                                                        } else {
+                                                            ids.remove(&id);
+                                                        }
+                                                    });
+                                                }
+                                            />
+                                        </Show>
                                         <div class="task-content">
                                             <div
                                                 class="task-title task-title-clickable"
@@ -699,6 +779,53 @@ pub fn TasksPage() -> impl IntoView {
                     />
                 }
             }}
+        </Show>
+
+        // Bulk Edit Modal
+        <Show when=move || show_bulk_edit_modal.get() fallback=|| ()>
+            {
+                let hid = household_id();
+                let selected_ids: Vec<String> = selected_task_ids.get().into_iter().collect();
+                // Filter members based on hierarchy type
+                let assignable_members = {
+                    let all_members = members.get();
+                    match settings.get().map(|s| s.hierarchy_type) {
+                        Some(HierarchyType::Hierarchy) => {
+                            all_members.into_iter()
+                                .filter(|m| m.membership.role == Role::Member)
+                                .collect()
+                        }
+                        _ => all_members
+                    }
+                };
+                view! {
+                    <TaskModal
+                        task=None
+                        household_id=hid
+                        members=assignable_members
+                        household_rewards=rewards.get()
+                        household_punishments=punishments.get()
+                        linked_rewards=vec![]
+                        linked_punishments=vec![]
+                        categories=categories.get()
+                        bulk_task_ids=selected_ids
+                        on_close=move |_| show_bulk_edit_modal.set(false)
+                        on_save=move |_| {}
+                        on_bulk_save=Callback::new(move |_count: usize| {
+                            show_bulk_edit_modal.set(false);
+                            multi_select_mode.set(false);
+                            selected_task_ids.set(HashSet::new());
+                            // Reload tasks
+                            let id = household_id();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                if let Ok(t) = ApiClient::list_tasks(&id).await {
+                                    tasks.set(t);
+                                }
+                            });
+                        })
+                    />
+                }
+            }
         </Show>
     }
 }

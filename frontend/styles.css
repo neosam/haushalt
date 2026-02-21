@@ -2105,3 +2105,92 @@ body.dark-mode .period-skipped {
 body.dark-mode .period-in-progress {
     background-color: #2563eb;
 }
+
+/* ==========================================
+   Bulk Edit / Multi-Select Styles
+   ========================================== */
+
+/* Selection toolbar */
+.selection-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.selection-count {
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+/* Task selection checkbox */
+.task-select-checkbox {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-right: 0.75rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* Selected task highlight */
+.task-item.selected {
+    background-color: var(--primary-light, rgba(59, 130, 246, 0.1));
+    border-left: 3px solid var(--primary-color);
+}
+
+body.dark-mode .task-item.selected {
+    background-color: rgba(59, 130, 246, 0.15);
+}
+
+/* Bulk edit apply checkbox row */
+.bulk-edit-field {
+    margin-bottom: 1rem;
+}
+
+.bulk-edit-apply {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.bulk-edit-apply input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+}
+
+.bulk-edit-apply label {
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+/* Disabled field in bulk edit */
+.field-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Progress indicator */
+.bulk-edit-progress {
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius);
+}
+
+.bulk-edit-progress-bar {
+    height: 0.5rem;
+    background: var(--border-color);
+    border-radius: 0.25rem;
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.bulk-edit-progress-fill {
+    height: 100%;
+    background: var(--primary-color);
+    transition: width 0.2s;
+}

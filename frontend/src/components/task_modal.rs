@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::calendar_picker::CalendarPicker;
+use crate::components::task_fields::*;
 use crate::i18n::use_i18n;
 
 #[component]
@@ -31,10 +32,20 @@ pub fn TaskModal(
     #[prop(default = vec![])] default_rewards: Vec<(String, i32)>,
     /// Default punishments from household settings (for create mode) - Vec of (punishment_id, amount)
     #[prop(default = vec![])] default_punishments: Vec<(String, i32)>,
+    /// For bulk edit: multiple task IDs to update at once
+    #[prop(default = vec![])] bulk_task_ids: Vec<String>,
+    /// Callback for bulk edit completion (returns count of successfully updated tasks)
+    #[prop(optional)] on_bulk_save: Option<Callback<usize>>,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
     let is_edit = task.is_some();
+    let is_bulk_edit = !bulk_task_ids.is_empty();
+    let bulk_task_count = bulk_task_ids.len();
+
+    // Store members early so it can be used multiple times
+    let members_stored = store_value(members);
+
     // Use task for edit mode, or prefill_from for duplicate mode
     let source_task = task.as_ref().or(prefill_from.as_ref());
     let error = create_rw_signal(Option::<String>::None);
@@ -54,8 +65,9 @@ pub fn TaskModal(
         .or_else(|| {
             // In create mode with exactly one assignable member, auto-select them
             // But not if we're in duplicate mode (prefill_from is set)
-            if task.is_none() && prefill_from.is_none() && members.len() == 1 {
-                Some(members[0].user.id.to_string())
+            let members_val = members_stored.get_value();
+            if task.is_none() && prefill_from.is_none() && members_val.len() == 1 {
+                Some(members_val[0].user.id.to_string())
             } else {
                 None
             }
@@ -186,6 +198,32 @@ pub fn TaskModal(
     // Dashboard visibility signal
     let on_dashboard = create_rw_signal(false);
     let initial_on_dashboard = create_rw_signal(false);
+
+    // Paused signal (for bulk edit)
+    let paused = create_rw_signal(false);
+
+    // Bulk edit "apply" signals - which fields to update
+    let apply_category = create_rw_signal(false);
+    let apply_assigned_user = create_rw_signal(false);
+    let apply_target_count = create_rw_signal(false);
+    let apply_allow_exceed = create_rw_signal(false);
+    let apply_requires_review = create_rw_signal(false);
+    let apply_on_dashboard = create_rw_signal(false);
+    let apply_habit_type = create_rw_signal(false);
+    let apply_points_reward = create_rw_signal(false);
+    let apply_points_penalty = create_rw_signal(false);
+    let apply_due_time = create_rw_signal(false);
+    let apply_paused = create_rw_signal(false);
+    let apply_recurrence = create_rw_signal(false);
+
+    // Bulk edit recurrence signals
+    let bulk_selected_weekday = create_rw_signal(1u8); // Monday
+    let bulk_selected_month_day = create_rw_signal(1u8);
+    let bulk_selected_weekdays = create_rw_signal(Vec::<u8>::new());
+
+    // Bulk edit progress state
+    let bulk_progress = create_rw_signal((0usize, 0usize)); // (completed, total)
+    let bulk_errors = create_rw_signal(Vec::<String>::new());
 
     let task_id = task.as_ref().map(|t| t.id.to_string());
 
@@ -412,19 +450,181 @@ pub fn TaskModal(
         }
     };
 
+    // Bulk edit submit handler
+    let on_bulk_submit = {
+        let household_id = household_id.clone();
+        let bulk_task_ids = bulk_task_ids.clone();
+
+        move |ev: web_sys::SubmitEvent| {
+            ev.prevent_default();
+            saving.set(true);
+            error.set(None);
+            bulk_progress.set((0, bulk_task_ids.len()));
+            bulk_errors.set(vec![]);
+
+            let hid = household_id.clone();
+            let ids = bulk_task_ids.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                let mut success_count = 0;
+                let mut error_list = vec![];
+
+                for (idx, task_id) in ids.iter().enumerate() {
+                    // Build request with only "apply" checked fields
+                    let category_id_val = if apply_category.get() {
+                        let cat_id = selected_category_id.get();
+                        if cat_id.is_empty() {
+                            Some(None)
+                        } else {
+                            Some(Uuid::parse_str(&cat_id).ok())
+                        }
+                    } else {
+                        None
+                    };
+
+                    let assigned_user_id_val = if apply_assigned_user.get() {
+                        let assigned = assigned_user.get();
+                        if assigned.is_empty() {
+                            Some(None)
+                        } else {
+                            Some(Uuid::parse_str(&assigned).ok())
+                        }
+                    } else {
+                        None
+                    };
+
+                    // Build recurrence type and value if apply_recurrence is checked
+                    let bulk_rec_type = if apply_recurrence.get() {
+                        Some(match recurrence_type.get().as_str() {
+                            "onetime" => RecurrenceType::OneTime,
+                            "daily" => RecurrenceType::Daily,
+                            "weekly" => RecurrenceType::Weekly,
+                            "monthly" => RecurrenceType::Monthly,
+                            "weekdays" => RecurrenceType::Weekdays,
+                            "custom" => RecurrenceType::Custom,
+                            _ => RecurrenceType::Daily,
+                        })
+                    } else {
+                        None
+                    };
+
+                    let bulk_rec_value = if apply_recurrence.get() {
+                        match recurrence_type.get().as_str() {
+                            "weekly" => Some(RecurrenceValue::WeekDay(bulk_selected_weekday.get())),
+                            "monthly" => Some(RecurrenceValue::MonthDay(bulk_selected_month_day.get())),
+                            "weekdays" => Some(RecurrenceValue::Weekdays(bulk_selected_weekdays.get())),
+                            "custom" => Some(RecurrenceValue::CustomDates(selected_custom_dates.get())),
+                            _ => None, // onetime, daily don't need a value
+                        }
+                    } else {
+                        None
+                    };
+
+                    let request = UpdateTaskRequest {
+                        title: None, // Never update title in bulk edit
+                        description: None, // Never update description in bulk edit
+                        recurrence_type: bulk_rec_type,
+                        recurrence_value: bulk_rec_value,
+                        assigned_user_id: assigned_user_id_val.flatten(),
+                        target_count: if apply_target_count.get() {
+                            Some(target_count.get().parse::<i32>().unwrap_or(1).max(0))
+                        } else {
+                            None
+                        },
+                        time_period: None,
+                        allow_exceed_target: if apply_allow_exceed.get() {
+                            Some(allow_exceed_target.get())
+                        } else {
+                            None
+                        },
+                        requires_review: if apply_requires_review.get() {
+                            Some(requires_review.get())
+                        } else {
+                            None
+                        },
+                        points_reward: if apply_points_reward.get() {
+                            points_reward.get().parse::<i64>().ok()
+                        } else {
+                            None
+                        },
+                        points_penalty: if apply_points_penalty.get() {
+                            points_penalty.get().parse::<i64>().ok()
+                        } else {
+                            None
+                        },
+                        due_time: if apply_due_time.get() {
+                            let val = due_time.get();
+                            if val.is_empty() { Some(None) } else { Some(Some(val)) }
+                        } else {
+                            None
+                        }.flatten(),
+                        habit_type: if apply_habit_type.get() {
+                            Some(match habit_type.get().as_str() {
+                                "bad" => HabitType::Bad,
+                                _ => HabitType::Good,
+                            })
+                        } else {
+                            None
+                        },
+                        category_id: category_id_val,
+                        archived: None,
+                        paused: if apply_paused.get() {
+                            Some(paused.get())
+                        } else {
+                            None
+                        },
+                    };
+
+                    match ApiClient::update_task(&hid, task_id, request).await {
+                        Ok(_) => {
+                            // Handle dashboard updates if apply_on_dashboard is checked
+                            if apply_on_dashboard.get() {
+                                let should_be_on_dashboard = on_dashboard.get();
+                                if should_be_on_dashboard {
+                                    let _ = ApiClient::add_task_to_dashboard(task_id).await;
+                                } else {
+                                    let _ = ApiClient::remove_task_from_dashboard(task_id).await;
+                                }
+                            }
+                            success_count += 1;
+                        }
+                        Err(e) => {
+                            error_list.push(format!("Task {}: {}", &task_id[..8], e));
+                        }
+                    }
+
+                    bulk_progress.set((idx + 1, ids.len()));
+                }
+
+                saving.set(false);
+                bulk_errors.set(error_list.clone());
+
+                if error_list.is_empty() {
+                    if let Some(ref callback) = on_bulk_save {
+                        callback.call(success_count);
+                    }
+                }
+            });
+        }
+    };
+
     let close = move |_| on_close.call(());
 
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n.clone());
 
-    let modal_title = if is_edit {
+    let modal_title = if is_bulk_edit {
+        i18n.t("tasks.bulk_edit_title").replace("{count}", &bulk_task_count.to_string())
+    } else if is_edit {
         i18n.t("task_modal.edit_title")
     } else if is_suggestion {
         i18n.t("task_modal.suggest_title")
     } else {
         i18n.t("task_modal.create_title")
     };
-    let submit_button_text = if is_edit {
+    let submit_button_text = if is_bulk_edit {
+        i18n.t("tasks.edit_selected")
+    } else if is_edit {
         i18n.t("task_modal.save_changes")
     } else if is_suggestion {
         i18n.t("suggestions.suggest_task")
@@ -458,6 +658,7 @@ pub fn TaskModal(
         (6, weekday_sat),
         (0, weekday_sun),
     ];
+    let weekdays_stored = store_value(weekdays);
 
     view! {
         <div class="modal-backdrop" on:click=close>
@@ -471,34 +672,95 @@ pub fn TaskModal(
                     <div class="alert alert-error" style="margin: 1rem;">{e}</div>
                 })}
 
-                <form on:submit=on_submit>
+                // Bulk edit progress indicator
+                {move || {
+                    if is_bulk_edit && saving.get() {
+                        let (completed, total) = bulk_progress.get();
+                        let percent = if total > 0 { (completed * 100) / total } else { 0 };
+                        Some(view! {
+                            <div class="bulk-edit-progress" style="margin: 1rem;">
+                                <div style="margin-bottom: 0.5rem;">
+                                    {i18n_stored.get_value().t("tasks.bulk_edit_progress")
+                                        .replace("{current}", &completed.to_string())
+                                        .replace("{total}", &total.to_string())}
+                                </div>
+                                <div class="bulk-edit-progress-bar">
+                                    <div class="bulk-edit-progress-fill" style=format!("width: {}%", percent)></div>
+                                </div>
+                            </div>
+                        })
+                    } else {
+                        None
+                    }
+                }}
+
+                // Bulk edit errors
+                {move || {
+                    let errors = bulk_errors.get();
+                    if !errors.is_empty() {
+                        Some(view! {
+                            <div class="alert alert-error" style="margin: 1rem;">
+                                <div style="font-weight: 500; margin-bottom: 0.5rem;">
+                                    {i18n_stored.get_value().t("tasks.bulk_edit_partial")
+                                        .replace("{success}", &(bulk_task_count - errors.len()).to_string())
+                                        .replace("{total}", &bulk_task_count.to_string())
+                                        .replace("{failed}", &errors.len().to_string())}
+                                </div>
+                                <ul style="margin: 0; padding-left: 1rem;">
+                                    {errors.iter().map(|e| view! { <li>{e}</li> }).collect_view()}
+                                </ul>
+                            </div>
+                        })
+                    } else {
+                        None
+                    }
+                }}
+
+                <form on:submit=move |ev| {
+                    if is_bulk_edit {
+                        on_bulk_submit(ev);
+                    } else {
+                        on_submit(ev);
+                    }
+                }>
                     <div style="padding: 1rem; max-height: 60vh; overflow-y: auto;">
-                        // Basic Info Section
-                        <div class="form-group">
-                            <label class="form-label" for="task-title">{i18n_stored.get_value().t("task_modal.title_label")}</label>
-                            <input
-                                type="text"
-                                id="task-title"
-                                class="form-input"
-                                placeholder=i18n_stored.get_value().t("task_modal.title_placeholder")
-                                prop:value=move || title.get()
-                                on:input=move |ev| title.set(event_target_value(&ev))
-                                required
-                            />
-                        </div>
+                        // Non-bulk edit mode - title and description
+                        <Show when=move || !is_bulk_edit fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label" for="task-title">{i18n_stored.get_value().t("task_modal.title_label")}</label>
+                                <input
+                                    type="text"
+                                    id="task-title"
+                                    class="form-input"
+                                    placeholder=i18n_stored.get_value().t("task_modal.title_placeholder")
+                                    prop:value=move || title.get()
+                                    on:input=move |ev| title.set(event_target_value(&ev))
+                                    required
+                                />
+                            </div>
 
-                        <div class="form-group">
-                            <label class="form-label" for="task-description">{i18n_stored.get_value().t("task_modal.description_label")}</label>
-                            <textarea
-                                id="task-description"
-                                class="form-input description-textarea"
-                                rows="4"
-                                placeholder=i18n_stored.get_value().t("task_modal.description_placeholder")
-                                prop:value=move || description.get()
-                                on:input=move |ev| description.set(event_target_value(&ev))
-                            />
-                        </div>
+                            <div class="form-group">
+                                <label class="form-label" for="task-description">{i18n_stored.get_value().t("task_modal.description_label")}</label>
+                                <textarea
+                                    id="task-description"
+                                    class="form-input description-textarea"
+                                    rows="4"
+                                    placeholder=i18n_stored.get_value().t("task_modal.description_placeholder")
+                                    prop:value=move || description.get()
+                                    on:input=move |ev| description.set(event_target_value(&ev))
+                                />
+                            </div>
+                        </Show>
 
+                        // Bulk edit info message
+                        <Show when=move || is_bulk_edit fallback=|| ()>
+                            <div class="alert alert-info" style="margin-bottom: 1rem;">
+                                {i18n_stored.get_value().t("tasks.bulk_edit_hint")}
+                            </div>
+                        </Show>
+
+                        // Regular edit mode - all fields
+                        <Show when=move || !is_bulk_edit fallback=|| ()>
                         // Category selection
                         <Show when=move || !categories_stored.get_value().is_empty() fallback=|| ()>
                             {
@@ -630,7 +892,7 @@ pub fn TaskModal(
                             {
                                 let select_days_label = i18n_stored.get_value().t("task_modal.select_days");
                                 let weekdays_hint = i18n_stored.get_value().t("task_modal.weekdays_hint");
-                                let weekdays_cloned = weekdays.clone();
+                                let weekdays_cloned = weekdays_stored.get_value();
                                 view! {
                                     <div class="form-group">
                                         <label class="form-label">{select_days_label}</label>
@@ -734,9 +996,7 @@ pub fn TaskModal(
                         <div class="form-group">
                             <label class="form-label" for="task-habit-type">{i18n_stored.get_value().t("task_modal.habit_type_label")}</label>
                             {
-                                let initial_habit_type = source_task
-                                    .map(|t| t.habit_type.as_str().to_string())
-                                    .unwrap_or_else(|| "good".to_string());
+                                let initial_habit_type = habit_type.get_untracked();
                                 let good_label = i18n_stored.get_value().t("habit_type.good");
                                 let bad_label = i18n_stored.get_value().t("habit_type.bad");
                                 view! {
@@ -809,7 +1069,7 @@ pub fn TaskModal(
                                         on:change=move |ev| assigned_user.set(event_target_value(&ev))
                                     >
                                         <option value="" selected=initial_assigned_user_id.is_none()>{not_assigned_label}</option>
-                                        {members.clone().into_iter().map(|m| {
+                                        {members_stored.get_value().into_iter().map(|m| {
                                             let user_id = m.user.id.to_string();
                                             let is_selected = initial_assigned_user_id.as_ref() == Some(&user_id);
                                             let name = m.user.username.clone();
@@ -1072,6 +1332,104 @@ pub fn TaskModal(
                             </div>
                             <small class="form-hint">{i18n_stored.get_value().t("task_modal.punishments_hint")}</small>
                         </div>
+                        </Show> // End of regular edit mode
+
+                        // Bulk edit mode - fields with "Apply" checkboxes
+                        // Order matches regular edit dialog: Category, Recurrence, Target Count, etc.
+                        <Show when=move || is_bulk_edit fallback=|| ()>
+                            {
+                                let members_for_bulk = members_stored.get_value();
+                                let categories_for_bulk = categories_stored.get_value();
+                                view! {
+                                    // Category
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.category") apply=apply_category>
+                                        <TaskCategoryField value=selected_category_id categories=categories_for_bulk.clone() hide_label=true />
+                                    </BulkEditField>
+
+                                    // Recurrence (moved to match regular edit dialog order)
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.recurrence_label") apply=apply_recurrence>
+                                        <TaskRecurrenceTypeField value=recurrence_type hide_label=true />
+                                    </BulkEditField>
+
+                                    // Conditional recurrence value fields based on selected type
+                                    <Show when=move || apply_recurrence.get() && recurrence_type.get() == "weekly" fallback=|| ()>
+                                        <div class="form-group" style="margin-left: 1.5rem;">
+                                            <TaskWeekdayField value=bulk_selected_weekday hide_label=false />
+                                        </div>
+                                    </Show>
+
+                                    <Show when=move || apply_recurrence.get() && recurrence_type.get() == "monthly" fallback=|| ()>
+                                        <div class="form-group" style="margin-left: 1.5rem;">
+                                            <TaskMonthDayField value=bulk_selected_month_day hide_label=false />
+                                        </div>
+                                    </Show>
+
+                                    <Show when=move || apply_recurrence.get() && recurrence_type.get() == "weekdays" fallback=|| ()>
+                                        <div class="form-group" style="margin-left: 1.5rem;">
+                                            <TaskWeekdaysField value=bulk_selected_weekdays hide_label=false />
+                                        </div>
+                                    </Show>
+
+                                    <Show when=move || apply_recurrence.get() && recurrence_type.get() == "custom" fallback=|| ()>
+                                        <div class="form-group" style="margin-left: 1.5rem;">
+                                            <label class="form-label">{i18n_stored.get_value().t("task_modal.custom_dates")}</label>
+                                            <CalendarPicker selected_dates=selected_custom_dates />
+                                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.custom_dates_hint")}</small>
+                                        </div>
+                                    </Show>
+
+                                    // Target Count
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.target_count") apply=apply_target_count>
+                                        <TaskTargetCountField value=target_count hide_label=true />
+                                    </BulkEditField>
+
+                                    // Allow Exceed Target
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.allow_exceed") apply=apply_allow_exceed>
+                                        <TaskAllowExceedField value=allow_exceed_target hide_label=true />
+                                    </BulkEditField>
+
+                                    // Requires Review
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.require_review") apply=apply_requires_review>
+                                        <TaskRequiresReviewField value=requires_review hide_label=true />
+                                    </BulkEditField>
+
+                                    // Show on Dashboard
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.show_on_dashboard") apply=apply_on_dashboard>
+                                        <TaskOnDashboardField value=on_dashboard hide_label=true />
+                                    </BulkEditField>
+
+                                    // Habit Type
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.habit_type_label") apply=apply_habit_type>
+                                        <TaskHabitTypeField value=habit_type hide_label=true />
+                                    </BulkEditField>
+
+                                    // Points Reward
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.points_reward") apply=apply_points_reward>
+                                        <TaskPointsRewardField value=points_reward hide_label=true />
+                                    </BulkEditField>
+
+                                    // Points Penalty
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.points_penalty") apply=apply_points_penalty>
+                                        <TaskPointsPenaltyField value=points_penalty hide_label=true />
+                                    </BulkEditField>
+
+                                    // Due Time
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.due_time") apply=apply_due_time>
+                                        <TaskDueTimeField value=due_time hide_label=true />
+                                    </BulkEditField>
+
+                                    // Assigned User
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.assigned_to") apply=apply_assigned_user>
+                                        <TaskAssignedUserField value=assigned_user members=members_for_bulk.clone() hide_label=true />
+                                    </BulkEditField>
+
+                                    // Paused (bulk-edit specific)
+                                    <BulkEditField label=i18n_stored.get_value().t("tasks.paused") apply=apply_paused>
+                                        <TaskPausedField value=paused hide_label=true />
+                                    </BulkEditField>
+                                }
+                            }
+                        </Show>
                     </div>
 
                     <div class="modal-footer">
