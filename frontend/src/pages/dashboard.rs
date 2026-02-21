@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use chrono::NaiveDate;
 use leptos::*;
 use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
+use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
@@ -53,6 +54,10 @@ pub fn Dashboard() -> impl IntoView {
     let set_date_task_title = create_rw_signal(String::new());
     let set_date_household_id = create_rw_signal(Option::<String>::None);
 
+    // Assignment filter state
+    let current_user_id = create_rw_signal(Option::<Uuid>::None);
+    let show_only_assigned = create_rw_signal(false);
+
     // Load households, invitations, and tasks on mount
     create_effect(move |_| {
         wasm_bindgen_futures::spawn_local(async move {
@@ -72,6 +77,11 @@ pub fn Dashboard() -> impl IntoView {
             // Load dashboard task whitelist
             if let Ok(ids) = ApiClient::get_dashboard_task_ids().await {
                 dashboard_task_ids.set(ids.into_iter().map(|id| id.to_string()).collect());
+            }
+
+            // Load current user ID for assignment filtering
+            if let Ok(user) = ApiClient::get_current_user().await {
+                current_user_id.set(Some(user.id));
             }
 
             loading.set(false);
@@ -432,20 +442,57 @@ pub fn Dashboard() -> impl IntoView {
                                             </label>
                                         }
                                     }).collect_view()}
+                                    // Assignment filter button
+                                    <button
+                                        class=move || if show_only_assigned.get() { "assignment-filter-btn active" } else { "assignment-filter-btn" }
+                                        on:click=move |_| show_only_assigned.update(|v| *v = !*v)
+                                    >
+                                        {move || if show_only_assigned.get() {
+                                            i18n_stored.get_value().t("tasks.filter_mine")
+                                        } else {
+                                            i18n_stored.get_value().t("tasks.filter_all")
+                                        }}
+                                    </button>
                                 </div>
                             }.into_view()
                         } else {
-                            ().into_view()
+                            // Single household - only show assignment filter
+                            view! {
+                                <div class="filter-controls">
+                                    <button
+                                        class=move || if show_only_assigned.get() { "assignment-filter-btn active" } else { "assignment-filter-btn" }
+                                        on:click=move |_| show_only_assigned.update(|v| *v = !*v)
+                                    >
+                                        {move || if show_only_assigned.get() {
+                                            i18n_stored.get_value().t("tasks.filter_mine")
+                                        } else {
+                                            i18n_stored.get_value().t("tasks.filter_all")
+                                        }}
+                                    </button>
+                                </div>
+                            }.into_view()
                         }
                     }}
 
                     // Tasks section
                     {move || {
                         let tasks = all_tasks.get();
-                        // Filter tasks by enabled households
+                        let user_id = current_user_id.get();
+                        let only_assigned = show_only_assigned.get();
+                        // Filter tasks by enabled households and assignment
                         let filtered_tasks: Vec<_> = tasks
                             .into_iter()
                             .filter(|t| t.household_id.as_ref().map(|id| enabled_households.get().contains(id)).unwrap_or(false))
+                            .filter(|t| {
+                                if only_assigned {
+                                    match (user_id, t.task.task.assigned_user_id) {
+                                        (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+                                        _ => false,
+                                    }
+                                } else {
+                                    true
+                                }
+                            })
                             .collect();
 
                         if !filtered_tasks.is_empty() {
@@ -789,5 +836,55 @@ mod tests {
         enabled.insert("h1".to_string());
         assert!(enabled.contains("h1"));
         assert!(enabled.contains("h2"));
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignment_filter_matches_current_user() {
+        let current_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let assigned_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let matches = match (current_user_id, assigned_user_id) {
+            (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+            _ => false,
+        };
+        assert!(matches);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignment_filter_excludes_other_user() {
+        let current_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let assigned_user_id = Some(Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap());
+        let matches = match (current_user_id, assigned_user_id) {
+            (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+            _ => false,
+        };
+        assert!(!matches);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignment_filter_excludes_unassigned() {
+        let current_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let assigned_user_id: Option<Uuid> = None;
+        let matches = match (current_user_id, assigned_user_id) {
+            (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+            _ => false,
+        };
+        assert!(!matches);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignment_filter_all_shows_everything() {
+        let show_only_assigned = false;
+        let current_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let assigned_user_id: Option<Uuid> = None;
+
+        let should_show = if show_only_assigned {
+            match (current_user_id, assigned_user_id) {
+                (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+                _ => false,
+            }
+        } else {
+            true
+        };
+        assert!(should_show);
     }
 }

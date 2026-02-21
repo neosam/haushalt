@@ -74,6 +74,9 @@ pub fn HouseholdPage() -> impl IntoView {
     let set_date_task_id = create_rw_signal(Option::<String>::None);
     let set_date_task_title = create_rw_signal(String::new());
 
+    // Assignment filter state
+    let show_only_assigned = create_rw_signal(false);
+
     // Adjust points modal state
     let show_adjust_points_modal = create_rw_signal(false);
     let adjust_points_user_id = create_rw_signal(String::new());
@@ -587,13 +590,40 @@ pub fn HouseholdPage() -> impl IntoView {
 
                     <div class="grid grid-2">
                         <div>
+                            // Assignment filter
+                            <div class="filter-controls">
+                                <button
+                                    class=move || if show_only_assigned.get() { "assignment-filter-btn active" } else { "assignment-filter-btn" }
+                                    on:click=move |_| show_only_assigned.update(|v| *v = !*v)
+                                >
+                                    {move || if show_only_assigned.get() {
+                                        i18n_stored.get_value().t("tasks.filter_mine")
+                                    } else {
+                                        i18n_stored.get_value().t("tasks.filter_all")
+                                    }}
+                                </button>
+                            </div>
+
                             {
                                 let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
                                 let dashboard_ids = dashboard_task_ids.get();
                                 let hh_id = id.clone();
+                                let user_id = current_user_id.get();
+                                let only_assigned = show_only_assigned.get();
                                 // Convert TaskWithStatus to TaskWithHousehold for the unified component
+                                // Apply assignment filter
                                 let tasks_with_household: Vec<TaskWithHousehold> = tasks.get()
                                     .into_iter()
+                                    .filter(|t| {
+                                        if only_assigned {
+                                            match (user_id, t.task.assigned_user_id) {
+                                                (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+                                                _ => false,
+                                            }
+                                        } else {
+                                            true
+                                        }
+                                    })
                                     .map(|t| TaskWithHousehold::new(t, Some(hh_id.clone()), None))
                                     .collect();
                                 view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date /> }
@@ -1470,5 +1500,38 @@ mod tests {
         let inviting = false;
         let text = if inviting { "Sending..." } else { "Send Invitation" };
         assert_eq!(text, "Send Invitation");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignment_filter_matches_current_user() {
+        let current_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let assigned_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let matches = match (current_user_id, assigned_user_id) {
+            (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+            _ => false,
+        };
+        assert!(matches);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignment_filter_excludes_other_user() {
+        let current_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let assigned_user_id = Some(Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap());
+        let matches = match (current_user_id, assigned_user_id) {
+            (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+            _ => false,
+        };
+        assert!(!matches);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignment_filter_excludes_unassigned() {
+        let current_user_id = Some(Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+        let assigned_user_id: Option<Uuid> = None;
+        let matches = match (current_user_id, assigned_user_id) {
+            (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+            _ => false,
+        };
+        assert!(!matches);
     }
 }

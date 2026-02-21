@@ -1508,6 +1508,37 @@ body.dark-mode .filter-controls {
     border-color: var(--border-color);
 }
 
+/* Assignment Filter Button */
+.assignment-filter-btn {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.assignment-filter-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.assignment-filter-btn.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+@media (max-width: 768px) {
+    .assignment-filter-btn {
+        min-height: 44px;
+        padding: 0.5rem 1rem;
+    }
+}
+
 /* ============================
    Announcements
    ============================ */

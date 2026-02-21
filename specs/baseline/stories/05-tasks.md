@@ -545,3 +545,51 @@
 - Context menu button is part of the `.task-actions` container
 - On mobile, it moves to the second row along with other action buttons
 - Dropdown opens **upwards** on mobile (below 768px) to prevent clipping by parent containers
+
+---
+
+## US-TASK-024: Filter Tasks by Assignment
+
+**As a** household member
+**I want to** filter the task list to show only tasks assigned to me
+**So that** I can focus on my own responsibilities without distraction
+
+### Acceptance Criteria
+
+#### Filter Toggle
+- A toggle or filter control appears in the task list header area
+- Available in:
+  - Main dashboard task list
+  - Household overview task list
+- Filter options:
+  - **All Tasks**: Shows all tasks (default)
+  - **Assigned to Me**: Shows only tasks where the current user is the assigned user
+
+#### Filter Behavior
+- When "Assigned to Me" is active:
+  - Only tasks with `assigned_user_id` matching the current user are displayed
+  - Unassigned tasks are hidden
+  - Tasks assigned to other users are hidden
+- Filter state persists during the session but resets on page reload
+- Task counts/groupings update to reflect filtered results
+- Empty state message when no tasks match the filter
+
+#### UI Design
+- Filter control should be compact and non-intrusive
+- Clear visual indication of active filter state
+- Easy to toggle between filter states
+
+### Design Decisions
+- **Session-only persistence**: Filter resets on reload to avoid confusion
+- **Simple toggle**: Start with "All" vs "Mine" rather than complex multi-select
+- **Per-view state**: Dashboard and Household Overview maintain separate filter states
+
+### Mobile Considerations
+- Filter control should be touch-friendly (44px min height)
+- Single toggle button style
+
+### Implementation Notes
+- **UI**: Single toggle button that switches between "All"/"Alle" and "Mine"/"Meine"
+- **Styling**: `.assignment-filter-btn` class with `.active` state for primary color
+- **Dashboard**: Also loads `current_user_id` via `ApiClient::get_current_user()`
+- **Filtering logic**: `assigned_user_id == current_user_id` (excludes unassigned tasks when filter active)

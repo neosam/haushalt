@@ -103,6 +103,8 @@
   "tasks.my_assigned": "My Assigned Tasks",
   "tasks.assigned_to_you": "Assigned to you",
   "tasks.all_tasks": "All Tasks",
+  "tasks.filter_all": "All",
+  "tasks.filter_mine": "Mine",
   "tasks.assigned_to_name": "Assigned to",
   "tasks.description": "Description",
   "tasks.assigned_to": "Assigned To",

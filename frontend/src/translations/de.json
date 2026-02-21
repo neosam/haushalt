@@ -103,6 +103,8 @@
   "tasks.my_assigned": "Meine zugewiesenen Aufgaben",
   "tasks.assigned_to_you": "Dir zugewiesen",
   "tasks.all_tasks": "Alle Aufgaben",
+  "tasks.filter_all": "Alle",
+  "tasks.filter_mine": "Meine",
   "tasks.assigned_to_name": "Zugewiesen an",
   "tasks.description": "Beschreibung",
   "tasks.assigned_to": "Zugewiesen an",
