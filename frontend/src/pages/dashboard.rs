@@ -1,11 +1,13 @@
 use std::collections::HashSet;
 
+use chrono::NaiveDate;
 use leptos::*;
-use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
+use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
+use crate::components::set_date_modal::SetDateModal;
 use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
@@ -45,6 +47,11 @@ pub fn Dashboard() -> impl IntoView {
     let edit_rewards = create_rw_signal(Vec::<Reward>::new());
     let edit_punishments = create_rw_signal(Vec::<Punishment>::new());
     let edit_categories = create_rw_signal(Vec::<TaskCategory>::new());
+
+    // Set date modal state
+    let set_date_task_id = create_rw_signal(Option::<String>::None);
+    let set_date_task_title = create_rw_signal(String::new());
+    let set_date_household_id = create_rw_signal(Option::<String>::None);
 
     // Load households, invitations, and tasks on mount
     create_effect(move |_| {
@@ -225,6 +232,85 @@ pub fn Dashboard() -> impl IntoView {
         });
     });
 
+    // Edit task from context menu - fetch task and open edit modal
+    let on_context_edit = Callback::new(move |(task_id, household_id): (String, String)| {
+        let tid = task_id.clone();
+        let hid = household_id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            // Fetch the task details
+            if let Ok(details) = ApiClient::get_task_details(&hid, &tid).await {
+                editing_task.set(Some(details.task));
+                editing_household_id.set(Some(hid.clone()));
+
+                // Fetch all required data for this household
+                if let Ok(m) = ApiClient::list_members(&hid).await {
+                    edit_members.set(m);
+                }
+                if let Ok(r) = ApiClient::list_rewards(&hid).await {
+                    edit_rewards.set(r);
+                }
+                if let Ok(p) = ApiClient::list_punishments(&hid).await {
+                    edit_punishments.set(p);
+                }
+                if let Ok(c) = ApiClient::list_categories(&hid).await {
+                    edit_categories.set(c);
+                }
+                if let Ok(tr) = ApiClient::get_task_rewards(&hid, &tid).await {
+                    task_linked_rewards.set(tr);
+                }
+                if let Ok(tp) = ApiClient::get_task_punishments(&hid, &tid).await {
+                    task_linked_punishments.set(tp);
+                }
+            }
+        });
+    });
+
+    // Set date from context menu - open set date modal
+    let on_context_set_date = Callback::new(move |(task_id, household_id): (String, String)| {
+        // Find the task to get the title
+        let tasks = all_tasks.get();
+        if let Some(task) = tasks.iter().find(|t| t.task_id() == task_id) {
+            set_date_task_id.set(Some(task_id));
+            set_date_task_title.set(task.title().to_string());
+            set_date_household_id.set(Some(household_id));
+        }
+    });
+
+    // Handle save from set date modal
+    let on_save_date = Callback::new(move |(task_id, date): (String, NaiveDate)| {
+        if let Some(household_id) = set_date_household_id.get() {
+            let show_all_mode = show_all.get();
+            wasm_bindgen_futures::spawn_local(async move {
+                // Update task to Custom recurrence with the selected date
+                let request = UpdateTaskRequest {
+                    title: None,
+                    description: None,
+                    recurrence_type: Some(RecurrenceType::Custom),
+                    recurrence_value: Some(RecurrenceValue::CustomDates(vec![date])),
+                    assigned_user_id: None,
+                    target_count: None,
+                    time_period: None,
+                    allow_exceed_target: None,
+                    requires_review: None,
+                    points_reward: None,
+                    points_penalty: None,
+                    due_time: None,
+                    habit_type: None,
+                    category_id: None,
+                    archived: None,
+                    paused: None,
+                };
+                if ApiClient::update_task(&household_id, &task_id, request).await.is_ok() {
+                    reload_tasks(show_all_mode).await;
+                }
+            });
+        }
+        // Close the modal
+        set_date_task_id.set(None);
+        set_date_task_title.set(String::new());
+        set_date_household_id.set(None);
+    });
+
     // Clear edit state helper
     let clear_edit_state = move || {
         editing_task.set(None);
@@ -373,6 +459,8 @@ pub fn Dashboard() -> impl IntoView {
                                         on_click_title=on_click_task_title
                                         dashboard_task_ids=dashboard_task_ids.get()
                                         on_toggle_dashboard=on_toggle_dashboard
+                                        on_edit=on_context_edit
+                                        on_set_date=on_context_set_date
                                     />
                                 </div>
                             }.into_view()
@@ -521,6 +609,22 @@ pub fn Dashboard() -> impl IntoView {
             } else {
                 None
             }
+        }}
+
+        // Set date modal
+        {move || {
+            set_date_task_id.get().map(|task_id| view! {
+                <SetDateModal
+                    task_id=task_id
+                    task_title=set_date_task_title.get()
+                    on_save=on_save_date
+                    on_close=move |_| {
+                        set_date_task_id.set(None);
+                        set_date_task_title.set(String::new());
+                        set_date_household_id.set(None);
+                    }
+                />
+            })
         }}
 
         <Show when=move || show_create_modal.get() fallback=|| ()>

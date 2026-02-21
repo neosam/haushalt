@@ -502,3 +502,46 @@
 - **No execution until approved**: Tasks with `suggestion = 'suggested'` don't trigger completions, streaks, or punishments
 - **History preservation**: Denied suggestions remain in the database for reference
 - **Opt-out setting**: Suggestions enabled by default but can be disabled per household
+
+---
+
+## US-TASK-023: Task Card Context Menu
+
+**As a** household member
+**I want to** access quick actions for tasks via a context menu on task cards
+**So that** I can perform common actions without navigating to the tasks page
+
+### Acceptance Criteria
+
+#### Context Menu Button
+- A "⋮" (vertical ellipsis) button appears on task cards in:
+  - Main dashboard task list
+  - Household overview task list
+- Button is positioned to the right of the existing action buttons (+/- and star)
+- Uses the existing `ContextMenu` component for consistency
+
+#### Available Actions
+- **Edit**: Opens the task edit modal (available to users with edit permission)
+- **Set Date**: Only visible for tasks with no schedule (NoSchedule/unscheduled tasks)
+  - Opens a date picker modal
+  - Setting a date converts the task to `RecurrenceType::Custom` with the selected date
+  - Allows quick scheduling of ad-hoc tasks
+
+#### Set Date Flow
+1. User clicks "⋮" on an unscheduled task
+2. Selects "Set Date" from the context menu
+3. A compact date picker modal appears
+4. User selects a date
+5. Task is updated to `RecurrenceType::Custom` with `recurrence_value` containing the selected date
+6. Task moves from "No Schedule" group to the appropriate date group
+
+### Design Decisions
+- **Reuse ContextMenu component**: Maintains UI consistency with the tasks page
+- **Conditional actions**: "Set Date" only appears for unscheduled tasks to avoid clutter
+- **Edit opens modal**: Same behavior as clicking task title, but more discoverable
+- **Button placement**: Right side keeps action buttons grouped together
+
+### Mobile Considerations
+- Context menu button is part of the `.task-actions` container
+- On mobile, it moves to the second row along with other action buttons
+- Dropdown opens **upwards** on mobile (below 768px) to prevent clipping by parent containers

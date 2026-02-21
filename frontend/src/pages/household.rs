@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
+use chrono::NaiveDate;
 use leptos::*;
 use leptos_router::*;
-use shared::{AdjustPointsRequest, Announcement, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateRoleRequest};
+use shared::{AdjustPointsRequest, Announcement, CreateInvitationRequest, Household, HouseholdSettings, Invitation, LeaderboardEntry, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, TaskWithStatus, UpdateRoleRequest, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
@@ -14,6 +15,7 @@ use crate::components::pending_confirmations::PendingConfirmations;
 use crate::components::pending_reviews::PendingReviews;
 use crate::components::pending_suggestions::PendingSuggestions;
 use crate::components::points_display::PointsBadge;
+use crate::components::set_date_modal::SetDateModal;
 use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
@@ -67,6 +69,10 @@ pub fn HouseholdPage() -> impl IntoView {
     let task_linked_rewards = create_rw_signal(Vec::<TaskRewardLink>::new());
     let task_linked_punishments = create_rw_signal(Vec::<TaskPunishmentLink>::new());
     let categories = create_rw_signal(Vec::<TaskCategory>::new());
+
+    // Set date modal state
+    let set_date_task_id = create_rw_signal(Option::<String>::None);
+    let set_date_task_title = create_rw_signal(String::new());
 
     // Adjust points modal state
     let show_adjust_points_modal = create_rw_signal(false);
@@ -463,6 +469,71 @@ pub fn HouseholdPage() -> impl IntoView {
         detail_task_id.set(Some(task_id));
     });
 
+    // Edit task from context menu - fetch task and open edit modal
+    let on_context_edit = Callback::new(move |(task_id, _hh_id): (String, String)| {
+        let id = household_id();
+        let tid = task_id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            // Fetch the task details
+            if let Ok(details) = ApiClient::get_task_details(&id, &tid).await {
+                editing_task.set(Some(details.task));
+
+                // Load linked rewards and punishments
+                if let Ok(r) = ApiClient::get_task_rewards(&id, &tid).await {
+                    task_linked_rewards.set(r);
+                }
+                if let Ok(p) = ApiClient::get_task_punishments(&id, &tid).await {
+                    task_linked_punishments.set(p);
+                }
+            }
+        });
+    });
+
+    // Set date from context menu - open set date modal
+    let on_context_set_date = Callback::new(move |(task_id, _hh_id): (String, String)| {
+        // Find the task to get the title
+        let task_list = tasks.get();
+        if let Some(task) = task_list.iter().find(|t| t.task.id.to_string() == task_id) {
+            set_date_task_id.set(Some(task_id));
+            set_date_task_title.set(task.task.title.clone());
+        }
+    });
+
+    // Handle save from set date modal
+    let on_save_date = Callback::new(move |(task_id, date): (String, NaiveDate)| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            // Update task to Custom recurrence with the selected date
+            let request = UpdateTaskRequest {
+                title: None,
+                description: None,
+                recurrence_type: Some(RecurrenceType::Custom),
+                recurrence_value: Some(RecurrenceValue::CustomDates(vec![date])),
+                assigned_user_id: None,
+                target_count: None,
+                time_period: None,
+                allow_exceed_target: None,
+                requires_review: None,
+                points_reward: None,
+                points_penalty: None,
+                due_time: None,
+                habit_type: None,
+                category_id: None,
+                archived: None,
+                paused: None,
+            };
+            if ApiClient::update_task(&id, &task_id, request).await.is_ok() {
+                // Refresh tasks
+                if let Ok(t) = ApiClient::get_all_tasks_with_status(&id).await {
+                    tasks.set(t);
+                }
+            }
+        });
+        // Close the modal
+        set_date_task_id.set(None);
+        set_date_task_title.set(String::new());
+    });
+
     view! {
         <Show when=move || loading.get() fallback=|| ()>
             <Loading />
@@ -525,7 +596,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                     .into_iter()
                                     .map(|t| TaskWithHousehold::new(t, Some(hh_id.clone()), None))
                                     .collect();
-                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title /> }
+                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date /> }
                             }
 
                             // Pending Reviews Section (only for managers/owners)
@@ -1203,6 +1274,21 @@ pub fn HouseholdPage() -> impl IntoView {
                     />
                 }
             })}
+
+            // Set Date Modal
+            {move || {
+                set_date_task_id.get().map(|task_id| view! {
+                    <SetDateModal
+                        task_id=task_id
+                        task_title=set_date_task_title.get()
+                        on_save=on_save_date
+                        on_close=move |_| {
+                            set_date_task_id.set(None);
+                            set_date_task_title.set(String::new());
+                        }
+                    />
+                })
+            }}
         </Show>
     }
 }

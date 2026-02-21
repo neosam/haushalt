@@ -164,6 +164,11 @@
 
   "task_card.add_to_dashboard": "Add to dashboard",
   "task_card.remove_from_dashboard": "Remove from dashboard",
+  "task_card.set_date": "Set date",
+  "task_card.set_date_title": "Set Date",
+  "task_card.set_date_hint": "Set a due date for this task. The task will be converted to a custom schedule.",
+  "task_card.select_date": "Select date",
+  "task_card.edit": "Edit",
 
   "recurrence.daily": "Daily",
   "recurrence.weekly": "Weekly",

@@ -4,6 +4,7 @@ use shared::{RecurrenceType, TaskWithStatus};
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
+use crate::components::context_menu::{ContextMenu, ContextMenuAction};
 use crate::components::period_tracker::PeriodTrackerCompact;
 use crate::i18n::{use_i18n, I18nContext};
 use crate::utils::timezone::today_in_tz;
@@ -59,6 +60,7 @@ pub fn TaskCard(
     #[prop(optional)] on_dashboard: Option<bool>,
     #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
     #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
+    #[prop(default = Vec::new())] context_actions: Vec<ContextMenuAction>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -285,6 +287,12 @@ pub fn TaskCard(
                         </span>
                     }.into_view()
                 }}
+                // Context menu (optional)
+                {if !context_actions.is_empty() {
+                    view! { <ContextMenu actions=context_actions /> }.into_view()
+                } else {
+                    ().into_view()
+                }}
             </div>
         </div>
     }
@@ -411,6 +419,8 @@ pub fn GroupedTaskList(
     #[prop(optional)] dashboard_task_ids: Option<HashSet<String>>,
     #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
     #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
+    #[prop(optional, into)] on_edit: Option<Callback<(String, String)>>,
+    #[prop(optional, into)] on_set_date: Option<Callback<(String, String)>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -492,41 +502,74 @@ pub fn GroupedTaskList(
                                                         // Extract household info from the task wrapper
                                                         let hh_id = twh.household_id.clone();
                                                         let hh_name = twh.household_name.clone();
+
+                                                        // Build context menu actions
+                                                        let mut ctx_actions: Vec<ContextMenuAction> = Vec::new();
+                                                        let is_no_schedule = twh.task.next_due_date.is_none();
+
+                                                        // Edit action
+                                                        if let (Some(edit_cb), Some(ref hid)) = (on_edit, &hh_id) {
+                                                            let edit_label = i18n_stored.get_value().t("task_card.edit");
+                                                            let tid = task_id.clone();
+                                                            let hid_clone = hid.clone();
+                                                            ctx_actions.push(ContextMenuAction {
+                                                                label: edit_label,
+                                                                on_click: Callback::new(move |_| edit_cb.call((tid.clone(), hid_clone.clone()))),
+                                                                danger: false,
+                                                            });
+                                                        }
+
+                                                        // Set date action (only for tasks without schedule)
+                                                        if is_no_schedule {
+                                                            if let (Some(set_date_cb), Some(ref hid)) = (on_set_date, &hh_id) {
+                                                                let set_date_label = i18n_stored.get_value().t("task_card.set_date");
+                                                                let tid = task_id.clone();
+                                                                let hid_clone = hid.clone();
+                                                                ctx_actions.push(ContextMenuAction {
+                                                                    label: set_date_label,
+                                                                    on_click: Callback::new(move |_| set_date_cb.call((tid.clone(), hid_clone.clone()))),
+                                                                    danger: false,
+                                                                });
+                                                            }
+                                                        }
+
+                                                        let context_actions = ctx_actions;
+
                                                         // Render TaskCard with appropriate props based on available data
                                                         // Match on household info (both must be Some to display household)
                                                         match (on_toggle_dashboard, on_click_title, hh_id, hh_name) {
                                                             // With household info
                                                             (Some(toggle_cb), Some(title_cb), Some(hid), Some(name)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
                                                             }
                                                             (Some(toggle_cb), None, Some(hid), Some(name)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb context_actions=context_actions /> }.into_view()
                                                             }
                                                             (None, Some(title_cb), Some(hid), Some(name)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_click_title=title_cb /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_click_title=title_cb context_actions=context_actions /> }.into_view()
                                                             }
                                                             (None, None, Some(hid), Some(name)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid context_actions=context_actions /> }.into_view()
                                                             }
                                                             // With household_id only (for title click callback)
                                                             (Some(toggle_cb), Some(title_cb), Some(hid), None) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
                                                             }
                                                             (None, Some(title_cb), Some(hid), None) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_click_title=title_cb /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_click_title=title_cb context_actions=context_actions /> }.into_view()
                                                             }
                                                             // Without household info
                                                             (Some(toggle_cb), Some(title_cb), None, _) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
                                                             }
                                                             (Some(toggle_cb), None, _, _) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb context_actions=context_actions /> }.into_view()
                                                             }
                                                             (None, Some(title_cb), _, _) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_click_title=title_cb /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_click_title=title_cb context_actions=context_actions /> }.into_view()
                                                             }
                                                             _ => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task /> }.into_view()
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task context_actions=context_actions /> }.into_view()
                                                             }
                                                         }
                                                     }).collect_view()}

@@ -164,6 +164,11 @@
 
   "task_card.add_to_dashboard": "Zum Dashboard hinzufügen",
   "task_card.remove_from_dashboard": "Vom Dashboard entfernen",
+  "task_card.set_date": "Datum setzen",
+  "task_card.set_date_title": "Datum setzen",
+  "task_card.set_date_hint": "Setze ein Fälligkeitsdatum für diese Aufgabe. Die Aufgabe wird zu einem benutzerdefinierten Zeitplan konvertiert.",
+  "task_card.select_date": "Datum auswählen",
+  "task_card.edit": "Bearbeiten",
 
   "recurrence.daily": "Täglich",
   "recurrence.weekly": "Wöchentlich",

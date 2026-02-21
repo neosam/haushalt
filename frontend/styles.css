@@ -1810,6 +1810,16 @@ body.dark-mode .context-menu-item.danger:hover {
     background-color: rgba(248, 113, 113, 0.2);
 }
 
+/* Mobile: open dropdown upwards to avoid being clipped */
+@media (max-width: 768px) {
+    .context-menu-dropdown {
+        bottom: 100%;
+        top: auto;
+        margin-top: 0;
+        margin-bottom: 0.25rem;
+    }
+}
+
 /* ============================
    Floating Action Button (FAB)
    ============================ */
