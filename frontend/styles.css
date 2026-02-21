@@ -597,6 +597,9 @@ body {
     .dashboard-grid {
         grid-template-columns: 1fr;
     }
+    .dashboard-column-right {
+        order: -1;
+    }
 }
 
 .stat-card {
