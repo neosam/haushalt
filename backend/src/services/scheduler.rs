@@ -2,8 +2,15 @@ use chrono::{Datelike, NaiveDate, NaiveTime, Weekday, DateTime, Utc, TimeZone};
 use chrono_tz::Tz;
 use shared::{RecurrenceType, RecurrenceValue, Task, TimePeriod};
 
-/// Check if a task is due on a specific date based on its recurrence settings
+/// Check if a task is due on a specific date based on its recurrence settings.
+/// A task cannot be due before it was created.
 pub fn is_task_due_on_date(task: &Task, date: NaiveDate) -> bool {
+    // Task cannot be due before it was created
+    let created_date = task.created_at.date_naive();
+    if date < created_date {
+        return false;
+    }
+
     match task.recurrence_type {
         RecurrenceType::OneTime => {
             // Free-form/one-time tasks are always "due" (can be completed anytime)
@@ -360,6 +367,12 @@ mod tests {
     use chrono::Utc;
 
     fn create_test_task(recurrence_type: RecurrenceType, recurrence_value: Option<RecurrenceValue>) -> Task {
+        // Use a date far in the past so test dates (2024) are after creation
+        let old_date = NaiveDate::from_ymd_opt(2020, 1, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
         Task {
             id: uuid::Uuid::new_v4(),
             household_id: uuid::Uuid::new_v4(),
@@ -382,9 +395,94 @@ mod tests {
             paused: false,
             suggestion: None,
             suggested_by: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: old_date,
+            updated_at: old_date,
         }
+    }
+
+    fn create_test_task_with_created_at(
+        recurrence_type: RecurrenceType,
+        recurrence_value: Option<RecurrenceValue>,
+        created_at: chrono::DateTime<Utc>,
+    ) -> Task {
+        Task {
+            id: uuid::Uuid::new_v4(),
+            household_id: uuid::Uuid::new_v4(),
+            title: "Test Task".to_string(),
+            description: "".to_string(),
+            recurrence_type,
+            recurrence_value,
+            assigned_user_id: None,
+            target_count: 1,
+            time_period: None,
+            allow_exceed_target: true,
+            requires_review: false,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: shared::HabitType::Good,
+            category_id: None,
+            category_name: None,
+            archived: false,
+            paused: false,
+            suggestion: None,
+            suggested_by: None,
+            created_at,
+            updated_at: created_at,
+        }
+    }
+
+    #[test]
+    fn test_task_not_due_before_created() {
+        // Task created on Jan 15
+        let created_at = NaiveDate::from_ymd_opt(2024, 1, 15)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_utc();
+        let task = create_test_task_with_created_at(RecurrenceType::Daily, None, created_at);
+
+        // Should NOT be due on dates before creation
+        let jan14 = NaiveDate::from_ymd_opt(2024, 1, 14).unwrap();
+        let jan13 = NaiveDate::from_ymd_opt(2024, 1, 13).unwrap();
+        let jan1 = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+
+        assert!(!is_task_due_on_date(&task, jan14), "Task should not be due day before creation");
+        assert!(!is_task_due_on_date(&task, jan13), "Task should not be due 2 days before creation");
+        assert!(!is_task_due_on_date(&task, jan1), "Task should not be due 2 weeks before creation");
+
+        // Should be due on creation date and after
+        let jan15 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let jan16 = NaiveDate::from_ymd_opt(2024, 1, 16).unwrap();
+        assert!(is_task_due_on_date(&task, jan15), "Task should be due on creation date");
+        assert!(is_task_due_on_date(&task, jan16), "Task should be due day after creation");
+    }
+
+    #[test]
+    fn test_weekly_task_not_due_before_created() {
+        // Task created on Jan 15 (Monday), weekly on Mondays
+        let created_at = NaiveDate::from_ymd_opt(2024, 1, 15)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_utc();
+        let task = create_test_task_with_created_at(
+            RecurrenceType::Weekly,
+            Some(RecurrenceValue::WeekDay(1)), // Monday
+            created_at,
+        );
+
+        // Previous Monday (Jan 8) should NOT be due
+        let jan8 = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+        assert!(!is_task_due_on_date(&task, jan8), "Task should not be due on Monday before creation");
+
+        // Creation Monday (Jan 15) should be due
+        let jan15 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        assert!(is_task_due_on_date(&task, jan15), "Task should be due on creation Monday");
+
+        // Next Monday (Jan 22) should be due
+        let jan22 = NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
+        assert!(is_task_due_on_date(&task, jan22), "Task should be due on next Monday");
     }
 
     #[test]
