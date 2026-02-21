@@ -693,7 +693,75 @@ mod tests {
                 auto_archive_days INTEGER DEFAULT 7,
                 allow_task_suggestions BOOLEAN NOT NULL DEFAULT 1,
                 week_start_day INTEGER NOT NULL DEFAULT 0,
+                default_points_reward INTEGER,
+                default_points_penalty INTEGER,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Rewards and punishments tables (needed for junction table foreign keys)
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS rewards (
+                id TEXT PRIMARY KEY NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                point_cost INTEGER,
+                is_purchasable BOOLEAN NOT NULL DEFAULT 0,
+                requires_confirmation BOOLEAN NOT NULL DEFAULT 0,
+                reward_type TEXT NOT NULL DEFAULT 'standard',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS punishments (
+                id TEXT PRIMARY KEY NOT NULL,
+                household_id TEXT NOT NULL REFERENCES households(id),
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                requires_confirmation BOOLEAN NOT NULL DEFAULT 0,
+                punishment_type TEXT NOT NULL DEFAULT 'standard',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Junction tables for multiple default rewards/punishments
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS household_default_rewards (
+                household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+                reward_id TEXT NOT NULL REFERENCES rewards(id) ON DELETE CASCADE,
+                amount INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (household_id, reward_id)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS household_default_punishments (
+                household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+                punishment_id TEXT NOT NULL REFERENCES punishments(id) ON DELETE CASCADE,
+                amount INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (household_id, punishment_id)
             )
             "#,
         )

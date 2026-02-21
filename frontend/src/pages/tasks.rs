@@ -547,9 +547,10 @@ pub fn TasksPage() -> impl IntoView {
             {
                 let hid = household_id();
                 // Filter members based on hierarchy type
+                let current_settings = settings.get();
                 let assignable_members = {
                     let all_members = members.get();
-                    match settings.get().map(|s| s.hierarchy_type) {
+                    match current_settings.as_ref().map(|s| s.hierarchy_type) {
                         Some(HierarchyType::Hierarchy) => {
                             all_members.into_iter()
                                 .filter(|m| m.membership.role == Role::Member)
@@ -558,6 +559,15 @@ pub fn TasksPage() -> impl IntoView {
                         _ => all_members
                     }
                 };
+                // Extract defaults from settings
+                let default_points_reward = current_settings.as_ref().and_then(|s| s.default_points_reward);
+                let default_points_penalty = current_settings.as_ref().and_then(|s| s.default_points_penalty);
+                let default_rewards: Vec<(String, i32)> = current_settings.as_ref()
+                    .map(|s| s.default_rewards.iter().map(|r| (r.reward.id.to_string(), r.amount)).collect())
+                    .unwrap_or_default();
+                let default_punishments: Vec<(String, i32)> = current_settings.as_ref()
+                    .map(|s| s.default_punishments.iter().map(|p| (p.punishment.id.to_string(), p.amount)).collect())
+                    .unwrap_or_default();
                 view! {
                     <TaskModal
                         task=None
@@ -568,6 +578,10 @@ pub fn TasksPage() -> impl IntoView {
                         linked_rewards=vec![]
                         linked_punishments=vec![]
                         categories=categories.get()
+                        default_points_reward=default_points_reward
+                        default_points_penalty=default_points_penalty
+                        default_rewards=default_rewards
+                        default_punishments=default_punishments
                         on_close=move |_| show_create_modal.set(false)
                         on_save=on_save
                     />

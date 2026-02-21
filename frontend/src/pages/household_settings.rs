@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use leptos::*;
 use leptos_router::*;
-use shared::{HierarchyType, Household, HouseholdSettings, Role, UpdateHouseholdSettingsRequest};
+use shared::{DefaultPunishmentEntry, DefaultRewardEntry, HierarchyType, Household, HouseholdSettings, Punishment, Reward, Role, UpdateHouseholdSettingsRequest};
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
@@ -51,6 +51,22 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let allow_task_suggestions = create_rw_signal(true);
     let week_start_day = create_rw_signal(0i32); // 0 = Monday
 
+    // Task defaults
+    let default_points_reward = create_rw_signal(Option::<i64>::None);
+    let default_points_penalty = create_rw_signal(Option::<i64>::None);
+    // Vec of (reward_id, amount)
+    let default_rewards = create_rw_signal(Vec::<(String, i32)>::new());
+    let default_punishments = create_rw_signal(Vec::<(String, i32)>::new());
+    // Signals for adding new defaults
+    let selected_new_reward = create_rw_signal(String::new());
+    let new_reward_amount = create_rw_signal(1i32);
+    let selected_new_punishment = create_rw_signal(String::new());
+    let new_punishment_amount = create_rw_signal(1i32);
+
+    // Available rewards and punishments for dropdowns
+    let rewards = create_rw_signal(Vec::<Reward>::new());
+    let punishments = create_rw_signal(Vec::<Punishment>::new());
+
     // Load settings and check permissions
     create_effect(move |_| {
         let id = household_id();
@@ -81,6 +97,18 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     auto_archive_days.set(s.auto_archive_days);
                     allow_task_suggestions.set(s.allow_task_suggestions);
                     week_start_day.set(s.week_start_day);
+                    default_points_reward.set(s.default_points_reward);
+                    default_points_penalty.set(s.default_points_penalty);
+                    default_rewards.set(
+                        s.default_rewards.iter()
+                            .map(|r| (r.reward.id.to_string(), r.amount))
+                            .collect()
+                    );
+                    default_punishments.set(
+                        s.default_punishments.iter()
+                            .map(|p| (p.punishment.id.to_string(), p.amount))
+                            .collect()
+                    );
                     settings.set(Some(s));
                 }
                 Err(e) => error.set(Some(e)),
@@ -110,6 +138,20 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                 }
             }
         });
+
+        // Load rewards and punishments for dropdowns
+        let id_for_rewards = id.clone();
+        let id_for_punishments = id;
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(r) = ApiClient::list_rewards(&id_for_rewards).await {
+                rewards.set(r);
+            }
+        });
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(p) = ApiClient::list_punishments(&id_for_punishments).await {
+                punishments.set(p);
+            }
+        });
     });
 
     let on_save = move |ev: web_sys::SubmitEvent| {
@@ -136,6 +178,22 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             auto_archive_days: Some(auto_archive_days.get()),
             allow_task_suggestions: Some(allow_task_suggestions.get()),
             week_start_day: Some(week_start_day.get()),
+            default_points_reward: Some(default_points_reward.get()),
+            default_points_penalty: Some(default_points_penalty.get()),
+            default_rewards: Some(
+                default_rewards.get().into_iter()
+                    .filter_map(|(id, amount)| {
+                        uuid::Uuid::parse_str(&id).ok().map(|reward_id| DefaultRewardEntry { reward_id, amount })
+                    })
+                    .collect()
+            ),
+            default_punishments: Some(
+                default_punishments.get().into_iter()
+                    .filter_map(|(id, amount)| {
+                        uuid::Uuid::parse_str(&id).ok().map(|punishment_id| DefaultPunishmentEntry { punishment_id, amount })
+                    })
+                    .collect()
+            ),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -548,6 +606,273 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                 on:input=move |ev| role_label_member.set(event_target_value(&ev))
                             />
                         </div>
+
+                        <Divider />
+
+                        <SectionHeader>{i18n_stored.get_value().t("settings.task_defaults")}</SectionHeader>
+                        <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.875rem;">
+                            {i18n_stored.get_value().t("settings.task_defaults_hint")}
+                        </p>
+
+                        <div class="form-group">
+                            <label class="form-label" for="default-points-reward">{i18n_stored.get_value().t("settings.default_points_reward")}</label>
+                            <input
+                                type="number"
+                                id="default-points-reward"
+                                class="form-input"
+                                min="0"
+                                prop:value=move || default_points_reward.get().map(|p| p.to_string()).unwrap_or_default()
+                                on:input=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    if value.is_empty() {
+                                        default_points_reward.set(None);
+                                    } else if let Ok(points) = value.parse::<i64>() {
+                                        if points >= 0 {
+                                            default_points_reward.set(Some(points));
+                                        }
+                                    }
+                                }
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="default-points-penalty">{i18n_stored.get_value().t("settings.default_points_penalty")}</label>
+                            <input
+                                type="number"
+                                id="default-points-penalty"
+                                class="form-input"
+                                min="0"
+                                prop:value=move || default_points_penalty.get().map(|p| p.to_string()).unwrap_or_default()
+                                on:input=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    if value.is_empty() {
+                                        default_points_penalty.set(None);
+                                    } else if let Ok(points) = value.parse::<i64>() {
+                                        if points >= 0 {
+                                            default_points_penalty.set(Some(points));
+                                        }
+                                    }
+                                }
+                            />
+                        </div>
+
+                        // Show default rewards list only if rewards are enabled
+                        <Show when=move || rewards_enabled.get() fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label">{i18n_stored.get_value().t("settings.default_rewards")}</label>
+                                <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
+                                    // Add new reward row
+                                    <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+                                        <select
+                                            class="form-select"
+                                            style="flex: 1;"
+                                            prop:value=move || selected_new_reward.get()
+                                            on:change=move |ev| selected_new_reward.set(event_target_value(&ev))
+                                        >
+                                            <option value="">{i18n_stored.get_value().t("settings.select_reward")}</option>
+                                            {move || {
+                                                let current_ids: Vec<String> = default_rewards.get().iter().map(|(id, _)| id.clone()).collect();
+                                                rewards.get().into_iter()
+                                                    .filter(|r| !current_ids.contains(&r.id.to_string()))
+                                                    .map(|r| {
+                                                        let rid = r.id.to_string();
+                                                        view! {
+                                                            <option value=rid>{r.name}</option>
+                                                        }
+                                                    })
+                                                    .collect_view()
+                                            }}
+                                        </select>
+                                        <input
+                                            type="number"
+                                            class="form-input"
+                                            style="width: 70px;"
+                                            min="1"
+                                            prop:value=move || new_reward_amount.get().to_string()
+                                            on:input=move |ev| {
+                                                if let Ok(val) = event_target_value(&ev).parse::<i32>() {
+                                                    new_reward_amount.set(val.max(1));
+                                                }
+                                            }
+                                        />
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline"
+                                            style="padding: 0.5rem 1rem;"
+                                            disabled=move || selected_new_reward.get().is_empty()
+                                            on:click=move |_| {
+                                                let reward_id = selected_new_reward.get();
+                                                let amount = new_reward_amount.get();
+                                                if !reward_id.is_empty() {
+                                                    default_rewards.update(|r| {
+                                                        if !r.iter().any(|(id, _)| id == &reward_id) {
+                                                            r.push((reward_id.clone(), amount));
+                                                        }
+                                                    });
+                                                    selected_new_reward.set(String::new());
+                                                    new_reward_amount.set(1);
+                                                }
+                                            }
+                                        >
+                                            {i18n_stored.get_value().t("common.add")}
+                                        </button>
+                                    </div>
+
+                                    // List of selected default rewards
+                                    <div>
+                                        {move || {
+                                            let selected = default_rewards.get();
+                                            if selected.is_empty() {
+                                                view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">{i18n_stored.get_value().t("settings.no_default_rewards")}</p> }.into_view()
+                                            } else {
+                                                selected.iter().map(|(reward_id, amount)| {
+                                                    let reward_name = rewards.get().iter()
+                                                        .find(|r| r.id.to_string() == *reward_id)
+                                                        .map(|r| r.name.clone())
+                                                        .unwrap_or_else(|| i18n_stored.get_value().t("common.unknown"));
+                                                    let reward_id_for_remove = reward_id.clone();
+                                                    let amount_display = *amount;
+                                                    view! {
+                                                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
+                                                            <span>
+                                                                {reward_name}
+                                                                {if amount_display > 1 {
+                                                                    view! { <span style="color: var(--text-muted); margin-left: 0.5rem;">" ×"{amount_display}</span> }.into_view()
+                                                                } else {
+                                                                    ().into_view()
+                                                                }}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                class="btn btn-outline"
+                                                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                                on:click=move |_| {
+                                                                    default_rewards.update(|r| {
+                                                                        r.retain(|(id, _)| id != &reward_id_for_remove);
+                                                                    });
+                                                                }
+                                                            >
+                                                                {i18n_stored.get_value().t("common.remove")}
+                                                            </button>
+                                                        </div>
+                                                    }
+                                                }).collect_view().into_view()
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                                <small class="form-hint">{i18n_stored.get_value().t("settings.default_rewards_hint")}</small>
+                            </div>
+                        </Show>
+
+                        // Show default punishments list only if punishments are enabled
+                        <Show when=move || punishments_enabled.get() fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label">{i18n_stored.get_value().t("settings.default_punishments")}</label>
+                                <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
+                                    // Add new punishment row
+                                    <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+                                        <select
+                                            class="form-select"
+                                            style="flex: 1;"
+                                            prop:value=move || selected_new_punishment.get()
+                                            on:change=move |ev| selected_new_punishment.set(event_target_value(&ev))
+                                        >
+                                            <option value="">{i18n_stored.get_value().t("settings.select_punishment")}</option>
+                                            {move || {
+                                                let current_ids: Vec<String> = default_punishments.get().iter().map(|(id, _)| id.clone()).collect();
+                                                punishments.get().into_iter()
+                                                    .filter(|p| !current_ids.contains(&p.id.to_string()))
+                                                    .map(|p| {
+                                                        let pid = p.id.to_string();
+                                                        view! {
+                                                            <option value=pid>{p.name}</option>
+                                                        }
+                                                    })
+                                                    .collect_view()
+                                            }}
+                                        </select>
+                                        <input
+                                            type="number"
+                                            class="form-input"
+                                            style="width: 70px;"
+                                            min="1"
+                                            prop:value=move || new_punishment_amount.get().to_string()
+                                            on:input=move |ev| {
+                                                if let Ok(val) = event_target_value(&ev).parse::<i32>() {
+                                                    new_punishment_amount.set(val.max(1));
+                                                }
+                                            }
+                                        />
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline"
+                                            style="padding: 0.5rem 1rem;"
+                                            disabled=move || selected_new_punishment.get().is_empty()
+                                            on:click=move |_| {
+                                                let punishment_id = selected_new_punishment.get();
+                                                let amount = new_punishment_amount.get();
+                                                if !punishment_id.is_empty() {
+                                                    default_punishments.update(|p| {
+                                                        if !p.iter().any(|(id, _)| id == &punishment_id) {
+                                                            p.push((punishment_id.clone(), amount));
+                                                        }
+                                                    });
+                                                    selected_new_punishment.set(String::new());
+                                                    new_punishment_amount.set(1);
+                                                }
+                                            }
+                                        >
+                                            {i18n_stored.get_value().t("common.add")}
+                                        </button>
+                                    </div>
+
+                                    // List of selected default punishments
+                                    <div>
+                                        {move || {
+                                            let selected = default_punishments.get();
+                                            if selected.is_empty() {
+                                                view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">{i18n_stored.get_value().t("settings.no_default_punishments")}</p> }.into_view()
+                                            } else {
+                                                selected.iter().map(|(punishment_id, amount)| {
+                                                    let punishment_name = punishments.get().iter()
+                                                        .find(|p| p.id.to_string() == *punishment_id)
+                                                        .map(|p| p.name.clone())
+                                                        .unwrap_or_else(|| i18n_stored.get_value().t("common.unknown"));
+                                                    let punishment_id_for_remove = punishment_id.clone();
+                                                    let amount_display = *amount;
+                                                    view! {
+                                                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
+                                                            <span>
+                                                                {punishment_name}
+                                                                {if amount_display > 1 {
+                                                                    view! { <span style="color: var(--text-muted); margin-left: 0.5rem;">" ×"{amount_display}</span> }.into_view()
+                                                                } else {
+                                                                    ().into_view()
+                                                                }}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                class="btn btn-outline"
+                                                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                                on:click=move |_| {
+                                                                    default_punishments.update(|p| {
+                                                                        p.retain(|(id, _)| id != &punishment_id_for_remove);
+                                                                    });
+                                                                }
+                                                            >
+                                                                {i18n_stored.get_value().t("common.remove")}
+                                                            </button>
+                                                        </div>
+                                                    }
+                                                }).collect_view().into_view()
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                                <small class="form-hint">{i18n_stored.get_value().t("settings.default_punishments_hint")}</small>
+                            </div>
+                        </Show>
 
                         <div style="margin-top: 2rem;">
                             <Button

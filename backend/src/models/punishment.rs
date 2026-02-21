@@ -59,6 +59,36 @@ impl TaskPunishmentRow {
     }
 }
 
+/// Database model for household default punishment with amount
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct HouseholdDefaultPunishmentRow {
+    pub id: String,
+    pub household_id: String,
+    pub name: String,
+    pub description: String,
+    pub requires_confirmation: bool,
+    pub punishment_type: String,
+    pub created_at: DateTime<Utc>,
+    pub amount: i32,
+}
+
+impl HouseholdDefaultPunishmentRow {
+    pub fn to_link(&self) -> shared::HouseholdDefaultPunishmentLink {
+        shared::HouseholdDefaultPunishmentLink {
+            punishment: shared::Punishment {
+                id: Uuid::parse_str(&self.id).unwrap(),
+                household_id: Uuid::parse_str(&self.household_id).unwrap(),
+                name: self.name.clone(),
+                description: self.description.clone(),
+                requires_confirmation: self.requires_confirmation,
+                punishment_type: self.punishment_type.parse().unwrap_or_default(),
+                created_at: self.created_at,
+            },
+            amount: self.amount,
+        }
+    }
+}
+
 /// Database model for user punishments (amount-based)
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct UserPunishmentRow {

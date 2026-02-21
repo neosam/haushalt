@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::models::HouseholdSettingsRow;
+use crate::models::{HouseholdDefaultPunishmentRow, HouseholdDefaultRewardRow, HouseholdSettingsRow};
 use shared::{HierarchyType, HouseholdSettings, UpdateHouseholdSettingsRequest};
 
 #[derive(Debug, Error)]
@@ -12,21 +12,71 @@ pub enum SettingsError {
     DatabaseError(#[from] sqlx::Error),
 }
 
+/// Load default rewards from junction table
+async fn load_default_rewards(
+    pool: &SqlitePool,
+    household_id: &str,
+) -> Result<Vec<shared::HouseholdDefaultRewardLink>, SettingsError> {
+    let rows: Vec<HouseholdDefaultRewardRow> = sqlx::query_as(
+        r#"
+        SELECT r.id, r.household_id, r.name, r.description, r.point_cost,
+               r.is_purchasable, r.requires_confirmation, r.reward_type, r.created_at,
+               hdr.amount
+        FROM household_default_rewards hdr
+        JOIN rewards r ON r.id = hdr.reward_id
+        WHERE hdr.household_id = ?
+        "#,
+    )
+    .bind(household_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| r.to_link()).collect())
+}
+
+/// Load default punishments from junction table
+async fn load_default_punishments(
+    pool: &SqlitePool,
+    household_id: &str,
+) -> Result<Vec<shared::HouseholdDefaultPunishmentLink>, SettingsError> {
+    let rows: Vec<HouseholdDefaultPunishmentRow> = sqlx::query_as(
+        r#"
+        SELECT p.id, p.household_id, p.name, p.description,
+               p.requires_confirmation, p.punishment_type, p.created_at,
+               hdp.amount
+        FROM household_default_punishments hdp
+        JOIN punishments p ON p.id = hdp.punishment_id
+        WHERE hdp.household_id = ?
+        "#,
+    )
+    .bind(household_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| r.to_link()).collect())
+}
+
 /// Get settings for a household, creating defaults if they don't exist
 pub async fn get_or_create_settings(
     pool: &SqlitePool,
     household_id: &Uuid,
 ) -> Result<HouseholdSettings, SettingsError> {
+    let household_id_str = household_id.to_string();
+
     // Try to fetch existing settings
     let existing: Option<HouseholdSettingsRow> = sqlx::query_as(
-        "SELECT * FROM household_settings WHERE household_id = ?"
+        "SELECT * FROM household_settings WHERE household_id = ?",
     )
-    .bind(household_id.to_string())
+    .bind(&household_id_str)
     .fetch_optional(pool)
     .await?;
 
-    if let Some(settings) = existing {
-        return Ok(settings.to_shared());
+    if let Some(settings_row) = existing {
+        let mut settings = settings_row.to_shared();
+        // Load defaults from junction tables
+        settings.default_rewards = load_default_rewards(pool, &household_id_str).await?;
+        settings.default_punishments = load_default_punishments(pool, &household_id_str).await?;
+        return Ok(settings);
     }
 
     // Create default settings
@@ -35,11 +85,11 @@ pub async fn get_or_create_settings(
     let default_timezone = "UTC";
     sqlx::query(
         r#"
-        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, auto_archive_days, allow_task_suggestions, week_start_day, updated_at)
-        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, 7, TRUE, 0, ?)
+        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, auto_archive_days, allow_task_suggestions, week_start_day, default_points_reward, default_points_penalty, updated_at)
+        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, 7, TRUE, 0, NULL, NULL, ?)
         "#,
     )
-    .bind(household_id.to_string())
+    .bind(&household_id_str)
     .bind(default_hierarchy.as_str())
     .bind(default_timezone)
     .bind(now)
@@ -63,6 +113,10 @@ pub async fn get_or_create_settings(
         auto_archive_days: Some(7),
         allow_task_suggestions: true,
         week_start_day: 0,
+        default_points_reward: None,
+        default_points_penalty: None,
+        default_rewards: Vec::new(),
+        default_punishments: Vec::new(),
         updated_at: now,
     })
 }
@@ -73,6 +127,8 @@ pub async fn update_settings(
     household_id: &Uuid,
     request: &UpdateHouseholdSettingsRequest,
 ) -> Result<HouseholdSettings, SettingsError> {
+    let household_id_str = household_id.to_string();
+
     // Ensure settings exist first
     let mut settings = get_or_create_settings(pool, household_id).await?;
 
@@ -122,14 +178,21 @@ pub async fn update_settings(
     if let Some(week_start_day) = request.week_start_day {
         settings.week_start_day = week_start_day;
     }
+    if let Some(ref default_points_reward) = request.default_points_reward {
+        settings.default_points_reward = *default_points_reward;
+    }
+    if let Some(ref default_points_penalty) = request.default_points_penalty {
+        settings.default_points_penalty = *default_points_penalty;
+    }
 
     let now = Utc::now();
     settings.updated_at = now;
 
+    // Update main settings table
     sqlx::query(
         r#"
         UPDATE household_settings
-        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, rewards_enabled = ?, punishments_enabled = ?, chat_enabled = ?, vacation_mode = ?, vacation_start = ?, vacation_end = ?, auto_archive_days = ?, allow_task_suggestions = ?, week_start_day = ?, updated_at = ?
+        SET dark_mode = ?, role_label_owner = ?, role_label_admin = ?, role_label_member = ?, hierarchy_type = ?, timezone = ?, rewards_enabled = ?, punishments_enabled = ?, chat_enabled = ?, vacation_mode = ?, vacation_start = ?, vacation_end = ?, auto_archive_days = ?, allow_task_suggestions = ?, week_start_day = ?, default_points_reward = ?, default_points_penalty = ?, updated_at = ?
         WHERE household_id = ?
         "#,
     )
@@ -148,10 +211,58 @@ pub async fn update_settings(
     .bind(settings.auto_archive_days)
     .bind(settings.allow_task_suggestions)
     .bind(settings.week_start_day)
+    .bind(settings.default_points_reward)
+    .bind(settings.default_points_penalty)
     .bind(now)
-    .bind(household_id.to_string())
+    .bind(&household_id_str)
     .execute(pool)
     .await?;
+
+    // Handle default rewards (delete-all + insert-new pattern)
+    if let Some(ref default_rewards) = request.default_rewards {
+        // Delete existing default rewards
+        sqlx::query("DELETE FROM household_default_rewards WHERE household_id = ?")
+            .bind(&household_id_str)
+            .execute(pool)
+            .await?;
+
+        // Insert new default rewards
+        for entry in default_rewards {
+            sqlx::query(
+                "INSERT INTO household_default_rewards (household_id, reward_id, amount) VALUES (?, ?, ?)",
+            )
+            .bind(&household_id_str)
+            .bind(entry.reward_id.to_string())
+            .bind(entry.amount)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    // Handle default punishments (delete-all + insert-new pattern)
+    if let Some(ref default_punishments) = request.default_punishments {
+        // Delete existing default punishments
+        sqlx::query("DELETE FROM household_default_punishments WHERE household_id = ?")
+            .bind(&household_id_str)
+            .execute(pool)
+            .await?;
+
+        // Insert new default punishments
+        for entry in default_punishments {
+            sqlx::query(
+                "INSERT INTO household_default_punishments (household_id, punishment_id, amount) VALUES (?, ?, ?)",
+            )
+            .bind(&household_id_str)
+            .bind(entry.punishment_id.to_string())
+            .bind(entry.amount)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    // Reload the settings to get the updated defaults
+    settings.default_rewards = load_default_rewards(pool, &household_id_str).await?;
+    settings.default_punishments = load_default_punishments(pool, &household_id_str).await?;
 
     Ok(settings)
 }

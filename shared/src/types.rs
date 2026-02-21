@@ -151,6 +151,14 @@ pub struct HouseholdSettings {
     pub allow_task_suggestions: bool,
     /// Day of week that starts the week (0=Monday, 6=Sunday)
     pub week_start_day: i32,
+    /// Default points awarded when a task is completed
+    pub default_points_reward: Option<i64>,
+    /// Default points deducted when a task is missed
+    pub default_points_penalty: Option<i64>,
+    /// Default rewards to link to new tasks
+    pub default_rewards: Vec<HouseholdDefaultRewardLink>,
+    /// Default punishments to link to new tasks
+    pub default_punishments: Vec<HouseholdDefaultPunishmentLink>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -173,6 +181,10 @@ impl Default for HouseholdSettings {
             auto_archive_days: Some(7),
             allow_task_suggestions: true,
             week_start_day: 0, // Monday
+            default_points_reward: None,
+            default_points_penalty: None,
+            default_rewards: Vec::new(),
+            default_punishments: Vec::new(),
             updated_at: Utc::now(),
         }
     }
@@ -201,6 +213,14 @@ pub struct UpdateHouseholdSettingsRequest {
     pub allow_task_suggestions: Option<bool>,
     /// Day of week that starts the week (0=Monday, 6=Sunday)
     pub week_start_day: Option<i32>,
+    /// Default points awarded when a task is completed (Some(None) to clear)
+    pub default_points_reward: Option<Option<i64>>,
+    /// Default points deducted when a task is missed (Some(None) to clear)
+    pub default_points_penalty: Option<Option<i64>>,
+    /// Default rewards to link to new tasks (replaces all existing)
+    pub default_rewards: Option<Vec<DefaultRewardEntry>>,
+    /// Default punishments to link to new tasks (replaces all existing)
+    pub default_punishments: Option<Vec<DefaultPunishmentEntry>>,
 }
 
 // ============================================================================
@@ -1107,6 +1127,34 @@ pub struct TaskRewardLink {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskPunishmentLink {
     pub punishment: Punishment,
+    pub amount: i32,
+}
+
+/// Default reward linked to a household with amount
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HouseholdDefaultRewardLink {
+    pub reward: Reward,
+    pub amount: i32,
+}
+
+/// Default punishment linked to a household with amount
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HouseholdDefaultPunishmentLink {
+    pub punishment: Punishment,
+    pub amount: i32,
+}
+
+/// Entry for setting a default reward in UpdateHouseholdSettingsRequest
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultRewardEntry {
+    pub reward_id: Uuid,
+    pub amount: i32,
+}
+
+/// Entry for setting a default punishment in UpdateHouseholdSettingsRequest
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultPunishmentEntry {
+    pub punishment_id: Uuid,
     pub amount: i32,
 }
 

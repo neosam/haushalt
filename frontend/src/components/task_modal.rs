@@ -23,6 +23,14 @@ pub fn TaskModal(
     #[prop(default = "daily".to_string())] default_recurrence: String,
     /// If true, this is a suggestion rather than a direct task creation
     #[prop(default = false)] is_suggestion: bool,
+    /// Default points reward from household settings (for create mode)
+    #[prop(default = None)] default_points_reward: Option<i64>,
+    /// Default points penalty from household settings (for create mode)
+    #[prop(default = None)] default_points_penalty: Option<i64>,
+    /// Default rewards from household settings (for create mode) - Vec of (reward_id, amount)
+    #[prop(default = vec![])] default_rewards: Vec<(String, i32)>,
+    /// Default punishments from household settings (for create mode) - Vec of (punishment_id, amount)
+    #[prop(default = vec![])] default_punishments: Vec<(String, i32)>,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
@@ -84,16 +92,19 @@ pub fn TaskModal(
     );
     let categories_stored = store_value(categories);
 
-    // Direct points signals
+    // Direct points signals - use defaults from household settings in create mode
+    let is_create_mode = task.is_none() && prefill_from.is_none();
     let points_reward = create_rw_signal(
         source_task
             .and_then(|t| t.points_reward)
+            .or(if is_create_mode { default_points_reward } else { None })
             .map(|p| p.to_string())
             .unwrap_or_default()
     );
     let points_penalty = create_rw_signal(
         source_task
             .and_then(|t| t.points_penalty)
+            .or(if is_create_mode { default_points_penalty } else { None })
             .map(|p| p.to_string())
             .unwrap_or_default()
     );
@@ -145,12 +156,23 @@ pub fn TaskModal(
     );
 
     // Track linked rewards/punishments with amounts: Vec<(id, amount)>
-    let selected_rewards = create_rw_signal(
-        linked_rewards.iter().map(|r| (r.reward.id.to_string(), r.amount)).collect::<Vec<_>>()
-    );
-    let selected_punishments = create_rw_signal(
-        linked_punishments.iter().map(|p| (p.punishment.id.to_string(), p.amount)).collect::<Vec<_>>()
-    );
+    // In create mode, pre-select default rewards/punishments from household settings
+    let initial_rewards: Vec<(String, i32)> = if !linked_rewards.is_empty() {
+        linked_rewards.iter().map(|r| (r.reward.id.to_string(), r.amount)).collect()
+    } else if is_create_mode && !default_rewards.is_empty() {
+        default_rewards
+    } else {
+        vec![]
+    };
+    let initial_punishments: Vec<(String, i32)> = if !linked_punishments.is_empty() {
+        linked_punishments.iter().map(|p| (p.punishment.id.to_string(), p.amount)).collect()
+    } else if is_create_mode && !default_punishments.is_empty() {
+        default_punishments
+    } else {
+        vec![]
+    };
+    let selected_rewards = create_rw_signal(initial_rewards);
+    let selected_punishments = create_rw_signal(initial_punishments);
 
     let original_rewards: Vec<(String, i32)> = linked_rewards.iter().map(|r| (r.reward.id.to_string(), r.amount)).collect();
     let original_punishments: Vec<(String, i32)> = linked_punishments.iter().map(|p| (p.punishment.id.to_string(), p.amount)).collect();

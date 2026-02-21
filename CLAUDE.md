@@ -83,3 +83,4 @@ When implementing features, check the relevant spec file for acceptance criteria
 - Always use jujutsu vcs to create commits.  Basically use jj commit -m "commit message"
 - When planning, always think about what needs to be updated in the spec.  Which stories, architecture diagrams and constitution parts must be adjusted to reflect the change and the current state of the change.
 - Always think about updating the spec.
+- Code changes have this flow: Update spec and show spec change to the user.  Then plan the code change and when user approves, do the code change.  Finally commit with jj.

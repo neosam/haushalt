@@ -67,6 +67,40 @@ impl TaskRewardRow {
     }
 }
 
+/// Database model for household default reward with amount
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct HouseholdDefaultRewardRow {
+    pub id: String,
+    pub household_id: String,
+    pub name: String,
+    pub description: String,
+    pub point_cost: Option<i64>,
+    pub is_purchasable: bool,
+    pub requires_confirmation: bool,
+    pub reward_type: String,
+    pub created_at: DateTime<Utc>,
+    pub amount: i32,
+}
+
+impl HouseholdDefaultRewardRow {
+    pub fn to_link(&self) -> shared::HouseholdDefaultRewardLink {
+        shared::HouseholdDefaultRewardLink {
+            reward: shared::Reward {
+                id: Uuid::parse_str(&self.id).unwrap(),
+                household_id: Uuid::parse_str(&self.household_id).unwrap(),
+                name: self.name.clone(),
+                description: self.description.clone(),
+                point_cost: self.point_cost,
+                is_purchasable: self.is_purchasable,
+                requires_confirmation: self.requires_confirmation,
+                reward_type: self.reward_type.parse().unwrap_or_default(),
+                created_at: self.created_at,
+            },
+            amount: self.amount,
+        }
+    }
+}
+
 /// Database model for user rewards (amount-based)
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct UserRewardRow {

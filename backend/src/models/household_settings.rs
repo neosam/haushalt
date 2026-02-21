@@ -23,10 +23,14 @@ pub struct HouseholdSettingsRow {
     pub auto_archive_days: Option<i32>,
     pub allow_task_suggestions: bool,
     pub week_start_day: i32,
+    pub default_points_reward: Option<i64>,
+    pub default_points_penalty: Option<i64>,
     pub updated_at: DateTime<Utc>,
 }
 
 impl HouseholdSettingsRow {
+    /// Convert to shared type. Note: default_rewards and default_punishments
+    /// are empty - they should be loaded separately from junction tables.
     pub fn to_shared(&self) -> shared::HouseholdSettings {
         shared::HouseholdSettings {
             household_id: Uuid::parse_str(&self.household_id).unwrap(),
@@ -46,6 +50,10 @@ impl HouseholdSettingsRow {
             auto_archive_days: self.auto_archive_days,
             allow_task_suggestions: self.allow_task_suggestions,
             week_start_day: self.week_start_day,
+            default_points_reward: self.default_points_reward,
+            default_points_penalty: self.default_points_penalty,
+            default_rewards: Vec::new(),  // Loaded separately from junction table
+            default_punishments: Vec::new(),  // Loaded separately from junction table
             updated_at: self.updated_at,
         }
     }
@@ -77,6 +85,8 @@ mod tests {
             auto_archive_days: Some(7),
             allow_task_suggestions: true,
             week_start_day: 0,
+            default_points_reward: Some(10),
+            default_points_penalty: Some(5),
             updated_at: now,
         };
 
@@ -84,6 +94,8 @@ mod tests {
 
         assert_eq!(shared.household_id, household_id);
         assert!(shared.dark_mode);
+        assert_eq!(shared.default_points_reward, Some(10));
+        assert_eq!(shared.default_points_penalty, Some(5));
         assert_eq!(shared.role_label_owner, "Parent");
         assert_eq!(shared.role_label_admin, "Guardian");
         assert_eq!(shared.role_label_member, "Child");
@@ -121,6 +133,8 @@ mod tests {
             auto_archive_days: None,
             allow_task_suggestions: true,
             week_start_day: 6, // Sunday
+            default_points_reward: None,
+            default_points_penalty: None,
             updated_at: now,
         };
 

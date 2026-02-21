@@ -181,6 +181,15 @@ pub fn QuickTaskFab() -> impl IntoView {
                 let is_suggestion = task_action.get() == TaskAction::Suggest;
 
                 if let Some(eh) = sh {
+                    // Extract defaults from household settings
+                    let default_points_reward = eh.settings.default_points_reward;
+                    let default_points_penalty = eh.settings.default_points_penalty;
+                    let default_rewards: Vec<(String, i32)> = eh.settings.default_rewards.iter()
+                        .map(|r| (r.reward.id.to_string(), r.amount))
+                        .collect();
+                    let default_punishments: Vec<(String, i32)> = eh.settings.default_punishments.iter()
+                        .map(|p| (p.punishment.id.to_string(), p.amount))
+                        .collect();
                     view! {
                         <TaskModal
                             task=None
@@ -193,6 +202,10 @@ pub fn QuickTaskFab() -> impl IntoView {
                             categories=data.categories.clone()
                             default_recurrence="onetime".to_string()
                             is_suggestion=is_suggestion
+                            default_points_reward=default_points_reward
+                            default_points_penalty=default_points_penalty
+                            default_rewards=default_rewards
+                            default_punishments=default_punishments
                             on_close=on_task_modal_close
                             on_save=on_task_save
                         />

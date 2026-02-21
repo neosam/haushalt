@@ -169,6 +169,7 @@
 - Shows timezone configuration
 - Shows feature flags (rewards_enabled, punishments_enabled, chat_enabled)
 - Shows vacation mode status and dates
+- Shows task defaults (see US-HH-016)
 
 ---
 
@@ -191,6 +192,7 @@
 - Can enable/disable chat feature
 - Can enable/disable vacation mode
 - Can set vacation start and end dates
+- Can configure task defaults (see US-HH-016)
 
 ---
 
@@ -249,3 +251,56 @@
 - If vacation end date is set, banner shows when vacation ends
 - Banner is visually distinct (e.g., info/warning style)
 - Banner is visible to all household members
+
+---
+
+## US-HH-016: Task Defaults
+
+**As a** household Owner
+**I want to** configure default values for new tasks
+**So that** I don't have to set the same values repeatedly when creating tasks
+
+### Acceptance Criteria
+
+#### Settings Available
+- Default points on completion (optional, can be empty for "none")
+- Default points deducted on miss (optional, can be empty for "none")
+- Default rewards on completion (list of rewards with amounts, can be empty)
+- Default punishments on miss (list of punishments with amounts, can be empty)
+
+#### UI Access
+- Configured in Household Settings page
+- Only visible/editable by Owner
+- Located in a "Task Defaults" section
+
+#### Default Rewards/Punishments Management
+- UI similar to TaskModal reward/punishment selection:
+  - Dropdown to select reward/punishment to add
+  - Amount input field (default: 1)
+  - "Add" button to add to the list
+  - List shows currently configured defaults with remove buttons
+- Can add multiple rewards/punishments as defaults
+- Each default has an associated amount (how many times it's applied)
+
+#### Behavior
+- When creating a new task, these defaults are pre-filled:
+  - Points fields are populated with default values
+  - Default rewards are pre-selected in the rewards list
+  - Default punishments are pre-selected in the punishments list
+- User can override defaults when creating/editing individual tasks
+- User can add more rewards/punishments beyond the defaults
+- User can remove pre-selected defaults before saving
+- If a default reward/punishment is deleted from household, it's automatically removed from defaults
+- Defaults only apply to new tasks, not existing ones
+
+#### Validation
+- Points values must be non-negative integers (or empty)
+- Selected rewards must exist and be active in the household
+- Selected punishments must exist and be active in the household
+- Amount for each reward/punishment must be at least 1
+
+#### Display in Settings
+- Shows current default points (or "None" if not set)
+- Shows list of default rewards with amounts (or "None configured" if empty)
+- Shows list of default punishments with amounts (or "None configured" if empty)
+- Reward/punishment sections only show if respective feature is enabled
