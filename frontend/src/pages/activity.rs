@@ -3,7 +3,6 @@ use leptos_router::*;
 use shared::{ActivityLogWithUsers, ActivityType, HouseholdSettings};
 
 use crate::api::ApiClient;
-use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::i18n::{use_i18n, I18nContext};
 use crate::utils::format_datetime;
@@ -55,11 +54,6 @@ pub fn ActivityPage() -> impl IntoView {
     });
 
     view! {
-        {move || {
-            let hid = household_id();
-            view! { <HouseholdTabs household_id=hid active_tab=HouseholdTab::Activity settings=settings.get() /> }
-        }}
-
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("activity.title")}</h1>
         </div>

@@ -5,7 +5,6 @@ use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Rewar
 use crate::api::ApiClient;
 use crate::components::category_modal::CategoryModal;
 use crate::components::context_menu::{ContextMenu, ContextMenuAction};
-use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::markdown::MarkdownView;
 use crate::components::pending_reviews::PendingReviews;
@@ -273,11 +272,6 @@ pub fn TasksPage() -> impl IntoView {
     };
 
     view! {
-        {move || {
-            let hid = household_id();
-            view! { <HouseholdTabs household_id=hid active_tab=HouseholdTab::Tasks settings=settings.get() /> }
-        }}
-
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("tasks.title")}</h1>
         </div>

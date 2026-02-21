@@ -2,6 +2,7 @@ use leptos::*;
 use leptos_router::*;
 
 use crate::api::{ApiClient, AuthState};
+use crate::components::household_layout::HouseholdLayout;
 use crate::components::navbar::Navbar;
 use crate::components::quick_task_fab::QuickTaskFab;
 use crate::i18n::{provide_i18n, use_i18n};
@@ -29,16 +30,19 @@ pub fn App() -> impl IntoView {
                     <Route path="/register" view=Register />
                     <Route path="/" view=AuthenticatedLayout>
                         <Route path="" view=Dashboard />
-                        <Route path="/households/:id" view=HouseholdPage />
-                        <Route path="/households/:id/tasks" view=TasksPage />
-                        <Route path="/households/:id/rewards" view=RewardsPage />
-                        <Route path="/households/:id/punishments" view=PunishmentsPage />
-                        <Route path="/households/:id/notes" view=NotesPage />
-                        <Route path="/households/:id/journal" view=JournalPage />
-                        <Route path="/households/:id/chat" view=ChatPage />
-                        <Route path="/households/:id/activity" view=ActivityPage />
-                        <Route path="/households/:id/statistics" view=StatisticsPage />
-                        <Route path="/households/:id/settings" view=HouseholdSettingsPage />
+                        // Household routes - nested under HouseholdLayout for shared tabs
+                        <Route path="/households/:id" view=HouseholdLayout>
+                            <Route path="" view=HouseholdPage />
+                            <Route path="tasks" view=TasksPage />
+                            <Route path="rewards" view=RewardsPage />
+                            <Route path="punishments" view=PunishmentsPage />
+                            <Route path="notes" view=NotesPage />
+                            <Route path="journal" view=JournalPage />
+                            <Route path="chat" view=ChatPage />
+                            <Route path="activity" view=ActivityPage />
+                            <Route path="statistics" view=StatisticsPage />
+                            <Route path="settings" view=HouseholdSettingsPage />
+                        </Route>
                         <Route path="/settings" view=SettingsPage />
                         <Route path="/user-settings" view=UserSettingsPage />
                     </Route>

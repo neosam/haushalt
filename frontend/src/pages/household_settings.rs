@@ -4,7 +4,6 @@ use leptos_router::*;
 use shared::{HierarchyType, HouseholdSettings, Role, UpdateHouseholdSettingsRequest};
 
 use crate::api::ApiClient;
-use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::{
     Alert, AlertVariant, Button, ButtonVariant, Card, Divider, SectionHeader,
@@ -139,11 +138,6 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     };
 
     view! {
-        {move || {
-            let hid = household_id();
-            view! { <HouseholdTabs household_id=hid active_tab=HouseholdTab::Settings settings=settings.get() /> }
-        }}
-
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("settings.household_settings")}</h1>
         </div>

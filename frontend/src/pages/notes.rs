@@ -4,7 +4,6 @@ use shared::{HouseholdSettings, Note, NoteWithUser, User};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
-use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::note_card::NoteCard;
 use crate::components::note_modal::NoteModal;
@@ -134,14 +133,7 @@ pub fn NotesPage() -> impl IntoView {
             .collect::<Vec<_>>()
     };
 
-    let hid = household_id();
-
     view! {
-        {
-            let hid = hid.clone();
-            move || view! { <HouseholdTabs household_id=hid.clone() active_tab=HouseholdTab::Notes settings=settings.get() /> }
-        }
-
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("notes.title")}</h1>
             <button class="btn btn-primary" on:click=open_create_modal>

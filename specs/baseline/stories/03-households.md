@@ -188,7 +188,26 @@
 
 ---
 
-## US-HH-014: Vacation Mode Banner
+## US-HH-014: Household Navigation Tabs
+
+**As a** household member on a mobile device
+**I want** the navigation tabs to maintain their scroll position when switching tabs
+**So that** I don't lose my place in the tab list when navigating
+
+### Acceptance Criteria
+- Tab navigation bar is horizontally scrollable on mobile
+- When clicking a tab, the tab bar must NOT re-render/redraw
+- Scroll position of the tab bar is preserved across tab switches
+- Tab highlighting updates without full component re-render
+
+### Technical Notes
+- Use stable component keys to prevent re-rendering
+- Consider using CSS-only active state changes where possible
+- The `HouseholdTabs` component should receive stable props to avoid unnecessary re-renders
+
+---
+
+## US-HH-015: Vacation Mode Banner
 
 > **Status:** Implemented
 > **Implemented:** 2026-02-20

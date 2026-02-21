@@ -3,7 +3,6 @@ use leptos_router::*;
 use shared::{HouseholdSettings, MemberWithUser, Punishment, UserPunishment, UserPunishmentWithUser};
 
 use crate::api::ApiClient;
-use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::markdown::MarkdownView;
 use crate::components::punishment_modal::PunishmentModal;
@@ -202,11 +201,6 @@ pub fn PunishmentsPage() -> impl IntoView {
     };
 
     view! {
-        {move || {
-            let hid = household_id();
-            view! { <HouseholdTabs household_id=hid active_tab=HouseholdTab::Punishments settings=settings.get() /> }
-        }}
-
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("punishments.title")}</h1>
         </div>

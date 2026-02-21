@@ -8,7 +8,6 @@ use uuid::Uuid;
 use crate::api::ApiClient;
 use crate::components::announcement_banner::AnnouncementBanner;
 use crate::components::announcement_modal::AnnouncementModal;
-use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::modal::Modal;
 use crate::components::pending_confirmations::PendingConfirmations;
@@ -477,8 +476,6 @@ pub fn HouseholdPage() -> impl IntoView {
             {move || household.get().map(|h| {
                 let id = h.id.to_string();
                 view! {
-                    <HouseholdTabs household_id=id.clone() active_tab=HouseholdTab::Overview settings=settings.get() />
-
                     // Announcement Banner
                     {move || {
                         let announcements = active_announcements.get();

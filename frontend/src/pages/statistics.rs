@@ -4,7 +4,6 @@ use leptos_router::*;
 use shared::{HouseholdSettings, MemberStatistic, MonthlyStatisticsResponse, WeeklyStatisticsResponse};
 
 use crate::api::ApiClient;
-use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::loading::Loading;
 use crate::components::{
     Accordion, Alert, AlertVariant, Button, ButtonVariant, Card, ProgressBar,
@@ -163,11 +162,6 @@ pub fn StatisticsPage() -> impl IntoView {
     };
 
     view! {
-        {move || {
-            let hid = household_id();
-            view! { <HouseholdTabs household_id=hid active_tab=HouseholdTab::Statistics settings=settings.get() /> }
-        }}
-
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("statistics.title")}</h1>
         </div>

@@ -4,7 +4,6 @@ use shared::{HouseholdSettings, JournalEntry, JournalEntryWithUser, User};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
-use crate::components::household_tabs::{HouseholdTab, HouseholdTabs};
 use crate::components::journal_entry_card::JournalEntryCard;
 use crate::components::journal_modal::JournalModal;
 use crate::components::loading::Loading;
@@ -134,14 +133,7 @@ pub fn JournalPage() -> impl IntoView {
             .collect::<Vec<_>>()
     };
 
-    let hid = household_id();
-
     view! {
-        {
-            let hid = hid.clone();
-            move || view! { <HouseholdTabs household_id=hid.clone() active_tab=HouseholdTab::Journal settings=settings.get() /> }
-        }
-
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("journal.title")}</h1>
             <button class="btn btn-primary" on:click=open_create_modal>
