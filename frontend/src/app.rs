@@ -9,7 +9,7 @@ use crate::pages::{
     activity::ActivityPage, chat::ChatPage, dashboard::Dashboard, household::HouseholdPage,
     household_settings::HouseholdSettingsPage, journal::JournalPage, login::Login, notes::NotesPage,
     punishments::PunishmentsPage, register::Register, rewards::RewardsPage,
-    settings::SettingsPage, tasks::TasksPage, user_settings::UserSettingsPage,
+    settings::SettingsPage, statistics::StatisticsPage, tasks::TasksPage, user_settings::UserSettingsPage,
 };
 
 #[component]
@@ -37,6 +37,7 @@ pub fn App() -> impl IntoView {
                         <Route path="/households/:id/journal" view=JournalPage />
                         <Route path="/households/:id/chat" view=ChatPage />
                         <Route path="/households/:id/activity" view=ActivityPage />
+                        <Route path="/households/:id/statistics" view=StatisticsPage />
                         <Route path="/households/:id/settings" view=HouseholdSettingsPage />
                         <Route path="/settings" view=SettingsPage />
                         <Route path="/user-settings" view=UserSettingsPage />

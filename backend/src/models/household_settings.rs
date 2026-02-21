@@ -22,6 +22,7 @@ pub struct HouseholdSettingsRow {
     pub vacation_end: Option<NaiveDate>,
     pub auto_archive_days: Option<i32>,
     pub allow_task_suggestions: bool,
+    pub week_start_day: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -44,6 +45,7 @@ impl HouseholdSettingsRow {
             vacation_end: self.vacation_end,
             auto_archive_days: self.auto_archive_days,
             allow_task_suggestions: self.allow_task_suggestions,
+            week_start_day: self.week_start_day,
             updated_at: self.updated_at,
         }
     }
@@ -74,6 +76,7 @@ mod tests {
             vacation_end: None,
             auto_archive_days: Some(7),
             allow_task_suggestions: true,
+            week_start_day: 0,
             updated_at: now,
         };
 
@@ -93,6 +96,7 @@ mod tests {
         assert!(shared.vacation_start.is_none());
         assert!(shared.vacation_end.is_none());
         assert_eq!(shared.auto_archive_days, Some(7));
+        assert_eq!(shared.week_start_day, 0);
     }
 
     #[test]
@@ -116,11 +120,13 @@ mod tests {
             vacation_end: None,
             auto_archive_days: None,
             allow_task_suggestions: true,
+            week_start_day: 6, // Sunday
             updated_at: now,
         };
 
         let shared = row.to_shared();
         // Should default to Organized when invalid
         assert_eq!(shared.hierarchy_type, HierarchyType::Organized);
+        assert_eq!(shared.week_start_day, 6);
     }
 }

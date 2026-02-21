@@ -87,6 +87,7 @@
   "tabs.rewards": "Rewards",
   "tabs.punishments": "Punishments",
   "tabs.activity": "Activity",
+  "tabs.statistics": "Statistics",
   "tabs.chat": "Chat",
   "tabs.settings": "Settings",
   "tabs.leaderboard": "Leaderboard",
@@ -468,6 +469,8 @@
   "settings.household_structure": "Household Structure",
   "settings.structure_hint": "Controls who can manage tasks, rewards, and punishments, and who can be assigned tasks",
   "settings.timezone_hint": "All dates and times will be displayed in this timezone",
+  "settings.week_start_day": "Week Start Day",
+  "settings.week_start_day_hint": "The day that starts each week for statistics and weekly views",
   "settings.theme": "Theme",
   "settings.enable_dark_mode": "Enable Dark Mode",
   "settings.dark_mode_hint": "All household members will see the dark theme when viewing this household",
@@ -621,5 +624,19 @@
   "errors.title_required": "Title is required",
 
   "language.en": "English",
-  "language.de": "Deutsch"
+  "language.de": "Deutsch",
+
+  "statistics.title": "Statistics",
+  "statistics.weekly": "Weekly",
+  "statistics.monthly": "Monthly",
+  "statistics.calculate": "Calculate",
+  "statistics.calculating": "Calculating...",
+  "statistics.week_of": "Week of",
+  "statistics.no_weekly_data": "No weekly statistics available.",
+  "statistics.no_monthly_data": "No monthly statistics available.",
+  "statistics.click_calculate": "Click 'Calculate' to generate statistics for this period.",
+  "statistics.no_member_data": "No member data for this period.",
+  "statistics.completed": "Completed",
+  "statistics.task_breakdown": "Task Breakdown",
+  "statistics.tasks": "tasks"
 }

@@ -87,6 +87,7 @@
   "tabs.rewards": "Belohnungen",
   "tabs.punishments": "Strafen",
   "tabs.activity": "Aktivität",
+  "tabs.statistics": "Statistiken",
   "tabs.chat": "Chat",
   "tabs.settings": "Einstellungen",
   "tabs.leaderboard": "Rangliste",
@@ -468,6 +469,8 @@
   "settings.household_structure": "Haushaltsstruktur",
   "settings.structure_hint": "Bestimmt, wer Aufgaben, Belohnungen und Strafen verwalten kann und wem Aufgaben zugewiesen werden können",
   "settings.timezone_hint": "Alle Daten und Zeiten werden in dieser Zeitzone angezeigt",
+  "settings.week_start_day": "Wochenstart",
+  "settings.week_start_day_hint": "Der Tag, an dem jede Woche für Statistiken und wöchentliche Ansichten beginnt",
   "settings.theme": "Design",
   "settings.enable_dark_mode": "Dunkelmodus aktivieren",
   "settings.dark_mode_hint": "Alle Haushaltsmitglieder sehen das dunkle Design in diesem Haushalt",
@@ -621,5 +624,19 @@
   "errors.title_required": "Titel ist erforderlich",
 
   "language.en": "English",
-  "language.de": "Deutsch"
+  "language.de": "Deutsch",
+
+  "statistics.title": "Statistiken",
+  "statistics.weekly": "Wöchentlich",
+  "statistics.monthly": "Monatlich",
+  "statistics.calculate": "Berechnen",
+  "statistics.calculating": "Wird berechnet...",
+  "statistics.week_of": "Woche vom",
+  "statistics.no_weekly_data": "Keine wöchentlichen Statistiken verfügbar.",
+  "statistics.no_monthly_data": "Keine monatlichen Statistiken verfügbar.",
+  "statistics.click_calculate": "Klicken Sie auf 'Berechnen', um Statistiken für diesen Zeitraum zu erstellen.",
+  "statistics.no_member_data": "Keine Mitgliederdaten für diesen Zeitraum.",
+  "statistics.completed": "Erledigt",
+  "statistics.task_breakdown": "Aufgabenaufschlüsselung",
+  "statistics.tasks": "Aufgaben"
 }

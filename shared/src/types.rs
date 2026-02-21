@@ -149,6 +149,8 @@ pub struct HouseholdSettings {
     pub auto_archive_days: Option<i32>,
     /// Whether members can suggest tasks (default: true)
     pub allow_task_suggestions: bool,
+    /// Day of week that starts the week (0=Monday, 6=Sunday)
+    pub week_start_day: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -170,6 +172,7 @@ impl Default for HouseholdSettings {
             vacation_end: None,
             auto_archive_days: Some(7),
             allow_task_suggestions: true,
+            week_start_day: 0, // Monday
             updated_at: Utc::now(),
         }
     }
@@ -196,6 +199,8 @@ pub struct UpdateHouseholdSettingsRequest {
     pub auto_archive_days: Option<Option<i32>>,
     /// Enable/disable task suggestions from members
     pub allow_task_suggestions: Option<bool>,
+    /// Day of week that starts the week (0=Monday, 6=Sunday)
+    pub week_start_day: Option<i32>,
 }
 
 // ============================================================================
@@ -1679,6 +1684,47 @@ pub struct DashboardTaskWithHousehold {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DashboardTasksWithStatusResponse {
     pub tasks: Vec<DashboardTaskWithHousehold>,
+}
+
+// ============================================================================
+// Statistics Types
+// ============================================================================
+
+/// Statistics for a single task within a period
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskStatistic {
+    pub task_id: Uuid,
+    pub task_title: String,
+    pub expected: i32,
+    pub completed: i32,
+    pub completion_rate: f32,
+}
+
+/// Statistics for a household member within a period
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemberStatistic {
+    pub user_id: Uuid,
+    pub username: String,
+    pub total_expected: i32,
+    pub total_completed: i32,
+    pub completion_rate: f32,
+    /// Per-task breakdown (may be empty for summary view)
+    pub task_stats: Vec<TaskStatistic>,
+}
+
+/// Response containing weekly statistics for a household
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeeklyStatisticsResponse {
+    pub week_start: NaiveDate,
+    pub week_end: NaiveDate,
+    pub members: Vec<MemberStatistic>,
+}
+
+/// Response containing monthly statistics for a household
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonthlyStatisticsResponse {
+    pub month: NaiveDate,
+    pub members: Vec<MemberStatistic>,
 }
 
 // ============================================================================

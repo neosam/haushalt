@@ -41,6 +41,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let vacation_end = create_rw_signal(Option::<NaiveDate>::None);
     let auto_archive_days = create_rw_signal(Option::<i32>::Some(7));
     let allow_task_suggestions = create_rw_signal(true);
+    let week_start_day = create_rw_signal(0i32); // 0 = Monday
 
     // Load settings and check permissions
     create_effect(move |_| {
@@ -70,6 +71,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                     vacation_end.set(s.vacation_end);
                     auto_archive_days.set(s.auto_archive_days);
                     allow_task_suggestions.set(s.allow_task_suggestions);
+                    week_start_day.set(s.week_start_day);
                     settings.set(Some(s));
                 }
                 Err(e) => error.set(Some(e)),
@@ -113,6 +115,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             vacation_end: Some(vacation_end.get()),
             auto_archive_days: Some(auto_archive_days.get()),
             allow_task_suggestions: Some(allow_task_suggestions.get()),
+            week_start_day: Some(week_start_day.get()),
         };
 
         wasm_bindgen_futures::spawn_local(async move {
@@ -218,6 +221,28 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                 }).collect_view()}
                             </select>
                             <small class="form-hint">{i18n_stored.get_value().t("settings.timezone_hint")}</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="week_start_day">{i18n_stored.get_value().t("settings.week_start_day")}</label>
+                            <select
+                                id="week_start_day"
+                                class="form-select"
+                                on:change=move |ev| {
+                                    if let Ok(val) = event_target_value(&ev).parse::<i32>() {
+                                        week_start_day.set(val);
+                                    }
+                                }
+                            >
+                                <option value="0" selected=move || week_start_day.get() == 0>{i18n_stored.get_value().t("weekday.monday")}</option>
+                                <option value="1" selected=move || week_start_day.get() == 1>{i18n_stored.get_value().t("weekday.tuesday")}</option>
+                                <option value="2" selected=move || week_start_day.get() == 2>{i18n_stored.get_value().t("weekday.wednesday")}</option>
+                                <option value="3" selected=move || week_start_day.get() == 3>{i18n_stored.get_value().t("weekday.thursday")}</option>
+                                <option value="4" selected=move || week_start_day.get() == 4>{i18n_stored.get_value().t("weekday.friday")}</option>
+                                <option value="5" selected=move || week_start_day.get() == 5>{i18n_stored.get_value().t("weekday.saturday")}</option>
+                                <option value="6" selected=move || week_start_day.get() == 6>{i18n_stored.get_value().t("weekday.sunday")}</option>
+                            </select>
+                            <small class="form-hint">{i18n_stored.get_value().t("settings.week_start_day_hint")}</small>
                         </div>
 
                         <hr style="margin: 1.5rem 0; border-color: var(--border-color);" />

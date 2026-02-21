@@ -23,6 +23,7 @@ pub mod note;
 pub mod journal;
 pub mod announcement;
 pub mod refresh_token;
+pub mod statistics;
 
 pub use user::*;
 pub use household::*;
@@ -43,6 +44,7 @@ pub use note::*;
 pub use journal::*;
 pub use announcement::*;
 pub use refresh_token::*;
+pub use statistics::*;
 
 /// Application state shared across all handlers
 pub struct AppState {

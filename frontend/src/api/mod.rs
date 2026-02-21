@@ -11,13 +11,13 @@ use shared::{
     CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
     CreateUserRequest, Household, HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold,
     InviteUserRequest, JournalEntry, JournalEntryWithUser, LeaderboardEntry, LoginRequest, MemberWithUser,
-    Note, NoteWithUser, PendingPunishmentCompletion, PendingReview, PendingRewardRedemption, PointCondition,
-    Punishment, RandomPickResult, RandomRewardPickResult, RefreshTokenRequest, Reward, Task, TaskCompletion,
-    TaskPunishmentLink, TaskRewardLink, TaskWithDetails, TaskWithStatus, UpdateAnnouncementRequest,
-    UpdateChatMessageRequest, UpdateHouseholdSettingsRequest, UpdateJournalEntryRequest, UpdateNoteRequest,
-    UpdatePunishmentRequest, UpdateRewardRequest, UpdateRoleRequest, UpdateTaskRequest,
-    UpdateUserSettingsRequest, User, UserPunishment, UserPunishmentWithUser, UserReward, UserRewardWithUser,
-    UserSettings,
+    MonthlyStatisticsResponse, Note, NoteWithUser, PendingPunishmentCompletion, PendingReview,
+    PendingRewardRedemption, PointCondition, Punishment, RandomPickResult, RandomRewardPickResult,
+    RefreshTokenRequest, Reward, Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithDetails,
+    TaskWithStatus, UpdateAnnouncementRequest, UpdateChatMessageRequest, UpdateHouseholdSettingsRequest,
+    UpdateJournalEntryRequest, UpdateNoteRequest, UpdatePunishmentRequest, UpdateRewardRequest,
+    UpdateRoleRequest, UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment,
+    UserPunishmentWithUser, UserReward, UserRewardWithUser, UserSettings, WeeklyStatisticsResponse,
 };
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1521,6 +1521,94 @@ impl ApiClient {
         let response: shared::DashboardTasksWithStatusResponse =
             Self::request("GET", "/dashboard/tasks/all", None::<()>, true).await?;
         Ok(response.tasks)
+    }
+
+    // Statistics endpoints
+
+    /// Get weekly statistics for a household
+    pub async fn get_weekly_statistics(
+        household_id: &str,
+        week_start: Option<&str>,
+    ) -> Result<WeeklyStatisticsResponse, String> {
+        let url = match week_start {
+            Some(date) => format!(
+                "/households/{}/statistics/weekly?week_start={}",
+                household_id, date
+            ),
+            None => format!("/households/{}/statistics/weekly", household_id),
+        };
+        Self::request::<WeeklyStatisticsResponse>("GET", &url, None::<()>, true).await
+    }
+
+    /// Calculate weekly statistics for a household
+    pub async fn calculate_weekly_statistics(
+        household_id: &str,
+        week_start: Option<&str>,
+    ) -> Result<WeeklyStatisticsResponse, String> {
+        let url = match week_start {
+            Some(date) => format!(
+                "/households/{}/statistics/weekly/calculate?week_start={}",
+                household_id, date
+            ),
+            None => format!("/households/{}/statistics/weekly/calculate", household_id),
+        };
+        Self::request::<WeeklyStatisticsResponse>("POST", &url, None::<()>, true).await
+    }
+
+    /// List available weeks with statistics
+    pub async fn list_available_weeks(
+        household_id: &str,
+    ) -> Result<Vec<chrono::NaiveDate>, String> {
+        Self::request::<Vec<chrono::NaiveDate>>(
+            "GET",
+            &format!("/households/{}/statistics/weekly/available", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    /// Get monthly statistics for a household
+    pub async fn get_monthly_statistics(
+        household_id: &str,
+        month: Option<&str>,
+    ) -> Result<MonthlyStatisticsResponse, String> {
+        let url = match month {
+            Some(date) => format!(
+                "/households/{}/statistics/monthly?month={}",
+                household_id, date
+            ),
+            None => format!("/households/{}/statistics/monthly", household_id),
+        };
+        Self::request::<MonthlyStatisticsResponse>("GET", &url, None::<()>, true).await
+    }
+
+    /// Calculate monthly statistics for a household
+    pub async fn calculate_monthly_statistics(
+        household_id: &str,
+        month: Option<&str>,
+    ) -> Result<MonthlyStatisticsResponse, String> {
+        let url = match month {
+            Some(date) => format!(
+                "/households/{}/statistics/monthly/calculate?month={}",
+                household_id, date
+            ),
+            None => format!("/households/{}/statistics/monthly/calculate", household_id),
+        };
+        Self::request::<MonthlyStatisticsResponse>("POST", &url, None::<()>, true).await
+    }
+
+    /// List available months with statistics
+    pub async fn list_available_months(
+        household_id: &str,
+    ) -> Result<Vec<chrono::NaiveDate>, String> {
+        Self::request::<Vec<chrono::NaiveDate>>(
+            "GET",
+            &format!("/households/{}/statistics/monthly/available", household_id),
+            None::<()>,
+            true,
+        )
+        .await
     }
 }
 

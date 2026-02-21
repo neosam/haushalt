@@ -317,3 +317,33 @@ CREATE INDEX idx_monthly_stats_tasks_parent ON monthly_statistics_tasks(monthly_
 2. Implement weekly statistics view
 3. Implement monthly statistics view
 4. Add navigation controls for browsing history
+
+---
+
+## Implementation Status
+
+### Completed
+- **US-STAT-001**: Week start day setting - `week_start_day` field added to household settings
+- **US-STAT-002**: Weekly statistics calculation - service and models implemented
+- **US-STAT-003**: Monthly statistics calculation - service and models implemented
+- **US-STAT-005**: Weekly statistics page - frontend statistics page with weekly view
+- **US-STAT-006**: Monthly statistics page - frontend toggle between weekly/monthly
+- **US-STAT-007**: Historical browsing - dropdown selector for available periods
+- **US-STAT-008**: API endpoints (partial):
+  - GET `/api/households/{id}/statistics/weekly` - get weekly stats
+  - POST `/api/households/{id}/statistics/weekly/calculate` - calculate weekly stats
+  - GET `/api/households/{id}/statistics/weekly/available` - list available weeks
+  - GET `/api/households/{id}/statistics/monthly` - get monthly stats
+  - POST `/api/households/{id}/statistics/monthly/calculate` - calculate monthly stats
+  - GET `/api/households/{id}/statistics/monthly/available` - list available months
+
+### Not Yet Implemented
+- **US-STAT-004**: Background job for automatic calculation (manual calculation only)
+- **US-STAT-008**: Per-user detailed statistics endpoints
+- **US-STAT-009**: Advanced calculation logic for shared tasks
+- **US-STAT-010**: Data retention policies
+
+### Technical Notes
+- Statistics currently only track tasks with `assigned_user_id` set
+- Manual calculation via "Calculate" button on statistics page
+- Week boundaries calculated based on household's `week_start_day` setting
