@@ -169,3 +169,19 @@
 - Other day headers (Tomorrow, weekdays, future dates) use secondary highlighting
 - Clear visual separation between different days' task groups
 - Applies to both Dashboard and Household overview task lists
+
+---
+
+## US-DASH-012: Toggle Dashboard Whitelist from Dashboard
+
+**As an** authenticated user viewing the dashboard
+**I want to** toggle whether a task is on my dashboard whitelist directly from the dashboard
+**So that** I can manage my whitelisted tasks without navigating to each household
+
+### Acceptance Criteria
+- Star icon (★/☆) appears on each task card in the dashboard task list
+- Filled star (★) indicates task is on whitelist, empty star (☆) indicates it would only appear in "Show all" mode
+- Clicking the star toggles the task's whitelist status
+- Visual feedback is immediate (optimistic UI update)
+- Works in both normal mode and "Show all" mode
+- Consistent with the star toggle behavior on household overview page
