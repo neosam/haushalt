@@ -174,6 +174,9 @@
 
 ## US-DASH-012: Toggle Dashboard Whitelist from Dashboard
 
+> **Status:** Implemented
+> **Implemented:** 2026-02-21
+
 **As an** authenticated user viewing the dashboard
 **I want to** toggle whether a task is on my dashboard whitelist directly from the dashboard
 **So that** I can manage my whitelisted tasks without navigating to each household

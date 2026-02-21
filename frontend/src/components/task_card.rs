@@ -557,6 +557,8 @@ pub fn DashboardGroupedTaskList(
     #[prop(into)] on_uncomplete: Callback<String>,
     #[prop(default = "UTC".to_string())] timezone: String,
     #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
+    #[prop(optional)] dashboard_task_ids: Option<HashSet<String>>,
+    #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -588,6 +590,7 @@ pub fn DashboardGroupedTaskList(
             } else {
                 let tz = timezone.clone();
                 let other_label_view = other_label.clone();
+                let dashboard_ids = dashboard_task_ids.clone();
                 view! {
                     <div>
                         {groups.into_iter().map(|(group, group_tasks)| {
@@ -610,6 +613,7 @@ pub fn DashboardGroupedTaskList(
                                     <div style="margin-top: 0.5rem;">
                                         {category_groups.into_iter().map(|(cat_name, cat_tasks)| {
                                             let tz_cat = tz_inner.clone();
+                                            let dashboard_ids_cat = dashboard_ids.clone();
                                             let show_category_header = has_multiple_categories;
                                             view! {
                                                 <div class="category-group" style=if show_category_header {
@@ -629,10 +633,23 @@ pub fn DashboardGroupedTaskList(
                                                     {cat_tasks.into_iter().map(|twh| {
                                                         let tz_task = tz_cat.clone();
                                                         let hh_id = twh.household_id.clone();
-                                                        if let Some(callback) = on_click_title {
-                                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name household_id=hh_id on_click_title=callback /> }.into_view()
-                                                        } else {
-                                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name /> }.into_view()
+                                                        let task_id = twh.task.task.id.to_string();
+                                                        let is_on_dashboard = dashboard_ids_cat.as_ref()
+                                                            .map(|ids| ids.contains(&task_id))
+                                                            .unwrap_or(false);
+                                                        match (on_click_title, on_toggle_dashboard) {
+                                                            (Some(title_cb), Some(toggle_cb)) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name household_id=hh_id on_click_title=title_cb on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb /> }.into_view()
+                                                            }
+                                                            (Some(title_cb), None) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name household_id=hh_id on_click_title=title_cb /> }.into_view()
+                                                            }
+                                                            (None, Some(toggle_cb)) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb /> }.into_view()
+                                                            }
+                                                            (None, None) => {
+                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=twh.household_name /> }.into_view()
+                                                            }
                                                         }
                                                     }).collect_view()}
                                                 </div>

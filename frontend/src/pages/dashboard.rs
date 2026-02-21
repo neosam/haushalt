@@ -29,6 +29,9 @@ pub fn Dashboard() -> impl IntoView {
     let enabled_households = create_rw_signal(HashSet::<String>::new());
     let all_households_enabled = create_rw_signal(true);
 
+    // Dashboard task whitelist
+    let dashboard_task_ids = create_rw_signal(HashSet::<String>::new());
+
     // Task detail modal state
     let detail_task_id = create_rw_signal(Option::<String>::None);
     let detail_household_id = create_rw_signal(Option::<String>::None);
@@ -57,6 +60,11 @@ pub fn Dashboard() -> impl IntoView {
             // Load pending invitations
             if let Ok(inv) = ApiClient::get_my_invitations().await {
                 invitations.set(inv);
+            }
+
+            // Load dashboard task whitelist
+            if let Ok(ids) = ApiClient::get_dashboard_task_ids().await {
+                dashboard_task_ids.set(ids.into_iter().map(|id| id.to_string()).collect());
             }
 
             loading.set(false);
@@ -196,6 +204,23 @@ pub fn Dashboard() -> impl IntoView {
     let on_click_task_title = Callback::new(move |(task_id, household_id): (String, String)| {
         detail_task_id.set(Some(task_id));
         detail_household_id.set(Some(household_id));
+    });
+
+    // Dashboard toggle handler - add/remove task from whitelist
+    let on_toggle_dashboard = Callback::new(move |(task_id, add_to_dashboard): (String, bool)| {
+        wasm_bindgen_futures::spawn_local(async move {
+            if add_to_dashboard {
+                if ApiClient::add_task_to_dashboard(&task_id).await.is_ok() {
+                    dashboard_task_ids.update(|ids| {
+                        ids.insert(task_id);
+                    });
+                }
+            } else if ApiClient::remove_task_from_dashboard(&task_id).await.is_ok() {
+                dashboard_task_ids.update(|ids| {
+                    ids.remove(&task_id);
+                });
+            }
+        });
     });
 
     // Clear edit state helper
@@ -344,6 +369,8 @@ pub fn Dashboard() -> impl IntoView {
                                         on_uncomplete=on_uncomplete_task
                                         timezone="Europe/Berlin".to_string()
                                         on_click_title=on_click_task_title
+                                        dashboard_task_ids=dashboard_task_ids.get()
+                                        on_toggle_dashboard=on_toggle_dashboard
                                     />
                                 </div>
                             }.into_view()
