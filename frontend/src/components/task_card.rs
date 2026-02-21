@@ -236,7 +236,7 @@ pub fn TaskCard(
                     ().into_view()
                 }}
             </div>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="task-actions">
                 // Dashboard toggle button (star icon)
                 {if show_dashboard_toggle {
                     let title_on = dashboard_toggle_title_on.clone();

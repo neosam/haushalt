@@ -746,47 +746,82 @@ pub async fn complete_task(
     }
 
     // Check if period target is now met and finalize as completed
-    // Only for scheduled tasks (not OneTime) with target_count > 0
-    if task.recurrence_type != shared::RecurrenceType::OneTime && task.target_count > 0 {
-        let (period_start, period_end) = scheduler::get_period_bounds(&task, completion_due_date);
+    if task.target_count > 0 {
+        if task.recurrence_type == shared::RecurrenceType::OneTime {
+            // For OneTime tasks, count all completions regardless of date
+            let total_completions: i64 = if task.assigned_user_id.is_some() {
+                sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ?",
+                )
+                .bind(task_id.to_string())
+                .bind(user_id.to_string())
+                .fetch_one(pool)
+                .await?
+            } else {
+                sqlx::query_scalar("SELECT COUNT(*) FROM task_completions WHERE task_id = ?")
+                    .bind(task_id.to_string())
+                    .fetch_one(pool)
+                    .await?
+            };
 
-        // Count completions for this period (all users if unassigned, specific user if assigned)
-        let completions_for_period: i64 = if task.assigned_user_id.is_some() {
-            sqlx::query_scalar(
-                "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
-            )
-            .bind(task_id.to_string())
-            .bind(user_id.to_string())
-            .bind(period_start)
-            .bind(period_end)
-            .fetch_one(pool)
-            .await?
+            // If target is met, finalize with the current completion date
+            if total_completions >= task.target_count as i64 {
+                let _ = period_results::finalize_period(
+                    pool,
+                    task_id,
+                    completion_due_date, // Use completion date as period_start
+                    completion_due_date, // Use completion date as period_end
+                    PeriodStatus::Completed,
+                    total_completions as i32,
+                    task.target_count,
+                    "system",
+                    None,
+                )
+                .await;
+            }
         } else {
-            sqlx::query_scalar(
-                "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date >= ? AND due_date <= ?",
-            )
-            .bind(task_id.to_string())
-            .bind(period_start)
-            .bind(period_end)
-            .fetch_one(pool)
-            .await?
-        };
+            // For recurring tasks, use period bounds
+            let (period_start, period_end) =
+                scheduler::get_period_bounds(&task, completion_due_date);
 
-        // If target is met, finalize the period as completed
-        // This will create a new record or update an existing one (e.g., failed -> completed)
-        if completions_for_period >= task.target_count as i64 {
-            let _ = period_results::finalize_period(
-                pool,
-                task_id,
-                period_start,
-                period_end,
-                PeriodStatus::Completed,
-                completions_for_period as i32,
-                task.target_count,
-                "system",
-                None,
-            )
-            .await;
+            // Count completions for this period (all users if unassigned, specific user if assigned)
+            let completions_for_period: i64 = if task.assigned_user_id.is_some() {
+                sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
+                )
+                .bind(task_id.to_string())
+                .bind(user_id.to_string())
+                .bind(period_start)
+                .bind(period_end)
+                .fetch_one(pool)
+                .await?
+            } else {
+                sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date >= ? AND due_date <= ?",
+                )
+                .bind(task_id.to_string())
+                .bind(period_start)
+                .bind(period_end)
+                .fetch_one(pool)
+                .await?
+            };
+
+            // If target is met, finalize the period as completed
+            // This will create a new record or update an existing one (e.g., failed -> completed)
+            if completions_for_period >= task.target_count as i64 {
+                let _ = period_results::finalize_period(
+                    pool,
+                    task_id,
+                    period_start,
+                    period_end,
+                    PeriodStatus::Completed,
+                    completions_for_period as i32,
+                    task.target_count,
+                    "system",
+                    None,
+                )
+                .await;
+            }
         }
     }
 
@@ -816,51 +851,89 @@ pub async fn uncomplete_task(
 
     let today = Utc::now().date_naive();
 
-    // Use next_due_date for period calculation to match how completions are stored
-    let period_date = scheduler::get_next_due_date(&task, today).unwrap_or(today);
-    let (period_start, period_end) = scheduler::get_period_bounds(&task, period_date);
-
-    // Delete the most recent completion for this task/user in the current period
-    let result = sqlx::query(
-        r#"
-        DELETE FROM task_completions
-        WHERE id = (
-            SELECT id FROM task_completions
-            WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?
-            ORDER BY completed_at DESC
-            LIMIT 1
+    if task.recurrence_type == shared::RecurrenceType::OneTime {
+        // For OneTime tasks, delete the most recent completion regardless of date
+        let result = sqlx::query(
+            r#"
+            DELETE FROM task_completions
+            WHERE id = (
+                SELECT id FROM task_completions
+                WHERE task_id = ? AND user_id = ?
+                ORDER BY completed_at DESC
+                LIMIT 1
+            )
+            "#,
         )
-        "#,
-    )
-    .bind(task_id.to_string())
-    .bind(user_id.to_string())
-    .bind(period_start)
-    .bind(period_end)
-    .execute(pool)
-    .await?;
+        .bind(task_id.to_string())
+        .bind(user_id.to_string())
+        .execute(pool)
+        .await?;
 
-    if result.rows_affected() == 0 {
-        return Err(TaskError::NotCompleted);
-    }
+        if result.rows_affected() == 0 {
+            return Err(TaskError::NotCompleted);
+        }
 
-    // After deleting completion, check if we're now below target
-    // If so, delete the period result so it can be re-evaluated
-    let completions_for_period: i64 = sqlx::query_scalar(
-        r#"
-        SELECT COUNT(*) FROM task_completions
-        WHERE task_id = ? AND due_date >= ? AND due_date <= ?
-        "#,
-    )
-    .bind(task_id.to_string())
-    .bind(period_start)
-    .bind(period_end)
-    .fetch_one(pool)
-    .await?;
+        // Check if we're now below target
+        let total_completions: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_completions WHERE task_id = ?")
+                .bind(task_id.to_string())
+                .fetch_one(pool)
+                .await?;
 
-    if completions_for_period < task.target_count as i64 {
-        // Delete the period result - will be re-created when target is reached
-        // or finalized as failed by background job when period ends
-        let _ = period_results::delete_period_result(pool, task_id, period_start).await;
+        if total_completions < task.target_count as i64 {
+            // Delete any period result for this OneTime task
+            sqlx::query("DELETE FROM task_period_results WHERE task_id = ?")
+                .bind(task_id.to_string())
+                .execute(pool)
+                .await?;
+        }
+    } else {
+        // For recurring tasks, use period bounds
+        let period_date = scheduler::get_next_due_date(&task, today).unwrap_or(today);
+        let (period_start, period_end) = scheduler::get_period_bounds(&task, period_date);
+
+        // Delete the most recent completion for this task/user in the current period
+        let result = sqlx::query(
+            r#"
+            DELETE FROM task_completions
+            WHERE id = (
+                SELECT id FROM task_completions
+                WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?
+                ORDER BY completed_at DESC
+                LIMIT 1
+            )
+            "#,
+        )
+        .bind(task_id.to_string())
+        .bind(user_id.to_string())
+        .bind(period_start)
+        .bind(period_end)
+        .execute(pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(TaskError::NotCompleted);
+        }
+
+        // After deleting completion, check if we're now below target
+        // If so, delete the period result so it can be re-evaluated
+        let completions_for_period: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*) FROM task_completions
+            WHERE task_id = ? AND due_date >= ? AND due_date <= ?
+            "#,
+        )
+        .bind(task_id.to_string())
+        .bind(period_start)
+        .bind(period_end)
+        .fetch_one(pool)
+        .await?;
+
+        if completions_for_period < task.target_count as i64 {
+            // Delete the period result - will be re-created when target is reached
+            // or finalized as failed by background job when period ends
+            let _ = period_results::delete_period_result(pool, task_id, period_start).await;
+        }
     }
 
     Ok(())
@@ -2891,5 +2964,173 @@ mod tests {
             .unwrap()
             .expect("Task should exist");
         assert!(status2.is_user_assigned);
+    }
+
+    #[tokio::test]
+    async fn test_complete_onetime_task_creates_period_result() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create OneTime task with target_count = 1
+        let request = CreateTaskRequest {
+            title: "OneTime Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::OneTime,
+            recurrence_value: None,
+            assigned_user_id: Some(user_id),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            is_suggestion: None,
+        };
+        let task = create_task(&pool, &household_id, &request, None)
+            .await
+            .unwrap();
+
+        // Complete the task
+        complete_task(&pool, &task.id, &user_id, &household_id)
+            .await
+            .unwrap();
+
+        // Check that a period_result was created
+        let period_result: Option<(String, String, String)> = sqlx::query_as(
+            "SELECT task_id, status, finalized_by FROM task_period_results WHERE task_id = ?",
+        )
+        .bind(task.id.to_string())
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+
+        assert!(period_result.is_some());
+        let (task_id, status, finalized_by) = period_result.unwrap();
+        assert_eq!(task_id, task.id.to_string());
+        assert_eq!(status, "completed");
+        assert_eq!(finalized_by, "system");
+    }
+
+    #[tokio::test]
+    async fn test_complete_onetime_task_with_target_count_2() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create OneTime task with target_count = 2
+        let request = CreateTaskRequest {
+            title: "OneTime Task Multiple".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::OneTime,
+            recurrence_value: None,
+            assigned_user_id: Some(user_id),
+            target_count: Some(2),
+            time_period: None,
+            allow_exceed_target: Some(true),
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            is_suggestion: None,
+        };
+        let task = create_task(&pool, &household_id, &request, None)
+            .await
+            .unwrap();
+
+        // Complete the task once - should not create period_result yet
+        complete_task(&pool, &task.id, &user_id, &household_id)
+            .await
+            .unwrap();
+
+        let period_result_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_period_results WHERE task_id = ?")
+                .bind(task.id.to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(period_result_count, 0);
+
+        // Complete the task second time - should create period_result now
+        complete_task(&pool, &task.id, &user_id, &household_id)
+            .await
+            .unwrap();
+
+        let period_result_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_period_results WHERE task_id = ?")
+                .bind(task.id.to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(period_result_count, 1);
+
+        // Check completions_count in period_result
+        let completions_count: i32 = sqlx::query_scalar(
+            "SELECT completions_count FROM task_period_results WHERE task_id = ?",
+        )
+        .bind(task.id.to_string())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(completions_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_uncomplete_onetime_task_removes_period_result() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        // Create and complete OneTime task
+        let request = CreateTaskRequest {
+            title: "OneTime Task Uncomplete".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::OneTime,
+            recurrence_value: None,
+            assigned_user_id: Some(user_id),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            is_suggestion: None,
+        };
+        let task = create_task(&pool, &household_id, &request, None)
+            .await
+            .unwrap();
+
+        complete_task(&pool, &task.id, &user_id, &household_id)
+            .await
+            .unwrap();
+
+        // Verify period_result exists
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_period_results WHERE task_id = ?")
+                .bind(task.id.to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(count, 1);
+
+        // Uncomplete the task
+        uncomplete_task(&pool, &task.id, &user_id).await.unwrap();
+
+        // Verify period_result was removed
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_period_results WHERE task_id = ?")
+                .bind(task.id.to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(count, 0);
     }
 }

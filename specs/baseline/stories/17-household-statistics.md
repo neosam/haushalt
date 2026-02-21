@@ -206,6 +206,30 @@ For each task period, determine if a member was responsible:
 - **Skipped** periods are excluded from both counts (don't affect the rate)
 - **Failed** periods count as expected but not completed
 
+#### Handling OneTime Tasks
+OneTime tasks are included in statistics when their target is met:
+- When a OneTime task reaches its `target_count`, a `task_period_result` is created with:
+  - `period_start` = date of the final completion (when target was reached)
+  - `period_end` = same as period_start
+  - `status` = 'completed'
+  - `completions_count` = actual number of completions
+  - `target_count` = the task's target count
+- This allows OneTime tasks to appear in weekly/monthly statistics based on when they were completed
+- OneTime tasks count as 1 expected and 1 completed when done within the period
+- For tasks with `target_count > 1`: the task appears in the statistics of the week/month when the target was reached (date of final completion)
+- Uncompleted OneTime tasks do NOT generate period results (they are not "failed" since they have no due date)
+
+#### Migration for Existing OneTime Tasks
+A database migration backfills `task_period_results` for OneTime tasks that were completed before this feature:
+- Finds all OneTime tasks with completions in `task_completions` but no corresponding `task_period_results`
+- For each task, checks if `target_count` is met by counting completions
+- If target is met, creates a `task_period_result` with:
+  - `period_start` / `period_end` = date of the final completion (`completed_at`)
+  - `status` = 'completed'
+  - `completions_count` = actual completion count
+  - `target_count` = task's target count
+- This ensures historical OneTime tasks appear in statistics after recalculation
+
 #### Handling Bad Habits
 For tasks with `habit_type = 'bad'`, the completion logic is inverted:
 - **Success** for a bad habit = NOT completing it (resisting the bad habit)
@@ -355,3 +379,5 @@ CREATE INDEX idx_monthly_stats_tasks_parent ON monthly_statistics_tasks(monthly_
 - Manual calculation via "Calculate" button on statistics page
 - Week boundaries calculated based on household's `week_start_day` setting
 - Bad habits have inverted completion logic (success = resisting the habit)
+- OneTime tasks create period_results with the completion date as period_start/period_end
+- Migration backfills period_results for historically completed OneTime tasks
