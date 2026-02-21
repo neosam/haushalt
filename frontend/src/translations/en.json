@@ -75,6 +75,9 @@
 
   "household.name": "Household Name",
   "household.name_placeholder": "e.g., Smith Family",
+  "household.settings.general": "General",
+  "household.settings.name": "Household Name",
+  "household.settings.name_updated": "Household name updated",
   "household.create": "Create Household",
   "household.settings": "Household Settings",
   "household.members": "Members",

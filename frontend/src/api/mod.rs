@@ -7,7 +7,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use shared::{
     ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, Announcement, ApiError, ApiSuccess,
     AuthResponse, ChatMessageWithUser, CreateAnnouncementRequest, CreateChatMessageRequest,
-    CreateHouseholdRequest, CreateInvitationRequest, CreateJournalEntryRequest, CreateNoteRequest,
+    CreateHouseholdRequest, CreateInvitationRequest, CreateJournalEntryRequest, CreateNoteRequest, UpdateHouseholdRequest,
     CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
     CreateUserRequest, Household, HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold,
     InviteUserRequest, JournalEntry, JournalEntryWithUser, LeaderboardEntry, LoginRequest, MemberWithUser,
@@ -321,6 +321,11 @@ impl ApiClient {
 
     pub async fn delete_household(id: &str) -> Result<(), String> {
         Self::request::<()>("DELETE", &format!("/households/{}", id), None::<()>, true).await
+    }
+
+    pub async fn update_household(id: &str, name: String) -> Result<Household, String> {
+        let request = UpdateHouseholdRequest { name: Some(name) };
+        Self::request("PUT", &format!("/households/{}", id), Some(request), true).await
     }
 
     pub async fn list_members(household_id: &str) -> Result<Vec<MemberWithUser>, String> {

@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use leptos::*;
 use leptos_router::*;
-use shared::{HierarchyType, HouseholdSettings, Role, UpdateHouseholdSettingsRequest};
+use shared::{HierarchyType, Household, HouseholdSettings, Role, UpdateHouseholdSettingsRequest};
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
@@ -27,6 +27,12 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
 
     // Check if current user is owner
     let is_owner = create_rw_signal(false);
+    let current_role = create_rw_signal(Option::<Role>::None);
+
+    // Household data for rename
+    let household = create_rw_signal(Option::<Household>::None);
+    let household_name = create_rw_signal(String::new());
+    let name_saving = create_rw_signal(false);
 
     // Form state
     let dark_mode = create_rw_signal(false);
@@ -54,6 +60,7 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
 
         let id_for_settings = id.clone();
         let id_for_members = id.clone();
+        let id_for_household = id.clone();
 
         // Load settings
         wasm_bindgen_futures::spawn_local(async move {
@@ -81,14 +88,25 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             loading.set(false);
         });
 
-        // Check if current user is owner
+        // Load household data for name
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(hh) = ApiClient::get_household(&id_for_household).await {
+                household_name.set(hh.name.clone());
+                household.set(Some(hh));
+            }
+        });
+
+        // Check if current user is owner and get role
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(members) = ApiClient::list_members(&id_for_members).await {
                 if let Ok(current_user) = ApiClient::get_current_user().await {
-                    let owner = members.iter().any(|m| {
-                        m.user.id == current_user.id && m.membership.role == Role::Owner
-                    });
-                    is_owner.set(owner);
+                    for m in &members {
+                        if m.user.id == current_user.id {
+                            current_role.set(Some(m.membership.role));
+                            is_owner.set(m.membership.role == Role::Owner);
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -137,6 +155,31 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
         });
     };
 
+    let on_save_name = move |_| {
+        let name = household_name.get();
+        if name.trim().is_empty() {
+            return;
+        }
+
+        let id = household_id();
+        name_saving.set(true);
+        error.set(None);
+        success.set(None);
+
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::update_household(&id, name).await {
+                Ok(hh) => {
+                    household.set(Some(hh));
+                    success.set(Some(i18n_stored.get_value().t("household.settings.name_updated")));
+                }
+                Err(e) => {
+                    error.set(Some(e));
+                }
+            }
+            name_saving.set(false);
+        });
+    };
+
     view! {
         <div class="dashboard-header">
             <h1 class="dashboard-title">{i18n_stored.get_value().t("settings.household_settings")}</h1>
@@ -156,12 +199,41 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
             })}
 
             <Card>
+                // General section - visible to Owner/Admin
+                <Show when=move || current_role.get().map(|r| r.can_manage_tasks()).unwrap_or(false) fallback=|| ()>
+                    <SectionHeader>{i18n_stored.get_value().t("household.settings.general")}</SectionHeader>
+                    <div class="form-group">
+                        <label class="form-label" for="household-name">{i18n_stored.get_value().t("household.settings.name")}</label>
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                            <input
+                                type="text"
+                                id="household-name"
+                                class="form-input"
+                                style="flex: 1;"
+                                maxlength="100"
+                                prop:value=move || household_name.get()
+                                on:input=move |ev| household_name.set(event_target_value(&ev))
+                            />
+                            <Button
+                                variant=ButtonVariant::Primary
+                                on_click=Callback::new(on_save_name)
+                                disabled=MaybeSignal::derive(move || name_saving.get() || household_name.get().trim().is_empty())
+                            >
+                                {move || if name_saving.get() { i18n_stored.get_value().t("common.saving") } else { i18n_stored.get_value().t("common.save") }}
+                            </Button>
+                        </div>
+                    </div>
+                    <Divider />
+                </Show>
+
                 <Show
                     when=move || is_owner.get()
                     fallback=move || view! {
-                        <div class="empty-state">
-                            <p>{i18n_stored.get_value().t("settings.owner_only")}</p>
-                        </div>
+                        <Show when=move || !current_role.get().map(|r| r.can_manage_tasks()).unwrap_or(false) fallback=|| ()>
+                            <div class="empty-state">
+                                <p>{i18n_stored.get_value().t("settings.owner_only")}</p>
+                            </div>
+                        </Show>
                     }
                 >
                     <form on:submit=on_save>
@@ -510,6 +582,7 @@ fn apply_dark_mode(enabled: bool) {
 
 #[cfg(test)]
 mod tests {
+    use shared::Role;
     use wasm_bindgen_test::*;
 
     wasm_bindgen_test_configure!(run_in_browser);
@@ -532,5 +605,35 @@ mod tests {
         assert_eq!(owner, "Parent");
         assert_eq!(admin, "Guardian");
         assert_eq!(member, "Child");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_owner_can_see_general_section() {
+        let role = Role::Owner;
+        assert!(role.can_manage_tasks());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_admin_can_see_general_section() {
+        let role = Role::Admin;
+        assert!(role.can_manage_tasks());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_member_cannot_see_general_section() {
+        let role = Role::Member;
+        assert!(!role.can_manage_tasks());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_empty_name_rejected() {
+        let name = "   ";
+        assert!(name.trim().is_empty());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_valid_name_accepted() {
+        let name = "Smith Family";
+        assert!(!name.trim().is_empty());
     }
 }

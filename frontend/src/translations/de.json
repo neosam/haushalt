@@ -75,6 +75,9 @@
 
   "household.name": "Haushaltsname",
   "household.name_placeholder": "z.B. Familie Müller",
+  "household.settings.general": "Allgemein",
+  "household.settings.name": "Haushaltsname",
+  "household.settings.name_updated": "Haushaltsname aktualisiert",
   "household.create": "Haushalt erstellen",
   "household.settings": "Haushaltseinstellungen",
   "household.members": "Mitglieder",

@@ -37,16 +37,43 @@
 
 ---
 
-## US-HH-004: Update Household
+## US-HH-004: Update Household (Rename)
+
+> **Status:** Implemented
+> **Implemented:** 2026-02-21
 
 **As a** household Owner or Admin
-**I want to** edit the household name
+**I want to** rename the household
 **So that** I can keep household information accurate
 
 ### Acceptance Criteria
-- Owner can update household name
-- Admin can update household name
-- Members cannot update household
+
+#### Permissions
+- Owner can rename household
+- Admin can rename household
+- Members cannot rename household
+
+#### UI Access
+- Rename option available in Household Settings page
+- Only visible to users with rename permission (Owner/Admin)
+
+#### Rename Flow
+1. User navigates to Household Settings
+2. User sees current household name with an "Edit" or "Rename" button
+3. Clicking opens an inline edit or modal with text input
+4. User enters new name and confirms
+5. Household name updates immediately across all views
+6. Success message is shown
+
+#### Validation
+- Name cannot be empty
+- Name has reasonable max length (e.g., 100 characters)
+- Whitespace-only names are rejected
+
+#### UI Updates After Rename
+- Household name in navigation/tabs updates
+- Dashboard household list updates
+- Household overview header updates
 
 ---
 
