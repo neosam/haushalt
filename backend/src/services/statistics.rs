@@ -68,10 +68,10 @@ pub async fn calculate_weekly_statistics(
     .fetch_all(pool)
     .await?;
 
-    // Get all tasks for this household with assigned users
-    let tasks: Vec<(String, String, Option<String>)> = sqlx::query_as(
+    // Get all tasks for this household with assigned users and habit type
+    let tasks: Vec<(String, String, Option<String>, String)> = sqlx::query_as(
         r#"
-        SELECT id, title, assigned_user_id
+        SELECT id, title, assigned_user_id, habit_type
         FROM tasks
         WHERE household_id = ? AND archived = FALSE
         "#,
@@ -83,9 +83,9 @@ pub async fn calculate_weekly_statistics(
     // For each member, calculate their statistics
     for (user_id, _username) in &members {
         // Find tasks assigned to this user
-        let user_tasks: Vec<&(String, String, Option<String>)> = tasks
+        let user_tasks: Vec<&(String, String, Option<String>, String)> = tasks
             .iter()
-            .filter(|(_, _, assigned)| assigned.as_ref() == Some(user_id))
+            .filter(|(_, _, assigned, _)| assigned.as_ref() == Some(user_id))
             .collect();
 
         if user_tasks.is_empty() {
@@ -96,7 +96,9 @@ pub async fn calculate_weekly_statistics(
         let mut total_completed = 0i32;
         let mut task_stats: Vec<(String, String, i32, i32)> = Vec::new();
 
-        for (task_id, task_title, _) in user_tasks {
+        for (task_id, task_title, _, habit_type) in user_tasks {
+            let is_bad_habit = habit_type == "bad";
+
             // Count expected periods within the week (based on period_start)
             let expected: i64 = sqlx::query_scalar(
                 r#"
@@ -126,15 +128,22 @@ pub async fn calculate_weekly_statistics(
             .fetch_one(pool)
             .await?;
 
+            // For bad habits, invert the logic: success = NOT completing the bad habit
+            let successful = if is_bad_habit {
+                expected - completed
+            } else {
+                completed
+            };
+
             total_expected += expected as i32;
-            total_completed += completed as i32;
+            total_completed += successful as i32;
 
             if expected > 0 {
                 task_stats.push((
                     task_id.clone(),
                     task_title.clone(),
                     expected as i32,
-                    completed as i32,
+                    successful as i32,
                 ));
             }
         }
@@ -238,10 +247,10 @@ pub async fn calculate_monthly_statistics(
     .fetch_all(pool)
     .await?;
 
-    // Get all tasks for this household with assigned users
-    let tasks: Vec<(String, String, Option<String>)> = sqlx::query_as(
+    // Get all tasks for this household with assigned users and habit type
+    let tasks: Vec<(String, String, Option<String>, String)> = sqlx::query_as(
         r#"
-        SELECT id, title, assigned_user_id
+        SELECT id, title, assigned_user_id, habit_type
         FROM tasks
         WHERE household_id = ? AND archived = FALSE
         "#,
@@ -253,9 +262,9 @@ pub async fn calculate_monthly_statistics(
     // For each member, calculate their statistics
     for (user_id, _username) in &members {
         // Find tasks assigned to this user
-        let user_tasks: Vec<&(String, String, Option<String>)> = tasks
+        let user_tasks: Vec<&(String, String, Option<String>, String)> = tasks
             .iter()
-            .filter(|(_, _, assigned)| assigned.as_ref() == Some(user_id))
+            .filter(|(_, _, assigned, _)| assigned.as_ref() == Some(user_id))
             .collect();
 
         if user_tasks.is_empty() {
@@ -266,7 +275,9 @@ pub async fn calculate_monthly_statistics(
         let mut total_completed = 0i32;
         let mut task_stats: Vec<(String, String, i32, i32)> = Vec::new();
 
-        for (task_id, task_title, _) in user_tasks {
+        for (task_id, task_title, _, habit_type) in user_tasks {
+            let is_bad_habit = habit_type == "bad";
+
             // Count expected periods within the month
             let expected: i64 = sqlx::query_scalar(
                 r#"
@@ -296,15 +307,22 @@ pub async fn calculate_monthly_statistics(
             .fetch_one(pool)
             .await?;
 
+            // For bad habits, invert the logic: success = NOT completing the bad habit
+            let successful = if is_bad_habit {
+                expected - completed
+            } else {
+                completed
+            };
+
             total_expected += expected as i32;
-            total_completed += completed as i32;
+            total_completed += successful as i32;
 
             if expected > 0 {
                 task_stats.push((
                     task_id.clone(),
                     task_title.clone(),
                     expected as i32,
-                    completed as i32,
+                    successful as i32,
                 ));
             }
         }

@@ -361,18 +361,18 @@ fn MemberStatsCard(
     } else if member.completion_rate >= 50.0 {
         "var(--warning-color)"
     } else {
-        "var(--error-color)"
+        "var(--danger-color)"
     };
 
     view! {
-        <div style="padding: 1rem; margin-bottom: 1rem; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
+        <div style="padding: 1rem; margin-bottom: 1rem; background: var(--card-color); border: 1px solid var(--border-color); border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
                 <strong style="font-size: 1.1em;">{&member.username}</strong>
                 <span style=format!("color: {}; font-weight: bold; font-size: 1.2em;", completion_color)>
                     {format!("{:.1}%", member.completion_rate)}
                 </span>
             </div>
-            <div style="font-size: 0.9em; color: var(--text-secondary); margin-bottom: 0.75rem;">
+            <div style="font-size: 0.9em; color: var(--text-muted); margin-bottom: 0.75rem;">
                 {i18n.get_value().t("statistics.completed")} ": "
                 {member.total_completed} " / " {member.total_expected}
             </div>
@@ -380,9 +380,9 @@ fn MemberStatsCard(
             // Progress bar
             <div style="background: var(--border-color); border-radius: 4px; height: 10px; overflow: hidden; margin-bottom: 1rem;">
                 <div style=format!(
-                    "background: {}; width: {}%; height: 100%; transition: width 0.3s;",
+                    "background: {}; width: {:.1}%; height: 10px; display: block; transition: width 0.3s;",
                     completion_color,
-                    member.completion_rate.min(100.0)
+                    member.completion_rate.min(100.0).max(0.0)
                 )></div>
             </div>
 
@@ -400,7 +400,7 @@ fn MemberStatsCard(
                                 } else if task.completion_rate >= 50.0 {
                                     "var(--warning-color)"
                                 } else {
-                                    "var(--error-color)"
+                                    "var(--danger-color)"
                                 };
                                 view! {
                                     <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border-color);">

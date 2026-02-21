@@ -206,6 +206,13 @@ For each task period, determine if a member was responsible:
 - **Skipped** periods are excluded from both counts (don't affect the rate)
 - **Failed** periods count as expected but not completed
 
+#### Handling Bad Habits
+For tasks with `habit_type = 'bad'`, the completion logic is inverted:
+- **Success** for a bad habit = NOT completing it (resisting the bad habit)
+- **Failure** for a bad habit = completing it (giving in to the bad habit)
+- Statistics calculation: `successful = expected - completed`
+- This ensures that high completion rates for bad habits reflect successfully resisting them
+
 #### Handling Shared Tasks
 When a task is shared (no specific assignee):
 - Each eligible member gets `1 / eligible_count` credit for expected
@@ -347,3 +354,4 @@ CREATE INDEX idx_monthly_stats_tasks_parent ON monthly_statistics_tasks(monthly_
 - Statistics currently only track tasks with `assigned_user_id` set
 - Manual calculation via "Calculate" button on statistics page
 - Week boundaries calculated based on household's `week_start_day` setting
+- Bad habits have inverted completion logic (success = resisting the habit)
