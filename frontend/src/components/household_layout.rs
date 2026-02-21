@@ -81,10 +81,11 @@ pub fn HouseholdLayout() -> impl IntoView {
 
     view! {
         // HouseholdTabs rendered once - persists across tab navigation
+        // Pass signals directly so component reacts to data loading
         <HouseholdTabs
-            household_id=household_id.get()
-            active_tab=active_tab.get()
-            settings=settings.get()
+            household_id=household_id
+            active_tab=active_tab
+            settings=settings
         />
 
         // Child route content renders here

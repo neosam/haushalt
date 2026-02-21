@@ -228,11 +228,31 @@
 - When clicking a tab, the tab bar must NOT re-render/redraw
 - Scroll position of the tab bar is preserved across tab switches
 - Tab highlighting updates without full component re-render
+- **Conditional tabs (Rewards, Punishments, Chat) must appear when settings are loaded**
+- **All tab labels must be translated correctly in the user's language**
 
 ### Technical Notes
 - Use stable component keys to prevent re-rendering
 - Consider using CSS-only active state changes where possible
 - The `HouseholdTabs` component should receive stable props to avoid unnecessary re-renders
+- **IMPORTANT: Follow Reactive Data Pattern (Constitution 14.3)**
+  - Settings data is loaded asynchronously
+  - Component must react to settings updates, not capture initial `None` value
+  - Pass `RwSignal<Option<HouseholdSettings>>` instead of unwrapped value
+  - Or wrap component in reactive closure `{move || ...}`
+
+### Known Issues (Fixed)
+
+#### Bug: Conditional Tabs Not Appearing
+- **Symptom:** Rewards, Punishments, Chat tabs missing even when features enabled
+- **Cause:** `HouseholdTabs` received `settings.get()` (unwrapped value) instead of signal
+- **Root Cause:** Props were evaluated once at component creation, before API response
+- **Fix:** Pass reactive signal or wrap in `move ||` closure
+
+#### Bug: English Labels in Non-English UI
+- **Symptom:** Tab labels shown in English despite German UI setting
+- **Cause:** Same reactivity issue - i18n evaluated before translations loaded
+- **Fix:** Ensure i18n access is inside reactive context
 
 ---
 

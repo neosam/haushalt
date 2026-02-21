@@ -196,3 +196,42 @@ flowchart TB
     Parent -.->|provide| Ctx
     Child1 & Child2 -.->|use| Ctx
 ```
+
+## Reactive Data Handling
+
+See **Constitution Section 14.3** for the complete Reactive Data Pattern.
+
+### Key Principles
+
+1. **Never unwrap signals in non-reactive contexts** when data may load asynchronously
+2. **Pass signals directly** to child components or wrap in `move ||` closures
+3. **Use `MaybeSignal`** for flexible props that accept both signals and static values
+
+### Layout Components with Async Data
+
+Layout components that persist across navigation (like `HouseholdLayout`) must ensure child components receive reactive data:
+
+```mermaid
+flowchart TB
+    subgraph "HouseholdLayout (persists)"
+        SettingsSignal[settings: RwSignal]
+        LoadEffect[create_effect loads data]
+        Tabs[HouseholdTabs]
+        Outlet[Outlet - child routes]
+    end
+
+    LoadEffect -->|"set(data)"| SettingsSignal
+    SettingsSignal -->|"signal (not .get())"| Tabs
+
+    style SettingsSignal fill:#90EE90
+    style Tabs fill:#90EE90
+```
+
+### Common Patterns
+
+| Pattern | Use Case |
+|---------|----------|
+| `prop: Signal<T>` | Data that will definitely update |
+| `prop: RwSignal<Option<T>>` | Async data that starts as None |
+| `#[prop(into)] prop: MaybeSignal<T>` | Flexible - accepts signal or static |
+| `{move \|\| view! { ... }}` | Wrap entire component for reactivity |

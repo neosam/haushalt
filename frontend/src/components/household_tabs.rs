@@ -49,86 +49,97 @@ impl HouseholdTab {
     }
 }
 
+/// Build the list of tabs based on household settings.
+/// Conditional tabs (Rewards, Punishments, Chat) only appear when enabled in settings.
+fn build_tabs(settings: &Option<HouseholdSettings>) -> Vec<HouseholdTab> {
+    let mut tabs = vec![
+        HouseholdTab::Overview,
+        HouseholdTab::Tasks,
+        HouseholdTab::Notes,
+        HouseholdTab::Journal,
+    ];
+    if let Some(ref s) = settings {
+        if s.rewards_enabled {
+            tabs.push(HouseholdTab::Rewards);
+        }
+        if s.punishments_enabled {
+            tabs.push(HouseholdTab::Punishments);
+        }
+        if s.chat_enabled {
+            tabs.push(HouseholdTab::Chat);
+        }
+    }
+    tabs.push(HouseholdTab::Activity);
+    tabs.push(HouseholdTab::Statistics);
+    tabs.push(HouseholdTab::Settings);
+    tabs
+}
+
 #[component]
 pub fn HouseholdTabs(
-    household_id: String,
-    active_tab: HouseholdTab,
-    settings: Option<HouseholdSettings>,
+    household_id: Signal<String>,
+    active_tab: Signal<HouseholdTab>,
+    settings: RwSignal<Option<HouseholdSettings>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
 
-    // Build tabs based on settings
-    let tabs = {
-        let mut tabs = vec![
-            HouseholdTab::Overview,
-            HouseholdTab::Tasks,
-            HouseholdTab::Notes,
-            HouseholdTab::Journal,
-        ];
-        if let Some(ref s) = settings {
-            if s.rewards_enabled {
-                tabs.push(HouseholdTab::Rewards);
-            }
-            if s.punishments_enabled {
-                tabs.push(HouseholdTab::Punishments);
-            }
-            if s.chat_enabled {
-                tabs.push(HouseholdTab::Chat);
-            }
-        }
-        tabs.push(HouseholdTab::Activity);
-        tabs.push(HouseholdTab::Statistics);
-        tabs.push(HouseholdTab::Settings);
-        tabs
-    };
-
-    // Check for vacation mode
-    let vacation_banner = if let Some(ref s) = settings {
-        if s.vacation_mode {
-            let end_date = s.vacation_end.map(|d| d.format("%d.%m.%Y").to_string());
-            Some(view! {
-                <div class="vacation-banner">
-                    <span class="vacation-banner-icon">"🏖️"</span>
-                    <div class="vacation-banner-text">
-                        <div class="vacation-banner-title">{i18n_stored.get_value().t("vacation.banner_title")}</div>
-                        {if let Some(end) = end_date {
-                            view! {
-                                <div class="vacation-banner-dates">
-                                    {i18n_stored.get_value().t("vacation.until")} ": " {end}
-                                </div>
-                            }.into_view()
-                        } else {
-                            view! {
-                                <div class="vacation-banner-dates">
-                                    {i18n_stored.get_value().t("vacation.indefinite")}
-                                </div>
-                            }.into_view()
-                        }}
-                    </div>
-                </div>
-            })
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
     view! {
-        {vacation_banner}
-        <nav class="household-tabs">
-            {tabs.into_iter().map(|tab| {
-                let href = tab.path(&household_id);
-                let is_active = tab == active_tab;
-                let class = if is_active { "tab-link active" } else { "tab-link" };
-                let label = i18n_stored.get_value().t(tab.translation_key());
-                view! {
-                    <a href=href class=class>
-                        {label}
-                    </a>
+        // Vacation banner - reactive to settings changes
+        {move || {
+            let s = settings.get();
+            if let Some(ref settings_val) = s {
+                if settings_val.vacation_mode {
+                    let end_date = settings_val.vacation_end.map(|d| d.format("%d.%m.%Y").to_string());
+                    Some(view! {
+                        <div class="vacation-banner">
+                            <span class="vacation-banner-icon">"🏖️"</span>
+                            <div class="vacation-banner-text">
+                                <div class="vacation-banner-title">{i18n_stored.get_value().t("vacation.banner_title")}</div>
+                                {if let Some(end) = end_date {
+                                    view! {
+                                        <div class="vacation-banner-dates">
+                                            {i18n_stored.get_value().t("vacation.until")} ": " {end}
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! {
+                                        <div class="vacation-banner-dates">
+                                            {i18n_stored.get_value().t("vacation.indefinite")}
+                                        </div>
+                                    }.into_view()
+                                }}
+                            </div>
+                        </div>
+                    })
+                } else {
+                    None
                 }
-            }).collect_view()}
+            } else {
+                None
+            }
+        }}
+
+        // Tab navigation - reactive to settings and active_tab changes
+        <nav class="household-tabs">
+            {move || {
+                let hid = household_id.get();
+                let current_active = active_tab.get();
+                let current_settings = settings.get();
+                let tabs = build_tabs(&current_settings);
+
+                tabs.into_iter().map(|tab| {
+                    let href = tab.path(&hid);
+                    let is_active = tab == current_active;
+                    let class = if is_active { "tab-link active" } else { "tab-link" };
+                    let label = i18n_stored.get_value().t(tab.translation_key());
+                    view! {
+                        <a href=href class=class>
+                            {label}
+                        </a>
+                    }
+                }).collect_view()
+            }}
         </nav>
     }
 }

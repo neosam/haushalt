@@ -595,3 +595,93 @@ Primitive Components (buttons, inputs, modals)
     ↓
 CSS Variables (colors, spacing, typography)
 ```
+
+### 14.3 Reactive Data Pattern (Leptos)
+
+Components that depend on asynchronously loaded data **must** remain reactive. This ensures UI updates correctly when data arrives after initial render.
+
+#### The Problem
+
+```rust
+// ❌ WRONG: Props are unwrapped once at creation time
+<MyComponent
+    settings=settings.get()      // Evaluated once, never updates
+    data=async_data.get()        // Component won't re-render when data loads
+/>
+```
+
+When a signal is unwrapped with `.get()` in a non-reactive context, the value is captured **once**. If the signal updates later (e.g., after an API call completes), the component doesn't know about it.
+
+#### Solution A: Pass Signals Directly
+
+```rust
+// ✓ CORRECT: Pass the signal itself
+#[component]
+fn MyComponent(settings: RwSignal<Option<Settings>>) -> impl IntoView {
+    // Access signal inside reactive contexts (closures, move ||, etc.)
+    view! {
+        {move || settings.get().map(|s| view! { <div>{s.name}</div> })}
+    }
+}
+
+// Usage:
+<MyComponent settings=settings />
+```
+
+#### Solution B: Wrap in Reactive Block
+
+```rust
+// ✓ CORRECT: Wrap component in reactive closure
+{move || view! {
+    <MyComponent
+        settings=settings.get()
+        data=data.get()
+    />
+}}
+```
+
+#### Solution C: Use MaybeSignal (Flexibility)
+
+```rust
+// ✓ CORRECT: Accept both static values and signals
+#[component]
+fn MyComponent(
+    #[prop(into)] settings: MaybeSignal<Option<Settings>>
+) -> impl IntoView {
+    view! {
+        {move || settings.get().map(|s| view! { <div>{s.name}</div> })}
+    }
+}
+
+// Can be called with signal or static value:
+<MyComponent settings=settings />           // Signal
+<MyComponent settings=Some(static_val) />   // Static
+```
+
+#### When to Apply
+
+| Scenario | Reactive Required? |
+|----------|-------------------|
+| Data from API call (async) | ✓ Yes |
+| Data from Context that may load later | ✓ Yes |
+| Settings that affect conditional rendering | ✓ Yes |
+| Static configuration props | ✗ No |
+| Route parameters (already signals) | ✓ Yes |
+
+#### Conditional Rendering Based on Async Data
+
+```rust
+// ❌ WRONG: Tabs computed once, won't update
+let tabs = if settings.rewards_enabled { ... };
+
+// ✓ CORRECT: Compute inside reactive closure
+{move || {
+    let s = settings.get();
+    let tabs = if s.rewards_enabled { ... };
+    view! { ... }
+}}
+```
+
+#### Rule of Thumb
+
+> **If data might not be available at first render, access it inside `move ||` closures or pass the signal directly.**
