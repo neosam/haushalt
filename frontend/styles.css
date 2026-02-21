@@ -670,6 +670,31 @@ body {
     margin-top: 1.5rem;
 }
 
+/* Task modal - responsive sizing */
+.modal-task {
+    width: 95%;
+    max-width: 95%;
+}
+
+@media (min-width: 768px) {
+    .modal-task {
+        width: 90%;
+        max-width: 800px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .modal-task {
+        max-width: 1000px;
+    }
+}
+
+@media (min-width: 1400px) {
+    .modal-task {
+        max-width: 1200px;
+    }
+}
+
 /* Task Detail Modal */
 .task-detail-modal {
     max-height: 60vh;

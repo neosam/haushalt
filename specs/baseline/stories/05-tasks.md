@@ -398,7 +398,10 @@
   - Tasks page (task list within a household)
 - **Read-only focus**: This view emphasizes readability; editing is done through a separate edit modal
 - **Statistics periods**: Completion rates shown for week, month, and all-time to provide both recent and historical context
-- **Mobile-friendly**: Layout adapts for smaller screens with stacked sections
+- **Responsive modal sizing**:
+  - Mobile: Modal uses full or near-full screen width for optimal touch interaction
+  - Desktop: Modal expands to a comfortable reading width (e.g., 600-800px) to utilize available screen space
+  - Applies to both task detail view and task edit modals
 
 ---
 

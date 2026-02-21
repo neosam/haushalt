@@ -365,7 +365,7 @@ pub fn TaskDetailModal(
     let edit_text = i18n.t("common.edit");
 
     view! {
-        <Modal title=title on_close=on_close>
+        <Modal title=title on_close=on_close class="modal-task">
             <div class="modal-body task-detail-modal">
                 {move || {
                     let i18n = i18n_stored.get_value();
