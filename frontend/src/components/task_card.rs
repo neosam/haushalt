@@ -453,7 +453,7 @@ pub fn GroupedTaskList(
                                     <div style=if is_today {
                                         "font-weight: 600; font-size: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border-radius: var(--border-radius);"
                                     } else {
-                                        "font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: var(--bg-muted); color: var(--text-muted); border-radius: var(--border-radius);"
+                                        "font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: rgba(79, 70, 229, 0.15); color: var(--primary-color); border-radius: var(--border-radius);"
                                     }>
                                         {title}
                                     </div>
@@ -603,7 +603,7 @@ pub fn DashboardGroupedTaskList(
                                     <div style=if is_today {
                                         "font-weight: 600; font-size: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border-radius: var(--border-radius);"
                                     } else {
-                                        "font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: var(--bg-muted); color: var(--text-muted); border-radius: var(--border-radius);"
+                                        "font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: rgba(79, 70, 229, 0.15); color: var(--primary-color); border-radius: var(--border-radius);"
                                     }>
                                         {title}
                                     </div>

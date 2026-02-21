@@ -156,6 +156,9 @@
 
 ## US-DASH-011: Highlight All Day Headers in Task List
 
+> **Status:** Implemented
+> **Implemented:** 2026-02-21
+
 **As an** authenticated user
 **I want to** see all day headers (Today, Tomorrow, weekdays, dates) visually highlighted
 **So that** I can easily see where each day's tasks begin and end
