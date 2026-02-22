@@ -537,6 +537,24 @@ pub fn HouseholdPage() -> impl IntoView {
         set_date_task_title.set(String::new());
     });
 
+    // Pause/unpause from context menu
+    let on_context_pause = Callback::new(move |(task_id, _hh_id, is_paused): (String, String, bool)| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = if is_paused {
+                ApiClient::unpause_task(&id, &task_id).await
+            } else {
+                ApiClient::pause_task(&id, &task_id).await
+            };
+            if result.is_ok() {
+                // Refresh tasks
+                if let Ok(t) = ApiClient::get_all_tasks_with_status(&id).await {
+                    tasks.set(t);
+                }
+            }
+        });
+    });
+
     view! {
         <Show when=move || loading.get() fallback=|| ()>
             <Loading />
@@ -684,7 +702,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                     })
                                     .map(|t| TaskWithHousehold::new(t, Some(hh_id.clone()), None))
                                     .collect();
-                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date solo_mode=is_solo_mode /> }
+                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date on_pause=on_context_pause solo_mode=is_solo_mode /> }
                             }
                         </div>
 

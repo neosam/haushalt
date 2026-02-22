@@ -189,6 +189,8 @@
   "task_card.set_date_hint": "Set a due date for this task. The task will be converted to a custom schedule.",
   "task_card.select_date": "Select date",
   "task_card.edit": "Edit",
+  "task_card.pause": "Pause",
+  "task_card.unpause": "Unpause",
 
   "recurrence.daily": "Daily",
   "recurrence.weekly": "Weekly",

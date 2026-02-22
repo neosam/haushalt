@@ -528,6 +528,12 @@
   - Setting a date converts the task to `RecurrenceType::Custom` with the selected date
   - Allows quick scheduling of ad-hoc tasks
   - **Available in Solo Mode**: This is a key feature for deferred task scheduling (see US-HH-017)
+- **Pause/Unpause**: Toggles the paused state of a task
+  - Available to users with edit permission
+  - Shows "Pause" for active tasks, "Unpause" for paused tasks
+  - Paused tasks don't trigger automated punishments for missed completions
+  - **In Solo Mode**: Pause/Unpause is hidden (tasks cannot be edited)
+  - Available on: Dashboard, Household Overview, Tasks page
 
 #### Set Date Flow
 1. User clicks "⋮" on an unscheduled task
@@ -549,6 +555,7 @@
 - **Edit opens modal**: Same behavior as clicking task title, but more discoverable
 - **Button placement**: Right side keeps action buttons grouped together
 - **Solo Mode exception**: "Set Date" is specifically allowed because it's a commitment action, not an escape
+- **Consistent actions across views**: Pause/Unpause is available everywhere tasks are shown (Dashboard, Overview, Tasks page) for consistency - users shouldn't have to navigate to a different tab to pause a task
 
 ### Mobile Considerations
 - Context menu button is part of the `.task-actions` container

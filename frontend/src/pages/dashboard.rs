@@ -321,6 +321,37 @@ pub fn Dashboard() -> impl IntoView {
         set_date_household_id.set(None);
     });
 
+    // Pause/unpause from context menu
+    let on_context_pause = Callback::new(move |(task_id, household_id, is_paused): (String, String, bool)| {
+        let show_all_mode = show_all.get();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = if is_paused {
+                ApiClient::unpause_task(&household_id, &task_id).await
+            } else {
+                ApiClient::pause_task(&household_id, &task_id).await
+            };
+            if result.is_ok() {
+                // Refresh tasks
+                let api_result = if show_all_mode {
+                    ApiClient::get_all_tasks_across_households().await
+                } else {
+                    ApiClient::get_dashboard_tasks_with_status().await
+                };
+                if let Ok(t) = api_result {
+                    let tasks_with_households: Vec<TaskWithHousehold> = t
+                        .into_iter()
+                        .map(|t| TaskWithHousehold::new(
+                            t.task_with_status,
+                            Some(t.household_id.to_string()),
+                            Some(t.household_name),
+                        ))
+                        .collect();
+                    all_tasks.set(tasks_with_households);
+                }
+            }
+        });
+    });
+
     // Clear edit state helper
     let clear_edit_state = move || {
         editing_task.set(None);
@@ -508,6 +539,7 @@ pub fn Dashboard() -> impl IntoView {
                                         on_toggle_dashboard=on_toggle_dashboard
                                         on_edit=on_context_edit
                                         on_set_date=on_context_set_date
+                                        on_pause=on_context_pause
                                     />
                                 </div>
                             }.into_view()

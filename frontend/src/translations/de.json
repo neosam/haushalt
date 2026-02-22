@@ -189,6 +189,8 @@
   "task_card.set_date_hint": "Setze ein Fälligkeitsdatum für diese Aufgabe. Die Aufgabe wird zu einem benutzerdefinierten Zeitplan konvertiert.",
   "task_card.select_date": "Datum auswählen",
   "task_card.edit": "Bearbeiten",
+  "task_card.pause": "Pausieren",
+  "task_card.unpause": "Fortsetzen",
 
   "recurrence.daily": "Täglich",
   "recurrence.weekly": "Wöchentlich",

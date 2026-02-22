@@ -421,6 +421,8 @@ pub fn GroupedTaskList(
     #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
     #[prop(optional, into)] on_edit: Option<Callback<(String, String)>>,
     #[prop(optional, into)] on_set_date: Option<Callback<(String, String)>>,
+    /// Callback for pause/unpause: (task_id, household_id, is_currently_paused)
+    #[prop(optional, into)] on_pause: Option<Callback<(String, String, bool)>>,
     /// When true, hides the Edit action (Solo Mode - only Set Date allowed)
     #[prop(default = false)] solo_mode: bool,
 ) -> impl IntoView {
@@ -532,6 +534,25 @@ pub fn GroupedTaskList(
                                                                 ctx_actions.push(ContextMenuAction {
                                                                     label: set_date_label,
                                                                     on_click: Callback::new(move |_| set_date_cb.call((tid.clone(), hid_clone.clone()))),
+                                                                    danger: false,
+                                                                });
+                                                            }
+                                                        }
+
+                                                        // Pause/Unpause action (hidden in Solo Mode)
+                                                        if !solo_mode {
+                                                            if let (Some(pause_cb), Some(ref hid)) = (on_pause, &hh_id) {
+                                                                let is_paused = twh.task.task.paused;
+                                                                let pause_label = if is_paused {
+                                                                    i18n_stored.get_value().t("task_card.unpause")
+                                                                } else {
+                                                                    i18n_stored.get_value().t("task_card.pause")
+                                                                };
+                                                                let tid = task_id.clone();
+                                                                let hid_clone = hid.clone();
+                                                                ctx_actions.push(ContextMenuAction {
+                                                                    label: pause_label,
+                                                                    on_click: Callback::new(move |_| pause_cb.call((tid.clone(), hid_clone.clone(), is_paused))),
                                                                     danger: false,
                                                                 });
                                                             }
