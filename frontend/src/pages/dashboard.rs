@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
+use crate::utils::TaskModalData;
 use crate::components::modal::Modal;
 use crate::components::set_date_modal::SetDateModal;
 use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
@@ -252,19 +253,14 @@ pub fn Dashboard() -> impl IntoView {
                 editing_task.set(Some(details.task));
                 editing_household_id.set(Some(hid.clone()));
 
-                // Fetch all required data for this household
-                if let Ok(m) = ApiClient::list_members(&hid).await {
-                    edit_members.set(m);
-                }
-                if let Ok(r) = ApiClient::list_rewards(&hid).await {
-                    edit_rewards.set(r);
-                }
-                if let Ok(p) = ApiClient::list_punishments(&hid).await {
-                    edit_punishments.set(p);
-                }
-                if let Ok(c) = ApiClient::list_categories(&hid).await {
-                    edit_categories.set(c);
-                }
+                // Load household data (members, rewards, punishments, categories)
+                let modal_data = TaskModalData::load(&hid).await;
+                edit_members.set(modal_data.members);
+                edit_rewards.set(modal_data.rewards);
+                edit_punishments.set(modal_data.punishments);
+                edit_categories.set(modal_data.categories);
+
+                // Load task-specific linked rewards/punishments
                 if let Ok(tr) = ApiClient::get_task_rewards(&hid, &tid).await {
                     task_linked_rewards.set(tr);
                 }
@@ -372,23 +368,16 @@ pub fn Dashboard() -> impl IntoView {
         editing_task.set(Some(task));
         editing_household_id.set(Some(household_id.clone()));
 
-        // Fetch all required data for this household
+        // Load household data and task-specific linked rewards/punishments
         let hid = household_id.clone();
         let tid = task_id.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            // Fetch members, rewards, punishments, categories in parallel
-            if let Ok(m) = ApiClient::list_members(&hid).await {
-                edit_members.set(m);
-            }
-            if let Ok(r) = ApiClient::list_rewards(&hid).await {
-                edit_rewards.set(r);
-            }
-            if let Ok(p) = ApiClient::list_punishments(&hid).await {
-                edit_punishments.set(p);
-            }
-            if let Ok(c) = ApiClient::list_categories(&hid).await {
-                edit_categories.set(c);
-            }
+            let modal_data = TaskModalData::load(&hid).await;
+            edit_members.set(modal_data.members);
+            edit_rewards.set(modal_data.rewards);
+            edit_punishments.set(modal_data.punishments);
+            edit_categories.set(modal_data.categories);
+
             if let Ok(tr) = ApiClient::get_task_rewards(&hid, &tid).await {
                 task_linked_rewards.set(tr);
             }

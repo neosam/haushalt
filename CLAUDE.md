@@ -75,6 +75,45 @@ This project uses speckit structure for managing specifications and requirements
 
 When implementing features, check the relevant spec file for acceptance criteria. When adding new features, update or create spec files first.
 
+## Coding Principles
+
+### DRY (Don't Repeat Yourself)
+- Extract common patterns into reusable functions, components, or utilities
+- When you see similar code in multiple places, consider refactoring
+- Key areas to watch:
+  - API call + refresh patterns in page components
+  - Modal state management and form submissions
+  - Callback handlers that follow the same async pattern
+
+### Clean Code
+- Meaningful names for functions, variables, and types
+- Small, focused functions (single responsibility)
+- Keep components manageable in size - extract sub-components when they grow
+- Self-documenting code preferred over comments
+
+### Spec-Driven Development (SDD)
+- Update specs **before** implementing code changes
+- Code changes follow this flow:
+  1. Update spec and show spec change to the user
+  2. Plan the code change
+  3. When user approves, implement the change
+  4. Commit with jj
+
+### Mobile First (CSS)
+- Write base styles for mobile screens first
+- Use `min-width` media queries to add desktop enhancements
+- Example:
+  ```css
+  /* Base mobile styles */
+  .grid { grid-template-columns: 1fr; }
+
+  /* Desktop enhancement */
+  @media (min-width: 768px) {
+    .grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  ```
+- **Note**: Current CSS uses Desktop First (`max-width`) - migration needed
+
 ## Code Quality Requirements
 
 - Project must build without warnings (workspace denies warnings)

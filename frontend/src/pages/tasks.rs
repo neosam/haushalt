@@ -6,6 +6,7 @@ use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Rewar
 
 use crate::api::ApiClient;
 use crate::components::category_modal::CategoryModal;
+use crate::utils::TaskModalData;
 use crate::components::context_menu::{ContextMenu, ContextMenuAction};
 use crate::components::loading::Loading;
 use crate::components::markdown::MarkdownView;
@@ -66,9 +67,7 @@ pub fn TasksPage() -> impl IntoView {
         }
 
         let id_for_tasks = id.clone();
-        let id_for_members = id.clone();
-        let id_for_rewards = id.clone();
-        let id_for_punishments = id.clone();
+        let id_for_modal_data = id.clone();
         let id_for_settings = id.clone();
 
         // Load tasks
@@ -85,33 +84,13 @@ pub fn TasksPage() -> impl IntoView {
             }
         });
 
-        // Load members for assignment dropdown
+        // Load members, rewards, punishments, categories
         wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(m) = ApiClient::list_members(&id_for_members).await {
-                members.set(m);
-            }
-        });
-
-        // Load rewards for linking
-        wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(r) = ApiClient::list_rewards(&id_for_rewards).await {
-                rewards.set(r);
-            }
-        });
-
-        // Load punishments for linking
-        wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(p) = ApiClient::list_punishments(&id_for_punishments).await {
-                punishments.set(p);
-            }
-        });
-
-        // Load categories
-        let id_for_categories = id.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(cats) = ApiClient::list_categories(&id_for_categories).await {
-                categories.set(cats);
-            }
+            let modal_data = TaskModalData::load(&id_for_modal_data).await;
+            members.set(modal_data.members);
+            rewards.set(modal_data.rewards);
+            punishments.set(modal_data.punishments);
+            categories.set(modal_data.categories);
         });
 
         // Load archived tasks

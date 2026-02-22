@@ -3,6 +3,7 @@ use shared::PendingReview;
 
 use crate::api::ApiClient;
 use crate::i18n::use_i18n;
+use crate::utils::create_remove_action_handler;
 
 #[component]
 pub fn PendingReviews(
@@ -37,58 +38,31 @@ pub fn PendingReviews(
         });
     }
 
-    let approve_completion = {
-        let household_id = household_id.clone();
-        move |completion_id: String| {
-            let household_id = household_id.clone();
-            processing.set(Some(completion_id.clone()));
+    let id_matcher = |r: &PendingReview| r.completion.id.to_string();
 
-            wasm_bindgen_futures::spawn_local(async move {
-                match ApiClient::approve_completion(&household_id, &completion_id).await {
-                    Ok(_) => {
-                        // Remove from local list
-                        reviews.update(|r| {
-                            r.retain(|review| review.completion.id.to_string() != completion_id);
-                        });
-                        processing.set(None);
-                        on_review_complete.call(());
-                    }
-                    Err(e) => {
-                        error.set(Some(e));
-                        processing.set(None);
-                    }
-                }
-            });
-        }
-    };
+    let approve_completion = create_remove_action_handler(
+        household_id.clone(),
+        processing,
+        reviews,
+        error,
+        on_review_complete,
+        id_matcher,
+        |hid, cid| async move {
+            ApiClient::approve_completion(&hid, &cid).await.map(|_| ())
+        },
+    );
 
-    let reject_completion = {
-        let household_id = household_id.clone();
-        move |completion_id: String| {
-            let household_id = household_id.clone();
-            processing.set(Some(completion_id.clone()));
-
-            wasm_bindgen_futures::spawn_local(async move {
-                match ApiClient::reject_completion(&household_id, &completion_id).await {
-                    Ok(_) => {
-                        // Remove from local list
-                        reviews.update(|r| {
-                            r.retain(|review| review.completion.id.to_string() != completion_id);
-                        });
-                        processing.set(None);
-                        on_review_complete.call(());
-                    }
-                    Err(e) => {
-                        error.set(Some(e));
-                        processing.set(None);
-                    }
-                }
-            });
-        }
-    };
-
-    let approve_completion = std::rc::Rc::new(approve_completion);
-    let reject_completion = std::rc::Rc::new(reject_completion);
+    let reject_completion = create_remove_action_handler(
+        household_id.clone(),
+        processing,
+        reviews,
+        error,
+        on_review_complete,
+        id_matcher,
+        |hid, cid| async move {
+            ApiClient::reject_completion(&hid, &cid).await.map(|_| ())
+        },
+    );
 
     view! {
         {

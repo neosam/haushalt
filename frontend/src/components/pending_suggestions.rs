@@ -3,6 +3,7 @@ use shared::Task;
 
 use crate::api::ApiClient;
 use crate::i18n::use_i18n;
+use crate::utils::create_remove_action_handler;
 
 #[component]
 pub fn PendingSuggestions(
@@ -40,58 +41,31 @@ pub fn PendingSuggestions(
         });
     }
 
-    let approve_suggestion = {
-        let household_id = household_id.clone();
-        move |task_id: String| {
-            let household_id = household_id.clone();
-            processing.set(Some(task_id.clone()));
+    let id_matcher = |s: &Task| s.id.to_string();
 
-            wasm_bindgen_futures::spawn_local(async move {
-                match ApiClient::approve_suggestion(&household_id, &task_id).await {
-                    Ok(_) => {
-                        // Remove from local list
-                        suggestions.update(|s| {
-                            s.retain(|suggestion| suggestion.id.to_string() != task_id);
-                        });
-                        processing.set(None);
-                        on_suggestion_handled.call(());
-                    }
-                    Err(e) => {
-                        error.set(Some(e));
-                        processing.set(None);
-                    }
-                }
-            });
-        }
-    };
+    let approve_suggestion = create_remove_action_handler(
+        household_id.clone(),
+        processing,
+        suggestions,
+        error,
+        on_suggestion_handled,
+        id_matcher,
+        |hid, tid| async move {
+            ApiClient::approve_suggestion(&hid, &tid).await.map(|_| ())
+        },
+    );
 
-    let deny_suggestion = {
-        let household_id = household_id.clone();
-        move |task_id: String| {
-            let household_id = household_id.clone();
-            processing.set(Some(task_id.clone()));
-
-            wasm_bindgen_futures::spawn_local(async move {
-                match ApiClient::deny_suggestion(&household_id, &task_id).await {
-                    Ok(_) => {
-                        // Remove from local list
-                        suggestions.update(|s| {
-                            s.retain(|suggestion| suggestion.id.to_string() != task_id);
-                        });
-                        processing.set(None);
-                        on_suggestion_handled.call(());
-                    }
-                    Err(e) => {
-                        error.set(Some(e));
-                        processing.set(None);
-                    }
-                }
-            });
-        }
-    };
-
-    let approve_suggestion = std::rc::Rc::new(approve_suggestion);
-    let deny_suggestion = std::rc::Rc::new(deny_suggestion);
+    let deny_suggestion = create_remove_action_handler(
+        household_id.clone(),
+        processing,
+        suggestions,
+        error,
+        on_suggestion_handled,
+        id_matcher,
+        |hid, tid| async move {
+            ApiClient::deny_suggestion(&hid, &tid).await.map(|_| ())
+        },
+    );
 
     view! {
         {
