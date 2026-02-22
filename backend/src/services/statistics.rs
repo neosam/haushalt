@@ -99,12 +99,13 @@ pub async fn calculate_weekly_statistics(
         for (task_id, task_title, _, habit_type) in user_tasks {
             let is_bad_habit = habit_type == "bad";
 
-            // Count expected periods within the week (based on period_start)
+            // Count expected periods within the week (excluding skipped - paused/vacation)
             let expected: i64 = sqlx::query_scalar(
                 r#"
                 SELECT COUNT(*) FROM task_period_results
                 WHERE task_id = ?
                 AND period_start >= ? AND period_start <= ?
+                AND status != 'skipped'
                 "#,
             )
             .bind(task_id)
@@ -278,12 +279,13 @@ pub async fn calculate_monthly_statistics(
         for (task_id, task_title, _, habit_type) in user_tasks {
             let is_bad_habit = habit_type == "bad";
 
-            // Count expected periods within the month
+            // Count expected periods within the month (excluding skipped - paused/vacation)
             let expected: i64 = sqlx::query_scalar(
                 r#"
                 SELECT COUNT(*) FROM task_period_results
                 WHERE task_id = ?
                 AND period_start >= ? AND period_start <= ?
+                AND status != 'skipped'
                 "#,
             )
             .bind(task_id)
