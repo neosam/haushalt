@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use leptos::*;
 use leptos_router::*;
-use shared::{HierarchyType, HouseholdSettings, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
+use shared::{HouseholdSettings, MemberWithUser, Punishment, Reward, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
 
 use crate::api::ApiClient;
 use crate::components::category_modal::CategoryModal;
@@ -607,17 +607,9 @@ pub fn TasksPage() -> impl IntoView {
                 let hid = household_id();
                 // Filter members based on hierarchy type
                 let current_settings = settings.get();
-                let assignable_members = {
-                    let all_members = members.get();
-                    match current_settings.as_ref().map(|s| s.hierarchy_type) {
-                        Some(HierarchyType::Hierarchy) => {
-                            all_members.into_iter()
-                                .filter(|m| m.membership.role == Role::Member)
-                                .collect()
-                        }
-                        _ => all_members
-                    }
-                };
+                let assignable_members = current_settings.as_ref()
+                    .map(|s| s.hierarchy_type.filter_assignable_members(members.get()))
+                    .unwrap_or_else(|| members.get());
                 // Extract defaults from settings
                 let default_points_reward = current_settings.as_ref().and_then(|s| s.default_points_reward);
                 let default_points_penalty = current_settings.as_ref().and_then(|s| s.default_points_penalty);
@@ -652,17 +644,9 @@ pub fn TasksPage() -> impl IntoView {
         {move || editing_task.get().map(|task| {
             let hid = household_id();
             // Filter members based on hierarchy type
-            let assignable_members = {
-                let all_members = members.get();
-                match settings.get().map(|s| s.hierarchy_type) {
-                    Some(HierarchyType::Hierarchy) => {
-                        all_members.into_iter()
-                            .filter(|m| m.membership.role == Role::Member)
-                            .collect()
-                    }
-                    _ => all_members
-                }
-            };
+            let assignable_members = settings.get()
+                .map(|s| s.hierarchy_type.filter_assignable_members(members.get()))
+                .unwrap_or_else(|| members.get());
             view! {
                 <TaskModal
                     task=Some(task)
@@ -687,17 +671,9 @@ pub fn TasksPage() -> impl IntoView {
         {move || duplicating_task.get().map(|task| {
             let hid = household_id();
             // Filter members based on hierarchy type
-            let assignable_members = {
-                let all_members = members.get();
-                match settings.get().map(|s| s.hierarchy_type) {
-                    Some(HierarchyType::Hierarchy) => {
-                        all_members.into_iter()
-                            .filter(|m| m.membership.role == Role::Member)
-                            .collect()
-                    }
-                    _ => all_members
-                }
-            };
+            let assignable_members = settings.get()
+                .map(|s| s.hierarchy_type.filter_assignable_members(members.get()))
+                .unwrap_or_else(|| members.get());
             view! {
                 <TaskModal
                     task=None
@@ -766,17 +742,9 @@ pub fn TasksPage() -> impl IntoView {
                 let hid = household_id();
                 let selected_ids: Vec<String> = selected_task_ids.get().into_iter().collect();
                 // Filter members based on hierarchy type
-                let assignable_members = {
-                    let all_members = members.get();
-                    match settings.get().map(|s| s.hierarchy_type) {
-                        Some(HierarchyType::Hierarchy) => {
-                            all_members.into_iter()
-                                .filter(|m| m.membership.role == Role::Member)
-                                .collect()
-                        }
-                        _ => all_members
-                    }
-                };
+                let assignable_members = settings.get()
+                    .map(|s| s.hierarchy_type.filter_assignable_members(members.get()))
+                    .unwrap_or_else(|| members.get());
                 view! {
                     <TaskModal
                         task=None

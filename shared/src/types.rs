@@ -112,6 +112,20 @@ impl HierarchyType {
             HierarchyType::Hierarchy => matches!(role, Role::Member),
         }
     }
+
+    /// Filter a list of members to only those who can be assigned tasks in this hierarchy.
+    ///
+    /// In `Hierarchy` mode, only Members can be assigned tasks (not Owner/Admin).
+    /// In other modes, all members can be assigned.
+    pub fn filter_assignable_members(&self, members: Vec<MemberWithUser>) -> Vec<MemberWithUser> {
+        match self {
+            HierarchyType::Hierarchy => members
+                .into_iter()
+                .filter(|m| self.can_be_assigned(&m.membership.role))
+                .collect(),
+            _ => members,
+        }
+    }
 }
 
 impl FromStr for HierarchyType {
@@ -1888,6 +1902,61 @@ mod tests {
         assert!(!HierarchyType::Hierarchy.can_be_assigned(&Role::Owner));
         assert!(!HierarchyType::Hierarchy.can_be_assigned(&Role::Admin));
         assert!(HierarchyType::Hierarchy.can_be_assigned(&Role::Member));
+    }
+
+    #[test]
+    fn test_hierarchy_type_filter_assignable_members() {
+        use chrono::Utc;
+
+        let owner = MemberWithUser {
+            membership: HouseholdMembership {
+                id: Uuid::new_v4(),
+                household_id: Uuid::new_v4(),
+                user_id: Uuid::new_v4(),
+                role: Role::Owner,
+                points: 0,
+                joined_at: Utc::now(),
+            },
+            user: User {
+                id: Uuid::new_v4(),
+                username: "owner".to_string(),
+                email: "owner@test.com".to_string(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            },
+        };
+        let member = MemberWithUser {
+            membership: HouseholdMembership {
+                id: Uuid::new_v4(),
+                household_id: Uuid::new_v4(),
+                user_id: Uuid::new_v4(),
+                role: Role::Member,
+                points: 0,
+                joined_at: Utc::now(),
+            },
+            user: User {
+                id: Uuid::new_v4(),
+                username: "member".to_string(),
+                email: "member@test.com".to_string(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            },
+        };
+
+        let all_members = vec![owner.clone(), member.clone()];
+
+        // Hierarchy: only Members remain
+        let filtered = HierarchyType::Hierarchy.filter_assignable_members(all_members.clone());
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].user.username, "member");
+
+        // Equals: all remain
+        let filtered = HierarchyType::Equals.filter_assignable_members(all_members.clone());
+        assert_eq!(filtered.len(), 2);
+
+        // Organized: all remain
+        let filtered = HierarchyType::Organized.filter_assignable_members(all_members);
+        assert_eq!(filtered.len(), 2);
     }
 
     #[test]

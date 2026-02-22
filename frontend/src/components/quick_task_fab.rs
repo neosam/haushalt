@@ -1,5 +1,5 @@
 use leptos::*;
-use shared::{HierarchyType, MemberWithUser, Punishment, Reward, Role, Task, TaskCategory};
+use shared::{MemberWithUser, Punishment, Reward, Task, TaskCategory};
 
 use crate::api::ApiClient;
 use crate::components::household_picker_modal::{EligibleHousehold, HouseholdPickerModal, TaskAction};
@@ -181,16 +181,9 @@ pub fn QuickTaskFab() -> impl IntoView {
                 let is_suggestion = task_action.get() == TaskAction::Suggest;
 
                 if let Some(eh) = sh {
-                    // Filter members based on hierarchy type (same logic as tasks.rs)
-                    let assignable_members: Vec<MemberWithUser> = match eh.settings.hierarchy_type {
-                        HierarchyType::Hierarchy => {
-                            data.members.iter()
-                                .filter(|m| m.membership.role == Role::Member)
-                                .cloned()
-                                .collect()
-                        }
-                        _ => data.members.clone()
-                    };
+                    // Filter members based on hierarchy type
+                    let assignable_members = eh.settings.hierarchy_type
+                        .filter_assignable_members(data.members.clone());
 
                     // Extract defaults from household settings
                     let default_points_reward = eh.settings.default_points_reward;
@@ -390,17 +383,8 @@ mod tests {
 
         let all_members = vec![owner.clone(), member.clone()];
 
-        // In Hierarchy mode, only Members can be assigned
-        let hierarchy_type = HierarchyType::Hierarchy;
-        let assignable: Vec<MemberWithUser> = match hierarchy_type {
-            HierarchyType::Hierarchy => {
-                all_members.iter()
-                    .filter(|m| m.membership.role == Role::Member)
-                    .cloned()
-                    .collect()
-            }
-            _ => all_members.clone()
-        };
+        // In Hierarchy mode, only Members can be assigned - use the shared helper
+        let assignable = HierarchyType::Hierarchy.filter_assignable_members(all_members);
 
         assert_eq!(assignable.len(), 1);
         assert_eq!(assignable[0].user.username, "member");
@@ -447,17 +431,8 @@ mod tests {
 
         let all_members = vec![owner, member];
 
-        // In Equals mode, everyone can be assigned
-        let hierarchy_type = HierarchyType::Equals;
-        let assignable: Vec<MemberWithUser> = match hierarchy_type {
-            HierarchyType::Hierarchy => {
-                all_members.iter()
-                    .filter(|m| m.membership.role == Role::Member)
-                    .cloned()
-                    .collect()
-            }
-            _ => all_members.clone()
-        };
+        // In Equals mode, everyone can be assigned - use the shared helper
+        let assignable = HierarchyType::Equals.filter_assignable_members(all_members);
 
         assert_eq!(assignable.len(), 2);
     }
