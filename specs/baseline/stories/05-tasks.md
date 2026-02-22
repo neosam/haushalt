@@ -522,10 +522,12 @@
 
 #### Available Actions
 - **Edit**: Opens the task edit modal (available to users with edit permission)
+  - **In Solo Mode**: Edit action is hidden (tasks cannot be edited)
 - **Set Date**: Only visible for tasks with no schedule (NoSchedule/unscheduled tasks)
   - Opens a date picker modal
   - Setting a date converts the task to `RecurrenceType::Custom` with the selected date
   - Allows quick scheduling of ad-hoc tasks
+  - **Available in Solo Mode**: This is a key feature for deferred task scheduling (see US-HH-017)
 
 #### Set Date Flow
 1. User clicks "⋮" on an unscheduled task
@@ -535,11 +537,18 @@
 5. Task is updated to `RecurrenceType::Custom` with `recurrence_value` containing the selected date
 6. Task moves from "No Schedule" group to the appropriate date group
 
+#### Solo Mode Considerations
+- "Set Date" is **explicitly allowed** in Solo Mode (exception to "no editing" rule)
+- Rationale: Users need to be able to schedule their backlog tasks
+- Once a date is set in Solo Mode, it **cannot be changed** (one-way action)
+- This supports the "deferred task scheduling" workflow (see US-HH-017)
+
 ### Design Decisions
 - **Reuse ContextMenu component**: Maintains UI consistency with the tasks page
 - **Conditional actions**: "Set Date" only appears for unscheduled tasks to avoid clutter
 - **Edit opens modal**: Same behavior as clicking task title, but more discoverable
 - **Button placement**: Right side keeps action buttons grouped together
+- **Solo Mode exception**: "Set Date" is specifically allowed because it's a commitment action, not an escape
 
 ### Mobile Considerations
 - Context menu button is part of the `.task-actions` container

@@ -382,6 +382,32 @@ Solo Mode is a self-discipline feature where the user voluntarily gives up contr
   - Task punishments → `default_punishments` from settings
 - Existing tasks remain unchanged (keep their original rewards/punishments)
 
+#### Deferred Task Scheduling (Task Backlog)
+
+In Solo Mode, users often want to capture task ideas without immediately committing to a specific date. This prevents "gaming the system" by only creating tasks the user knows they'll complete soon.
+
+**Workflow:**
+1. User creates a task with recurrence type "OneTime" but **no specific date** (NoSchedule)
+2. Task appears in the "No Schedule" section of the task list (backlog)
+3. Task does **not** appear in "Due" tasks and does **not** trigger penalties
+4. Later, user can schedule the task via context menu → "Set Date"
+5. Setting a date converts the task to `RecurrenceType::Custom` with the selected date
+6. Task now appears on the scheduled date and is subject to normal penalties if missed
+
+**Key Benefits for Solo Mode:**
+- **Capture ideas freely**: Tasks can be created without immediate time pressure
+- **No cheating**: User cannot avoid creating difficult tasks - they remain visible in the backlog
+- **Flexible scheduling**: Tasks can be scheduled when the user is ready to commit
+- **Self-discipline**: Once scheduled, the task is locked in and cannot be edited (Solo Mode restriction)
+
+**UI Behavior:**
+- "Set Date" action available in task card context menu (see US-TASK-023)
+- Date picker modal opens for date selection
+- After setting a date, task moves from "No Schedule" group to appropriate date group
+- **In Solo Mode**: Setting a date is a one-way action - the date cannot be changed afterward
+
+**Note:** This feature uses the existing "Set Date" functionality (US-TASK-023) but is particularly valuable in Solo Mode for the self-discipline workflow.
+
 #### Exiting Solo Mode (Cooldown)
 - Exit is initiated via the **Solo Mode Banner** (not via Settings)
 - Any household member can request to exit Solo Mode

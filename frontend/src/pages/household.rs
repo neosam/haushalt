@@ -661,7 +661,9 @@ pub fn HouseholdPage() -> impl IntoView {
                             </div>
 
                             {
-                                let tz = settings.get().map(|s| s.timezone).unwrap_or_else(|| "UTC".to_string());
+                                let current_settings = settings.get();
+                                let tz = current_settings.as_ref().map(|s| s.timezone.clone()).unwrap_or_else(|| "UTC".to_string());
+                                let is_solo_mode = current_settings.as_ref().map(|s| s.solo_mode).unwrap_or(false);
                                 let dashboard_ids = dashboard_task_ids.get();
                                 let hh_id = id.clone();
                                 let user_id = current_user_id.get();
@@ -682,7 +684,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                     })
                                     .map(|t| TaskWithHousehold::new(t, Some(hh_id.clone()), None))
                                     .collect();
-                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date /> }
+                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date solo_mode=is_solo_mode /> }
                             }
                         </div>
 

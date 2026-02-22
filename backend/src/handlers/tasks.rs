@@ -1,6 +1,9 @@
 use actix_web::{web, HttpResponse, Result};
 use serde::Deserialize;
-use shared::{ActivityType, ApiError, ApiSuccess, CreateTaskRequest, HierarchyType, UpdateTaskRequest};
+use shared::{
+    ActivityType, ApiError, ApiSuccess, CreateTaskRequest, HierarchyType,
+    RecurrenceType, RecurrenceValue, Task, UpdateTaskRequest,
+};
 use uuid::Uuid;
 
 use crate::models::AppState;
@@ -21,6 +24,45 @@ struct AddLinkQuery {
 
 fn default_amount() -> i32 {
     1
+}
+
+/// Check if this is a valid "Set Date" request in Solo Mode.
+/// Only allows setting a date on an unscheduled task, with no other field changes.
+fn is_solo_mode_set_date_request(request: &UpdateTaskRequest, task: &Task) -> bool {
+    // 1. Task must currently be unscheduled (OneTime with no recurrence_value)
+    let is_unscheduled = task.recurrence_type == RecurrenceType::OneTime
+        && task.recurrence_value.is_none();
+
+    if !is_unscheduled {
+        return false; // Already has a schedule - cannot change in Solo Mode
+    }
+
+    // 2. Request must set recurrence_type to Custom
+    let sets_custom = matches!(request.recurrence_type, Some(RecurrenceType::Custom));
+
+    // 3. Request must provide recurrence_value with dates
+    let sets_dates = matches!(
+        request.recurrence_value,
+        Some(RecurrenceValue::CustomDates(_))
+    );
+
+    // 4. All other fields must be None (no other changes allowed)
+    let no_other_changes = request.title.is_none()
+        && request.description.is_none()
+        && request.assigned_user_id.is_none()
+        && request.target_count.is_none()
+        && request.time_period.is_none()
+        && request.allow_exceed_target.is_none()
+        && request.requires_review.is_none()
+        && request.points_reward.is_none()
+        && request.points_penalty.is_none()
+        && request.due_time.is_none()
+        && request.habit_type.is_none()
+        && request.category_id.is_none()
+        && request.archived.is_none()
+        && request.paused.is_none();
+
+    sets_custom && sets_dates && no_other_changes
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -462,19 +504,40 @@ async fn update_task(
         }
     };
 
+    // Parse request and get existing task BEFORE permission check
+    // (needed to check if this is a valid "Set Date" request in Solo Mode)
+    let request = body.into_inner();
+    let old_task = task_service::get_task(&state.db, &task_id).await.ok().flatten();
+
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
+    let can_manage = role
+        .as_ref()
+        .map(|r| solo_mode::can_manage_in_context(r, &settings))
+        .unwrap_or(false);
+
+    // In Solo Mode, allow only "Set Date" operation for unscheduled tasks
+    if settings.solo_mode && !can_manage {
+        if let Some(ref task) = old_task {
+            if !is_solo_mode_set_date_request(&request, task) {
+                return Ok(HttpResponse::Forbidden().json(ApiError {
+                    error: "forbidden".to_string(),
+                    message: "In Solo Mode, you can only set a date for unscheduled tasks".to_string(),
+                }));
+            }
+            // Valid "Set Date" request - allow it to proceed
+        } else {
+            return Ok(HttpResponse::NotFound().json(ApiError {
+                error: "not_found".to_string(),
+                message: "Task not found".to_string(),
+            }));
+        }
+    } else if !can_manage {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to update tasks".to_string(),
         }));
     }
-
-    let request = body.into_inner();
-
-    // Get the old task to check if assignment changed
-    let old_task = task_service::get_task(&state.db, &task_id).await.ok().flatten();
 
     // Validate assignment in Hierarchy mode - only if it's actually changing
     if let Some(ref assigned_id) = request.assigned_user_id {
@@ -2270,5 +2333,185 @@ async fn deny_suggestion(
                 message: "Failed to deny suggestion".to_string(),
             }))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use shared::{HabitType, TimePeriod};
+
+    fn create_test_task(recurrence_type: RecurrenceType, recurrence_value: Option<RecurrenceValue>) -> Task {
+        Task {
+            id: Uuid::new_v4(),
+            household_id: Uuid::new_v4(),
+            title: "Test Task".to_string(),
+            description: "".to_string(),
+            recurrence_type,
+            recurrence_value,
+            assigned_user_id: None,
+            target_count: 1,
+            time_period: Some(TimePeriod::Day),
+            allow_exceed_target: false,
+            requires_review: false,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: HabitType::Good,
+            category_id: None,
+            category_name: None,
+            suggestion: None,
+            suggested_by: None,
+            archived: false,
+            paused: false,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn create_set_date_request(date: chrono::NaiveDate) -> UpdateTaskRequest {
+        UpdateTaskRequest {
+            title: None,
+            description: None,
+            recurrence_type: Some(RecurrenceType::Custom),
+            recurrence_value: Some(RecurrenceValue::CustomDates(vec![date])),
+            assigned_user_id: None,
+            target_count: None,
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            archived: None,
+            paused: None,
+        }
+    }
+
+    #[test]
+    fn test_solo_mode_set_date_valid_unscheduled_task() {
+        // Unscheduled task (OneTime with no recurrence_value)
+        let task = create_test_task(RecurrenceType::OneTime, None);
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 3, 15).unwrap();
+        let request = create_set_date_request(date);
+
+        assert!(is_solo_mode_set_date_request(&request, &task));
+    }
+
+    #[test]
+    fn test_solo_mode_set_date_rejected_for_scheduled_task() {
+        // Already scheduled task (Custom with dates)
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 3, 10).unwrap();
+        let task = create_test_task(
+            RecurrenceType::Custom,
+            Some(RecurrenceValue::CustomDates(vec![date])),
+        );
+        let new_date = chrono::NaiveDate::from_ymd_opt(2026, 3, 15).unwrap();
+        let request = create_set_date_request(new_date);
+
+        // Should be rejected - task already has a schedule
+        assert!(!is_solo_mode_set_date_request(&request, &task));
+    }
+
+    #[test]
+    fn test_solo_mode_set_date_rejected_for_daily_task() {
+        // Daily task
+        let task = create_test_task(RecurrenceType::Daily, None);
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 3, 15).unwrap();
+        let request = create_set_date_request(date);
+
+        // Should be rejected - daily tasks have a schedule
+        assert!(!is_solo_mode_set_date_request(&request, &task));
+    }
+
+    #[test]
+    fn test_solo_mode_set_date_rejected_with_other_fields() {
+        // Unscheduled task
+        let task = create_test_task(RecurrenceType::OneTime, None);
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 3, 15).unwrap();
+
+        // Request that also tries to change title
+        let request = UpdateTaskRequest {
+            title: Some("New Title".to_string()),
+            description: None,
+            recurrence_type: Some(RecurrenceType::Custom),
+            recurrence_value: Some(RecurrenceValue::CustomDates(vec![date])),
+            assigned_user_id: None,
+            target_count: None,
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            archived: None,
+            paused: None,
+        };
+
+        // Should be rejected - trying to change other fields
+        assert!(!is_solo_mode_set_date_request(&request, &task));
+    }
+
+    #[test]
+    fn test_solo_mode_set_date_rejected_without_custom_type() {
+        // Unscheduled task
+        let task = create_test_task(RecurrenceType::OneTime, None);
+
+        // Request that sets recurrence_value but not recurrence_type to Custom
+        let request = UpdateTaskRequest {
+            title: None,
+            description: None,
+            recurrence_type: Some(RecurrenceType::Daily),
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: None,
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            archived: None,
+            paused: None,
+        };
+
+        // Should be rejected - not setting to Custom type
+        assert!(!is_solo_mode_set_date_request(&request, &task));
+    }
+
+    #[test]
+    fn test_solo_mode_set_date_rejected_without_dates() {
+        // Unscheduled task
+        let task = create_test_task(RecurrenceType::OneTime, None);
+
+        // Request that sets Custom type but no dates
+        let request = UpdateTaskRequest {
+            title: None,
+            description: None,
+            recurrence_type: Some(RecurrenceType::Custom),
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: None,
+            time_period: None,
+            allow_exceed_target: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            archived: None,
+            paused: None,
+        };
+
+        // Should be rejected - no dates provided
+        assert!(!is_solo_mode_set_date_request(&request, &task));
     }
 }

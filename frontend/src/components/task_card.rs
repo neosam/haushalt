@@ -421,6 +421,8 @@ pub fn GroupedTaskList(
     #[prop(optional, into)] on_click_title: Option<Callback<(String, String)>>,
     #[prop(optional, into)] on_edit: Option<Callback<(String, String)>>,
     #[prop(optional, into)] on_set_date: Option<Callback<(String, String)>>,
+    /// When true, hides the Edit action (Solo Mode - only Set Date allowed)
+    #[prop(default = false)] solo_mode: bool,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -507,16 +509,18 @@ pub fn GroupedTaskList(
                                                         let mut ctx_actions: Vec<ContextMenuAction> = Vec::new();
                                                         let is_no_schedule = twh.task.next_due_date.is_none();
 
-                                                        // Edit action
-                                                        if let (Some(edit_cb), Some(ref hid)) = (on_edit, &hh_id) {
-                                                            let edit_label = i18n_stored.get_value().t("task_card.edit");
-                                                            let tid = task_id.clone();
-                                                            let hid_clone = hid.clone();
-                                                            ctx_actions.push(ContextMenuAction {
-                                                                label: edit_label,
-                                                                on_click: Callback::new(move |_| edit_cb.call((tid.clone(), hid_clone.clone()))),
-                                                                danger: false,
-                                                            });
+                                                        // Edit action (hidden in Solo Mode)
+                                                        if !solo_mode {
+                                                            if let (Some(edit_cb), Some(ref hid)) = (on_edit, &hh_id) {
+                                                                let edit_label = i18n_stored.get_value().t("task_card.edit");
+                                                                let tid = task_id.clone();
+                                                                let hid_clone = hid.clone();
+                                                                ctx_actions.push(ContextMenuAction {
+                                                                    label: edit_label,
+                                                                    on_click: Callback::new(move |_| edit_cb.call((tid.clone(), hid_clone.clone()))),
+                                                                    danger: false,
+                                                                });
+                                                            }
                                                         }
 
                                                         // Set date action (only for tasks without schedule)
