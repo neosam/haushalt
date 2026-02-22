@@ -1,5 +1,12 @@
+use chrono::Utc;
 use leptos::*;
 use shared::{PeriodDisplay, PeriodStatus};
+
+/// Check if today already has a completed/failed/skipped entry in periods
+fn today_has_entry(periods: &[PeriodDisplay]) -> bool {
+    let today = Utc::now().date_naive();
+    periods.iter().any(|p| p.period_start == today)
+}
 
 /// Displays recent period results as a habit tracker row
 /// Shows icons: ✓ completed, ✗ failed, - skipped
@@ -16,7 +23,10 @@ pub fn PeriodTracker(
     #[prop(default = false)]
     is_bad_habit: bool,
 ) -> impl IntoView {
-    if periods.is_empty() && !show_in_progress {
+    // Don't show in-progress if today already has an entry
+    let effective_show_in_progress = show_in_progress && !today_has_entry(&periods);
+
+    if periods.is_empty() && !effective_show_in_progress {
         return view! {}.into_view();
     }
 
@@ -47,7 +57,7 @@ pub fn PeriodTracker(
                     </span>
                 }
             }).collect_view()}
-            {show_in_progress.then(|| view! {
+            {effective_show_in_progress.then(|| view! {
                 <span class="period-icon period-in-progress" title="Heute">
                     "○"
                 </span>
@@ -66,7 +76,10 @@ pub fn PeriodTrackerCompact(
     #[prop(default = false)]
     is_bad_habit: bool,
 ) -> impl IntoView {
-    if periods.is_empty() && !show_in_progress {
+    // Don't show in-progress if today already has an entry
+    let effective_show_in_progress = show_in_progress && !today_has_entry(&periods);
+
+    if periods.is_empty() && !effective_show_in_progress {
         return view! {}.into_view();
     }
 
@@ -97,11 +110,59 @@ pub fn PeriodTrackerCompact(
                     </span>
                 }
             }).collect_view()}
-            {show_in_progress.then(|| view! {
+            {effective_show_in_progress.then(|| view! {
                 <span class="period-icon period-in-progress" title="Heute">
                     "○"
                 </span>
             })}
         </div>
     }.into_view()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_today_has_entry_returns_true_when_today_exists() {
+        let today = Utc::now().date_naive();
+        let periods = vec![PeriodDisplay {
+            period_start: today,
+            status: PeriodStatus::Completed,
+        }];
+        assert!(today_has_entry(&periods));
+    }
+
+    #[test]
+    fn test_today_has_entry_returns_false_when_today_missing() {
+        let yesterday = Utc::now().date_naive() - chrono::Duration::days(1);
+        let periods = vec![PeriodDisplay {
+            period_start: yesterday,
+            status: PeriodStatus::Completed,
+        }];
+        assert!(!today_has_entry(&periods));
+    }
+
+    #[test]
+    fn test_today_has_entry_returns_false_for_empty_periods() {
+        let periods: Vec<PeriodDisplay> = vec![];
+        assert!(!today_has_entry(&periods));
+    }
+
+    #[test]
+    fn test_today_has_entry_with_multiple_periods() {
+        let today = Utc::now().date_naive();
+        let yesterday = today - chrono::Duration::days(1);
+        let periods = vec![
+            PeriodDisplay {
+                period_start: yesterday,
+                status: PeriodStatus::Completed,
+            },
+            PeriodDisplay {
+                period_start: today,
+                status: PeriodStatus::Failed,
+            },
+        ];
+        assert!(today_has_entry(&periods));
+    }
 }

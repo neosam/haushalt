@@ -167,7 +167,8 @@ streak: completed +1, skipped continue, failed break
 - Visual indicators: ✓ completed, ✗ failed, - skipped
 - Icons displayed horizontally in a row (oldest left, newest right)
 - Hover/tooltip shows the date of each period
-- Today's period shown as "in progress" (○ or similar)
+- Today's period shown as "in progress" (○) only if today has no entry yet
+  - Once today is completed/failed/skipped, the ○ indicator is hidden
 - Display in **both** list views (Dashboard, Household Overview, Task List) and detail view
 - Statistics show completed/failed/skipped counts
 - **Bad habits: colors are inverted** (completed = red/bad, failed = green/good)
@@ -245,11 +246,19 @@ The background job respects each household's timezone setting:
 | Component | File | Description |
 |-----------|------|-------------|
 | Shared Types | `shared/src/types.rs` | `PeriodDisplay` struct, `recent_periods` added to `TaskWithStatus` and `TaskWithDetails` |
-| Period Tracker | `frontend/src/components/period_tracker.rs` | `PeriodTracker` and `PeriodTrackerCompact` components |
+| Period Tracker | `frontend/src/components/period_tracker.rs` | `PeriodTracker` and `PeriodTrackerCompact` components with `today_has_entry()` check |
 | Task Card | `frontend/src/components/task_card.rs` | Displays compact period tracker in list views |
 | Task Detail | `frontend/src/components/task_detail_modal.rs` | Displays period tracker in detail view |
 | Styles | `frontend/styles.css` | Period tracker CSS styles |
 | Translations | `frontend/src/translations/*.json` | "Recent Periods" / "Letzte Perioden" |
+
+### In-Progress Indicator Logic
+
+The "in progress" indicator (○) is only shown when:
+1. `show_in_progress` prop is true, AND
+2. Today does not already have an entry in the periods list
+
+This is implemented via `today_has_entry()` helper that checks if any period's `period_start` matches today's date (UTC).
 
 ### Streak Calculation (Implemented)
 
