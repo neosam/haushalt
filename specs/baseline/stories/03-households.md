@@ -205,15 +205,24 @@
 ### Acceptance Criteria
 - Shows household name and navigation tabs
 - Shows active announcement banner (if any)
-- Shows today's tasks grouped by household
-- Shows leaderboard section
+- Shows leaderboard section (right column)
+
+#### Pending Items Section (left column, ABOVE tasks)
+- **Pending items are displayed ABOVE the task list** to ensure visibility
 - Shows Pending Reviews section (task completions awaiting approval)
   - Only visible to managers (Owner/Admin)
   - **Hidden when there are no pending reviews**
+- Shows Pending Suggestions section (task suggestions awaiting approval)
+  - Only visible to managers (Owner/Admin)
+  - **Hidden when there are no pending suggestions**
 - Shows Pending Confirmations section (reward redemptions and punishment completions awaiting confirmation)
   - Only visible to managers (Owner/Admin)
   - **Hidden when there are no pending confirmations**
   - **Hidden when rewards/punishments features are disabled** (treats "feature not enabled" errors as empty)
+
+#### Task List Section (left column, BELOW pending items)
+- Shows today's tasks grouped by status
+- Assignment filter toggle available
 
 ---
 

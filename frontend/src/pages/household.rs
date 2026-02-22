@@ -590,6 +590,62 @@ pub fn HouseholdPage() -> impl IntoView {
 
                     <div class="grid grid-2">
                         <div>
+                            // Pending Reviews Section (only for managers/owners) - displayed ABOVE tasks for visibility
+                            <Show when=move || current_user_can_manage.get() fallback=|| ()>
+                                {
+                                    let hid = household_id();
+                                    let hid2 = household_id();
+                                    view! {
+                                        <div style="margin-bottom: 1rem;">
+                                            <PendingReviews
+                                                household_id=hid
+                                                on_review_complete=move |_| {
+                                                    // Refresh tasks and leaderboard after review
+                                                    let hid = household_id();
+                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                        if let Ok(t) = ApiClient::get_all_tasks_with_status(&hid).await {
+                                                            tasks.set(t);
+                                                        }
+                                                        if let Ok(l) = ApiClient::get_leaderboard(&hid).await {
+                                                            leaderboard.set(l);
+                                                        }
+                                                    });
+                                                }
+                                            />
+                                        </div>
+                                        <div style="margin-bottom: 1rem;">
+                                            <PendingSuggestions
+                                                household_id=hid2.clone()
+                                                members=members.get()
+                                                on_suggestion_handled=move |_| {
+                                                    // Refresh tasks after suggestion is approved
+                                                    let hid = household_id();
+                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                        if let Ok(t) = ApiClient::get_all_tasks_with_status(&hid).await {
+                                                            tasks.set(t);
+                                                        }
+                                                    });
+                                                }
+                                            />
+                                        </div>
+                                        <div style="margin-bottom: 1rem;">
+                                            <PendingConfirmations
+                                                household_id=hid2
+                                                on_confirmation_complete=move |_| {
+                                                    // Refresh leaderboard after confirmation
+                                                    let hid = household_id();
+                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                        if let Ok(l) = ApiClient::get_leaderboard(&hid).await {
+                                                            leaderboard.set(l);
+                                                        }
+                                                    });
+                                                }
+                                            />
+                                        </div>
+                                    }
+                                }
+                            </Show>
+
                             // Assignment filter
                             <div class="filter-controls">
                                 <button
@@ -628,62 +684,6 @@ pub fn HouseholdPage() -> impl IntoView {
                                     .collect();
                                 view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date /> }
                             }
-
-                            // Pending Reviews Section (only for managers/owners)
-                            <Show when=move || current_user_can_manage.get() fallback=|| ()>
-                                {
-                                    let hid = id.clone();
-                                    let hid2 = id.clone();
-                                    view! {
-                                        <div style="margin-top: 1.5rem;">
-                                            <PendingReviews
-                                                household_id=hid
-                                                on_review_complete=move |_| {
-                                                    // Refresh tasks and leaderboard after review
-                                                    let hid = household_id();
-                                                    wasm_bindgen_futures::spawn_local(async move {
-                                                        if let Ok(t) = ApiClient::get_all_tasks_with_status(&hid).await {
-                                                            tasks.set(t);
-                                                        }
-                                                        if let Ok(l) = ApiClient::get_leaderboard(&hid).await {
-                                                            leaderboard.set(l);
-                                                        }
-                                                    });
-                                                }
-                                            />
-                                        </div>
-                                        <div style="margin-top: 1rem;">
-                                            <PendingSuggestions
-                                                household_id=hid2.clone()
-                                                members=members.get()
-                                                on_suggestion_handled=move |_| {
-                                                    // Refresh tasks after suggestion is approved
-                                                    let hid = household_id();
-                                                    wasm_bindgen_futures::spawn_local(async move {
-                                                        if let Ok(t) = ApiClient::get_all_tasks_with_status(&hid).await {
-                                                            tasks.set(t);
-                                                        }
-                                                    });
-                                                }
-                                            />
-                                        </div>
-                                        <div style="margin-top: 1rem;">
-                                            <PendingConfirmations
-                                                household_id=hid2
-                                                on_confirmation_complete=move |_| {
-                                                    // Refresh leaderboard after confirmation
-                                                    let hid = household_id();
-                                                    wasm_bindgen_futures::spawn_local(async move {
-                                                        if let Ok(l) = ApiClient::get_leaderboard(&hid).await {
-                                                            leaderboard.set(l);
-                                                        }
-                                                    });
-                                                }
-                                            />
-                                        </div>
-                                    }
-                                }
-                            </Show>
                         </div>
 
                         <div>
