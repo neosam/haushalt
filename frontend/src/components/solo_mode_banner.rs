@@ -35,10 +35,12 @@ pub fn SoloModeBanner(
         }
     });
 
-    // Set up interval to update countdown
+    // Set up interval to update countdown (with proper cleanup)
     #[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::prelude::*;
+        use std::cell::RefCell;
+        use std::rc::Rc;
 
         let update_countdown = move || {
             let s = settings.get();
@@ -51,14 +53,28 @@ pub fn SoloModeBanner(
             }
         };
 
-        let closure = Closure::wrap(Box::new(update_countdown) as Box<dyn Fn()>);
-        let _ = web_sys::window()
-            .expect("no window")
+        let closure: Closure<dyn Fn()> = Closure::wrap(Box::new(update_countdown));
+        let window = web_sys::window().expect("no window");
+        let interval_id = window
             .set_interval_with_callback_and_timeout_and_arguments_0(
                 closure.as_ref().unchecked_ref(),
                 1000,
-            );
-        closure.forget();
+            )
+            .expect("failed to set interval");
+
+        // Store closure in Rc<RefCell> so on_cleanup can take ownership
+        let closure_holder: Rc<RefCell<Option<Closure<dyn Fn()>>>> =
+            Rc::new(RefCell::new(Some(closure)));
+        let cleanup_holder = closure_holder.clone();
+
+        // Clean up interval when component is unmounted
+        on_cleanup(move || {
+            if let Some(window) = web_sys::window() {
+                window.clear_interval_with_handle(interval_id);
+            }
+            // Drop the closure to free memory
+            cleanup_holder.borrow_mut().take();
+        });
     }
 
     let request_exit = move |_| {
