@@ -3,7 +3,7 @@ use shared::{ActivityType, ApiError, ApiSuccess, CreateRewardRequest, UpdateRewa
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{activity_logs, household_settings, households as household_service, rewards as reward_service};
+use crate::services::{activity_logs, household_settings, households as household_service, rewards as reward_service, solo_mode};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -141,7 +141,7 @@ async fn create_reward(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to create rewards".to_string(),
@@ -320,7 +320,7 @@ async fn update_reward(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to update rewards".to_string(),
@@ -397,7 +397,7 @@ async fn delete_reward(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to delete rewards".to_string(),
@@ -596,7 +596,7 @@ async fn assign_reward(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &current_user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to assign rewards".to_string(),
@@ -710,7 +710,7 @@ async fn unassign_reward(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &current_user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to unassign rewards".to_string(),
@@ -912,7 +912,7 @@ async fn delete_user_reward(
 
     // Only users with manage permission can delete user rewards
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to remove reward assignments".to_string(),
@@ -1072,7 +1072,7 @@ async fn list_pending_redemptions(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to view pending confirmations".to_string(),
@@ -1149,7 +1149,7 @@ async fn approve_redemption(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to approve redemptions".to_string(),
@@ -1245,7 +1245,7 @@ async fn reject_redemption(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to reject redemptions".to_string(),
@@ -1428,7 +1428,7 @@ async fn add_reward_option(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to manage reward options".to_string(),
@@ -1514,7 +1514,7 @@ async fn remove_reward_option(
     }
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to manage reward options".to_string(),

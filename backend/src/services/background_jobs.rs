@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::models::{MembershipRow, TaskRow};
 use crate::services::{
     activity_logs, household_settings, period_results, points as points_service, scheduler,
-    task_consequences, tasks as tasks_service,
+    solo_mode, task_consequences, tasks as tasks_service,
 };
 use shared::{ActivityType, HouseholdSettings, PeriodStatus, RecurrenceType, RecurrenceValue};
 
@@ -153,6 +153,23 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>, config: JobConfig) {
             }
             Err(e) => {
                 log::error!("Error processing period finalization: {}", e);
+            }
+        }
+
+        // Process Solo Mode expiration (deactivate after 48h cooldown)
+        match solo_mode::check_and_deactivate_expired_solo_modes(&pool).await {
+            Ok(deactivated) => {
+                if !deactivated.is_empty() {
+                    log::info!(
+                        "Solo Mode expiration check complete: deactivated {} households",
+                        deactivated.len()
+                    );
+                } else {
+                    log::debug!("Solo Mode expiration check complete: no expired solo modes");
+                }
+            }
+            Err(e) => {
+                log::error!("Error processing Solo Mode expiration: {}", e);
             }
         }
     }
@@ -695,6 +712,9 @@ mod tests {
                 week_start_day INTEGER NOT NULL DEFAULT 0,
                 default_points_reward INTEGER,
                 default_points_penalty INTEGER,
+                solo_mode BOOLEAN NOT NULL DEFAULT 0,
+                solo_mode_exit_requested_at DATETIME,
+                solo_mode_previous_hierarchy_type TEXT,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             "#,

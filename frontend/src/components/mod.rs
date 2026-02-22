@@ -24,6 +24,7 @@ pub mod journal_entry_card;
 pub mod journal_modal;
 pub mod announcement_banner;
 pub mod announcement_modal;
+pub mod solo_mode_banner;
 pub mod category_modal;
 pub mod context_menu;
 pub mod household_picker_modal;

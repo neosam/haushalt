@@ -99,7 +99,9 @@ pub fn PendingSuggestions(
             let deny_suggestion = deny_suggestion.clone();
             move || {
             // Hide entire component when not loading and empty (no pending suggestions)
-            if !loading.get() && suggestions.get().is_empty() && error.get().is_none() {
+            // Also hide on "forbidden" errors (e.g., Solo Mode active)
+            let is_forbidden = error.get().as_ref().is_some_and(|e| e.to_lowercase().contains("forbidden") || e.contains("permission"));
+            if !loading.get() && (suggestions.get().is_empty() || is_forbidden) && (error.get().is_none() || is_forbidden) {
                 return ().into_view();
             }
 

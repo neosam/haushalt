@@ -676,5 +676,22 @@
   "statistics.no_member_data": "Keine Mitgliederdaten für diesen Zeitraum.",
   "statistics.completed": "Erledigt",
   "statistics.task_breakdown": "Aufgabenaufschlüsselung",
-  "statistics.tasks": "Aufgaben"
+  "statistics.tasks": "Aufgaben",
+
+  "solo_mode.section_title": "Solo-Modus",
+  "solo_mode.active": "Solo-Modus aktiv",
+  "solo_mode.settings_locked": "Einstellungen sind gesperrt, solange der Solo-Modus aktiv ist.",
+  "solo_mode.exit_via_banner": "Um den Solo-Modus zu beenden, nutze das Banner oben auf der Seite, um einen Ausstieg zu beantragen.",
+  "solo_mode.description": "Solo-Modus ist eine Selbstdisziplin-Funktion, bei der alle Haushaltsmitglieder als normale Mitglieder mit eingeschränkten Berechtigungen behandelt werden.",
+  "solo_mode.feature_1": "Alle Benutzer werden als Mitglieder behandelt (keine Admins oder Eigentümer)",
+  "solo_mode.feature_2": "Du kannst nur Aufgaben erledigen oder neue vorschlagen",
+  "solo_mode.feature_3": "Vorgeschlagene Aufgaben werden automatisch mit Haushalts-Standards genehmigt",
+  "solo_mode.feature_4": "48-Stunden Abkühlzeit erforderlich zum Beenden",
+  "solo_mode.activate": "Solo-Modus aktivieren",
+  "solo_mode.confirm_title": "Solo-Modus aktivieren?",
+  "solo_mode.confirm_message": "Bist du sicher, dass du den Solo-Modus aktivieren möchtest? Alle Mitglieder verlieren ihre Verwaltungsrechte.",
+  "solo_mode.confirm_cooldown": "Du musst 48 Stunden warten, um den Solo-Modus nach der Aktivierung zu beenden.",
+  "solo_mode.exit_in": "Beendung in",
+  "solo_mode.request_exit": "Ausstieg beantragen",
+  "solo_mode.cancel_exit": "Ausstieg abbrechen"
 }

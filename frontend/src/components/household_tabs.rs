@@ -1,6 +1,7 @@
 use leptos::*;
 use shared::HouseholdSettings;
 
+use super::solo_mode_banner::SoloModeBanner;
 use crate::i18n::use_i18n;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -119,6 +120,9 @@ pub fn HouseholdTabs(
                 None
             }
         }}
+
+        // Solo Mode banner - shows when solo mode is active
+        <SoloModeBanner household_id=household_id settings=settings />
 
         // Tab navigation - reactive to settings and active_tab changes
         <nav class="household-tabs">

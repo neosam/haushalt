@@ -5,6 +5,7 @@ use shared::{DefaultPunishmentEntry, DefaultRewardEntry, HierarchyType, Househol
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
+use crate::components::modal::Modal;
 use crate::components::{
     Alert, AlertVariant, Button, ButtonVariant, Card, Divider, SectionHeader,
 };
@@ -33,6 +34,10 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
     let household = create_rw_signal(Option::<Household>::None);
     let household_name = create_rw_signal(String::new());
     let name_saving = create_rw_signal(false);
+
+    // Solo Mode state
+    let solo_mode_confirm_open = create_rw_signal(false);
+    let solo_mode_activating = create_rw_signal(false);
 
     // Form state
     let dark_mode = create_rw_signal(false);
@@ -513,6 +518,104 @@ pub fn HouseholdSettingsPage() -> impl IntoView {
                                     <small class="form-hint">{i18n_stored.get_value().t("settings.vacation_end_hint")}</small>
                                 </div>
                             </div>
+                        </Show>
+
+                        <Divider />
+
+                        <SectionHeader>{i18n_stored.get_value().t("solo_mode.section_title")}</SectionHeader>
+
+                        {move || {
+                            let s = settings.get();
+                            if let Some(ref settings_val) = s {
+                                if settings_val.solo_mode {
+                                    // Solo Mode is active - show info
+                                    view! {
+                                        <div class="solo-mode-info">
+                                            <Alert variant=AlertVariant::Warning>
+                                                <strong>{i18n_stored.get_value().t("solo_mode.active")}</strong>
+                                                <p style="margin: 0.5rem 0 0 0;">
+                                                    {i18n_stored.get_value().t("solo_mode.settings_locked")}
+                                                </p>
+                                                <p style="margin: 0.5rem 0 0 0;">
+                                                    {i18n_stored.get_value().t("solo_mode.exit_via_banner")}
+                                                </p>
+                                            </Alert>
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    // Solo Mode is not active - show activation button
+                                    view! {
+                                        <div class="form-group">
+                                            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.875rem;">
+                                                {i18n_stored.get_value().t("solo_mode.description")}
+                                            </p>
+                                            <ul style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1rem; padding-left: 1.5rem;">
+                                                <li>{i18n_stored.get_value().t("solo_mode.feature_1")}</li>
+                                                <li>{i18n_stored.get_value().t("solo_mode.feature_2")}</li>
+                                                <li>{i18n_stored.get_value().t("solo_mode.feature_3")}</li>
+                                                <li>{i18n_stored.get_value().t("solo_mode.feature_4")}</li>
+                                            </ul>
+                                            <Button
+                                                variant=ButtonVariant::Danger
+                                                on_click=Callback::new(move |_| solo_mode_confirm_open.set(true))
+                                            >
+                                                {i18n_stored.get_value().t("solo_mode.activate")}
+                                            </Button>
+                                        </div>
+                                    }.into_view()
+                                }
+                            } else {
+                                ().into_view()
+                            }
+                        }}
+
+                        // Solo Mode confirmation modal
+                        <Show when=move || solo_mode_confirm_open.get() fallback=|| ()>
+                            <Modal
+                                on_close=move |_| solo_mode_confirm_open.set(false)
+                                title=i18n_stored.get_value().t("solo_mode.confirm_title")
+                            >
+                                <p>{i18n_stored.get_value().t("solo_mode.confirm_message")}</p>
+                                <p style="margin-top: 0.5rem; color: var(--text-muted);">
+                                    {i18n_stored.get_value().t("solo_mode.confirm_cooldown")}
+                                </p>
+                                <div style="display: flex; gap: 0.5rem; margin-top: 1rem; justify-content: flex-end;">
+                                    <Button
+                                        variant=ButtonVariant::Secondary
+                                        on_click=Callback::new(move |_| solo_mode_confirm_open.set(false))
+                                    >
+                                        {i18n_stored.get_value().t("common.cancel")}
+                                    </Button>
+                                    <Button
+                                        variant=ButtonVariant::Danger
+                                        disabled=MaybeSignal::derive(move || solo_mode_activating.get())
+                                        on_click=Callback::new(move |_| {
+                                            let id = household_id();
+                                            solo_mode_activating.set(true);
+                                            error.set(None);
+
+                                            wasm_bindgen_futures::spawn_local(async move {
+                                                match ApiClient::activate_solo_mode(&id).await {
+                                                    Ok(new_settings) => {
+                                                        settings.set(Some(new_settings));
+                                                        solo_mode_confirm_open.set(false);
+                                                    }
+                                                    Err(e) => {
+                                                        error.set(Some(e));
+                                                    }
+                                                }
+                                                solo_mode_activating.set(false);
+                                            });
+                                        })
+                                    >
+                                        {move || if solo_mode_activating.get() {
+                                            i18n_stored.get_value().t("common.loading")
+                                        } else {
+                                            i18n_stored.get_value().t("solo_mode.activate")
+                                        }}
+                                    </Button>
+                                </div>
+                            </Modal>
                         </Show>
 
                         <Divider />

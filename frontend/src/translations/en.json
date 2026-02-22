@@ -676,5 +676,22 @@
   "statistics.no_member_data": "No member data for this period.",
   "statistics.completed": "Completed",
   "statistics.task_breakdown": "Task Breakdown",
-  "statistics.tasks": "tasks"
+  "statistics.tasks": "tasks",
+
+  "solo_mode.section_title": "Solo Mode",
+  "solo_mode.active": "Solo Mode Active",
+  "solo_mode.settings_locked": "Settings are locked while Solo Mode is active.",
+  "solo_mode.exit_via_banner": "To exit Solo Mode, use the banner at the top of the page to request an exit.",
+  "solo_mode.description": "Solo Mode is a self-discipline feature where all household members are treated as regular members with restricted permissions.",
+  "solo_mode.feature_1": "All users are treated as Members (no Admins or Owners)",
+  "solo_mode.feature_2": "You can only complete tasks or suggest new ones",
+  "solo_mode.feature_3": "Suggested tasks are auto-approved with household defaults",
+  "solo_mode.feature_4": "48-hour cooldown period required to exit",
+  "solo_mode.activate": "Activate Solo Mode",
+  "solo_mode.confirm_title": "Activate Solo Mode?",
+  "solo_mode.confirm_message": "Are you sure you want to activate Solo Mode? All members will lose their management permissions.",
+  "solo_mode.confirm_cooldown": "You will need to wait 48 hours to exit Solo Mode after activation.",
+  "solo_mode.exit_in": "Exiting in",
+  "solo_mode.request_exit": "Request Exit",
+  "solo_mode.cancel_exit": "Cancel Exit"
 }

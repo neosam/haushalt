@@ -8,6 +8,7 @@ use crate::services::{
     activity_logs,
     household_settings,
     households as household_service,
+    solo_mode,
     task_consequences,
     tasks as task_service,
 };
@@ -146,13 +147,23 @@ async fn create_task(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    let can_manage = role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false);
+    let can_manage = role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false);
 
-    let request = body.into_inner();
+    let mut request = body.into_inner();
     let is_suggestion = request.is_suggestion.unwrap_or(false);
 
+    // Solo Mode special handling
+    let solo_mode_active = settings.solo_mode;
+    if solo_mode_active {
+        // In Solo Mode, all tasks are treated as suggestions and auto-approved
+        // Override points with household defaults
+        request.points_reward = settings.default_points_reward;
+        request.points_penalty = settings.default_points_penalty;
+    }
+
     // If user can't manage and this is not a suggestion, deny access
-    if !can_manage && !is_suggestion {
+    // (Solo Mode makes can_manage false for everyone, so all tasks become suggestions)
+    if !can_manage && !is_suggestion && !solo_mode_active {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to create tasks".to_string(),
@@ -160,7 +171,8 @@ async fn create_task(
     }
 
     // If user is trying to suggest but suggestions are disabled, deny access
-    if !can_manage && is_suggestion && !settings.allow_task_suggestions {
+    // (Solo Mode bypasses this check since suggestions are auto-approved)
+    if !can_manage && is_suggestion && !settings.allow_task_suggestions && !solo_mode_active {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "Task suggestions are disabled for this household".to_string(),
@@ -190,14 +202,45 @@ async fn create_task(
     }
 
     // Determine if this should be created as a suggestion
-    let suggested_by = if is_suggestion && !can_manage {
+    // In Solo Mode, all tasks are created as suggestions by the user
+    let suggested_by = if solo_mode_active || (is_suggestion && !can_manage) {
         Some(&user_id)
     } else {
         None
     };
 
     match task_service::create_task(&state.db, &household_id, &request, suggested_by).await {
-        Ok(task) => {
+        Ok(mut task) => {
+            // Solo Mode: Auto-approve the suggestion and apply household defaults
+            if solo_mode_active {
+                // Auto-approve the task
+                if let Ok(approved_task) = task_service::approve_suggestion(&state.db, &task.id).await {
+                    task = approved_task;
+                }
+
+                // Apply household default rewards
+                for default_reward in &settings.default_rewards {
+                    let _ = task_consequences::add_task_reward(
+                        &state.db,
+                        &task.id,
+                        &default_reward.reward.id,
+                        default_reward.amount,
+                    )
+                    .await;
+                }
+
+                // Apply household default punishments
+                for default_punishment in &settings.default_punishments {
+                    let _ = task_consequences::add_task_punishment(
+                        &state.db,
+                        &task.id,
+                        &default_punishment.punishment.id,
+                        default_punishment.amount,
+                    )
+                    .await;
+                }
+            }
+
             // Log activity
             let details = serde_json::json!({ "title": task.title }).to_string();
             let _ = activity_logs::log_activity(
@@ -421,7 +464,7 @@ async fn update_task(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to update tasks".to_string(),
@@ -547,7 +590,7 @@ async fn delete_task(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to delete tasks".to_string(),
@@ -681,7 +724,7 @@ async fn archive_task(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to archive tasks".to_string(),
@@ -772,7 +815,7 @@ async fn unarchive_task(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to unarchive tasks".to_string(),
@@ -863,7 +906,7 @@ async fn pause_task(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to pause tasks".to_string(),
@@ -954,7 +997,7 @@ async fn unpause_task(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to unpause tasks".to_string(),
@@ -1039,13 +1082,26 @@ async fn complete_task(
         }));
     }
 
+    // Get settings to check for Solo Mode
+    let settings = household_settings::get_or_create_settings(&state.db, &household_id)
+        .await
+        .unwrap_or_default();
+
     // Get the task details for logging
     let task = task_service::get_task(&state.db, &task_id).await.ok().flatten();
     let details = task.as_ref()
         .map(|t| serde_json::json!({ "title": t.title }).to_string());
 
     match task_service::complete_task(&state.db, &task_id, &user_id, &household_id).await {
-        Ok(completion) => {
+        Ok(mut completion) => {
+            // In Solo Mode, auto-approve completions that would otherwise be pending
+            // (since nobody can approve them in Solo Mode)
+            if settings.solo_mode && completion.status == shared::CompletionStatus::Pending {
+                if let Ok(approved) = task_service::approve_completion(&state.db, &completion.id).await {
+                    completion = approved;
+                }
+            }
+
             // Log activity
             let _ = activity_logs::log_activity(
                 &state.db,
@@ -1386,7 +1442,7 @@ async fn add_task_reward(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to link rewards to tasks".to_string(),
@@ -1472,7 +1528,7 @@ async fn remove_task_reward(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to unlink rewards from tasks".to_string(),
@@ -1617,7 +1673,7 @@ async fn add_task_punishment(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to link punishments to tasks".to_string(),
@@ -1703,7 +1759,7 @@ async fn remove_task_punishment(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to unlink punishments from tasks".to_string(),
@@ -1771,7 +1827,7 @@ async fn get_pending_reviews(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to view pending reviews".to_string(),
@@ -1841,7 +1897,7 @@ async fn approve_completion(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to approve task completions".to_string(),
@@ -1941,7 +1997,7 @@ async fn reject_completion(
 
     // Check if user can manage tasks based on hierarchy type
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to reject task completions".to_string(),
@@ -2033,7 +2089,7 @@ async fn list_suggestions(
     };
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to view suggestions".to_string(),
@@ -2102,7 +2158,7 @@ async fn approve_suggestion(
     };
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to approve suggestions".to_string(),
@@ -2192,7 +2248,7 @@ async fn deny_suggestion(
     };
 
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
-    if !role.as_ref().map(|r| settings.hierarchy_type.can_manage(r)).unwrap_or(false) {
+    if !role.as_ref().map(|r| solo_mode::can_manage_in_context(r, &settings)).unwrap_or(false) {
         return Ok(HttpResponse::Forbidden().json(ApiError {
             error: "forbidden".to_string(),
             message: "You do not have permission to deny suggestions".to_string(),

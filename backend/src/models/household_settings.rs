@@ -25,6 +25,9 @@ pub struct HouseholdSettingsRow {
     pub week_start_day: i32,
     pub default_points_reward: Option<i64>,
     pub default_points_penalty: Option<i64>,
+    pub solo_mode: bool,
+    pub solo_mode_exit_requested_at: Option<DateTime<Utc>>,
+    pub solo_mode_previous_hierarchy_type: Option<String>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -54,6 +57,12 @@ impl HouseholdSettingsRow {
             default_points_penalty: self.default_points_penalty,
             default_rewards: Vec::new(),  // Loaded separately from junction table
             default_punishments: Vec::new(),  // Loaded separately from junction table
+            solo_mode: self.solo_mode,
+            solo_mode_exit_requested_at: self.solo_mode_exit_requested_at,
+            solo_mode_previous_hierarchy_type: self
+                .solo_mode_previous_hierarchy_type
+                .as_ref()
+                .and_then(|s| HierarchyType::from_str(s).ok()),
             updated_at: self.updated_at,
         }
     }
@@ -87,6 +96,9 @@ mod tests {
             week_start_day: 0,
             default_points_reward: Some(10),
             default_points_penalty: Some(5),
+            solo_mode: false,
+            solo_mode_exit_requested_at: None,
+            solo_mode_previous_hierarchy_type: None,
             updated_at: now,
         };
 
@@ -109,6 +121,9 @@ mod tests {
         assert!(shared.vacation_end.is_none());
         assert_eq!(shared.auto_archive_days, Some(7));
         assert_eq!(shared.week_start_day, 0);
+        assert!(!shared.solo_mode);
+        assert!(shared.solo_mode_exit_requested_at.is_none());
+        assert!(shared.solo_mode_previous_hierarchy_type.is_none());
     }
 
     #[test]
@@ -135,6 +150,9 @@ mod tests {
             week_start_day: 6, // Sunday
             default_points_reward: None,
             default_points_penalty: None,
+            solo_mode: false,
+            solo_mode_exit_requested_at: None,
+            solo_mode_previous_hierarchy_type: None,
             updated_at: now,
         };
 
@@ -142,5 +160,45 @@ mod tests {
         // Should default to Organized when invalid
         assert_eq!(shared.hierarchy_type, HierarchyType::Organized);
         assert_eq!(shared.week_start_day, 6);
+    }
+
+    #[test]
+    fn test_household_settings_row_solo_mode() {
+        let now = Utc::now();
+        let exit_requested_at = now - chrono::Duration::hours(24);
+        let household_id = Uuid::new_v4();
+
+        let row = HouseholdSettingsRow {
+            household_id: household_id.to_string(),
+            dark_mode: false,
+            role_label_owner: "Owner".to_string(),
+            role_label_admin: "Admin".to_string(),
+            role_label_member: "Member".to_string(),
+            hierarchy_type: "organized".to_string(),
+            timezone: "UTC".to_string(),
+            rewards_enabled: false,
+            punishments_enabled: false,
+            chat_enabled: false,
+            vacation_mode: false,
+            vacation_start: None,
+            vacation_end: None,
+            auto_archive_days: None,
+            allow_task_suggestions: true,
+            week_start_day: 0,
+            default_points_reward: None,
+            default_points_penalty: None,
+            solo_mode: true,
+            solo_mode_exit_requested_at: Some(exit_requested_at),
+            solo_mode_previous_hierarchy_type: Some("hierarchy".to_string()),
+            updated_at: now,
+        };
+
+        let shared = row.to_shared();
+        assert!(shared.solo_mode);
+        assert_eq!(shared.solo_mode_exit_requested_at, Some(exit_requested_at));
+        assert_eq!(
+            shared.solo_mode_previous_hierarchy_type,
+            Some(HierarchyType::Hierarchy)
+        );
     }
 }

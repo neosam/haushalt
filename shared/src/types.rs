@@ -159,6 +159,12 @@ pub struct HouseholdSettings {
     pub default_rewards: Vec<HouseholdDefaultRewardLink>,
     /// Default punishments to link to new tasks
     pub default_punishments: Vec<HouseholdDefaultPunishmentLink>,
+    /// Whether Solo Mode is active (all users treated as Members)
+    pub solo_mode: bool,
+    /// When exit was requested (None = no exit pending, starts 48h cooldown)
+    pub solo_mode_exit_requested_at: Option<DateTime<Utc>>,
+    /// Previous hierarchy type to restore after Solo Mode ends
+    pub solo_mode_previous_hierarchy_type: Option<HierarchyType>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -185,8 +191,36 @@ impl Default for HouseholdSettings {
             default_points_penalty: None,
             default_rewards: Vec::new(),
             default_punishments: Vec::new(),
+            solo_mode: false,
+            solo_mode_exit_requested_at: None,
+            solo_mode_previous_hierarchy_type: None,
             updated_at: Utc::now(),
         }
+    }
+}
+
+impl HouseholdSettings {
+    /// Check if a Solo Mode exit is pending
+    pub fn is_solo_mode_exit_pending(&self) -> bool {
+        self.solo_mode && self.solo_mode_exit_requested_at.is_some()
+    }
+
+    /// Returns remaining seconds until Solo Mode exit (48h from request time)
+    /// Returns None if no exit is pending
+    pub fn solo_mode_exit_remaining_seconds(&self) -> Option<i64> {
+        const COOLDOWN_HOURS: i64 = 48;
+        self.solo_mode_exit_requested_at.map(|requested_at| {
+            let exit_time = requested_at + chrono::Duration::hours(COOLDOWN_HOURS);
+            let remaining = exit_time - Utc::now();
+            remaining.num_seconds().max(0)
+        })
+    }
+
+    /// Check if Solo Mode exit cooldown has expired
+    pub fn is_solo_mode_exit_expired(&self) -> bool {
+        self.solo_mode_exit_remaining_seconds()
+            .map(|s| s <= 0)
+            .unwrap_or(false)
     }
 }
 

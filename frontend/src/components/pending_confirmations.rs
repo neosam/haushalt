@@ -180,10 +180,12 @@ pub fn PendingConfirmations(
             let reject_punishment = reject_punishment.clone();
             move || {
             // Hide entire component when not loading and empty (no pending confirmations)
-            // Also hide when features are disabled ("not enabled" errors)
+            // Also hide when features are disabled ("not enabled" errors) or forbidden (Solo Mode)
             let is_feature_disabled = error.get().as_ref().is_some_and(|e| e.contains("not enabled"));
-            if !loading.get() && pending_rewards.get().is_empty() && pending_punishments.get().is_empty()
-                && (error.get().is_none() || is_feature_disabled) {
+            let is_forbidden = error.get().as_ref().is_some_and(|e| e.to_lowercase().contains("forbidden") || e.contains("permission"));
+            let should_hide_error = is_feature_disabled || is_forbidden;
+            if !loading.get() && (pending_rewards.get().is_empty() && pending_punishments.get().is_empty() || should_hide_error)
+                && (error.get().is_none() || should_hide_error) {
                 return ().into_view();
             }
 

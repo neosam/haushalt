@@ -382,6 +382,37 @@ impl ApiClient {
         .await
     }
 
+    // Solo Mode endpoints
+    pub async fn activate_solo_mode(household_id: &str) -> Result<HouseholdSettings, String> {
+        Self::request::<HouseholdSettings>(
+            "POST",
+            &format!("/households/{}/solo-mode/activate", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn request_solo_mode_exit(household_id: &str) -> Result<HouseholdSettings, String> {
+        Self::request::<HouseholdSettings>(
+            "POST",
+            &format!("/households/{}/solo-mode/request-exit", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn cancel_solo_mode_exit(household_id: &str) -> Result<HouseholdSettings, String> {
+        Self::request::<HouseholdSettings>(
+            "POST",
+            &format!("/households/{}/solo-mode/cancel-exit", household_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // Task endpoints
     pub async fn list_tasks(household_id: &str) -> Result<Vec<Task>, String> {
         Self::request::<Vec<Task>>(

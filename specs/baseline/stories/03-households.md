@@ -324,3 +324,96 @@
 - Shows list of default rewards with amounts (or "None configured" if empty)
 - Shows list of default punishments with amounts (or "None configured" if empty)
 - Reward/punishment sections only show if respective feature is enabled
+
+---
+
+## US-HH-017: Solo Mode
+
+> **Status:** Planned
+
+**As a** household Owner
+**I want to** activate Solo Mode for the household
+**So that** I can give myself tasks without being able to easily ignore them
+
+### Overview
+
+Solo Mode is a self-discipline feature where the user voluntarily gives up control over the household. All members (including Owner/Admin) are treated as regular Members with restricted permissions. This prevents "cheating" by modifying or deleting tasks.
+
+### Acceptance Criteria
+
+#### Activation
+- Only Owner can activate Solo Mode
+- Activation requires confirmation dialog ("Are you sure?")
+- Solo Mode starts immediately upon confirmation
+- No end date is set - runs indefinitely until exit via cooldown
+- Activation option available in Household Settings (only when Solo Mode is NOT active)
+
+#### Permissions During Solo Mode
+- **All users** are treated like Members in Hierarchy mode
+- No one can:
+  - Create regular tasks (only suggest)
+  - Edit existing tasks
+  - Delete tasks
+  - Modify household settings
+  - Change member roles
+  - Adjust points manually
+- Everyone can:
+  - Complete assigned tasks
+  - Suggest new tasks
+  - View all household information
+  - Redeem rewards (if enabled)
+
+#### Task Suggestions in Solo Mode
+- All new tasks are created as suggestions
+- Suggestions are **automatically accepted** (status: 'approved')
+- Rewards/Punishments on auto-accepted tasks are **overwritten** with household defaults:
+  - `points_reward` → `default_points_reward` from settings
+  - `points_penalty` → `default_points_penalty` from settings
+  - Task rewards → `default_rewards` from settings
+  - Task punishments → `default_punishments` from settings
+- Existing tasks remain unchanged (keep their original rewards/punishments)
+
+#### Exiting Solo Mode (Cooldown)
+- Exit is initiated via the **Solo Mode Banner** (not via Settings)
+- Any household member can request to exit Solo Mode
+- Exit is **not immediate** - a 48-hour cooldown period starts
+- During cooldown:
+  - Solo Mode remains fully active
+  - Banner shows countdown: "Solo Mode ends in X hours"
+  - Button to **cancel** the exit request (cooldown is interrupted)
+- After 48 hours: Solo Mode automatically deactivates
+- Household returns to previous hierarchy type and normal permissions
+
+#### Solo Mode Banner
+- Displayed on all household pages when Solo Mode is active
+- **When active (no exit requested):**
+  - Text: "Solo Mode active - restricted permissions"
+  - Button: "Request Exit"
+- **During cooldown:**
+  - Text: "Solo Mode ends in [HH:MM:SS]" (countdown)
+  - Button: "Cancel Exit"
+- Banner is visible to all household members
+
+#### Data Model
+New fields in `household_settings`:
+- `solo_mode: bool` - Whether Solo Mode is active
+- `solo_mode_exit_requested_at: Option<DateTime<Utc>>` - When exit was requested (null = no exit pending)
+- `solo_mode_previous_hierarchy_type: Option<HierarchyType>` - To restore after exit
+
+#### Settings Page During Solo Mode
+- Settings page is accessible but read-only
+- Shows "Solo Mode active" status prominently
+- All controls are disabled/hidden
+- No "Activate Solo Mode" button (already active)
+
+#### Edge Cases
+- If Owner tries to leave household during Solo Mode: Not allowed
+- If all members leave: Solo Mode is automatically deactivated
+- Vacation mode cannot be toggled during Solo Mode
+- Hierarchy type setting is hidden/disabled during Solo Mode
+
+### Technical Notes
+- Solo Mode check should be at the service layer, not just handlers
+- Permission checks: `is_solo_mode_active()` should override `can_manage()` results
+- Background job needed to check `solo_mode_exit_requested_at` and deactivate after 48h
+- Cooldown duration: 48 hours (fixed, not configurable initially)

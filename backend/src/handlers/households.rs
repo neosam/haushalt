@@ -3,7 +3,7 @@ use shared::{ActivityType, AdjustPointsRequest, AdjustPointsResponse, ApiError, 
 use uuid::Uuid;
 
 use crate::models::AppState;
-use crate::services::{activity_logs as activity_log_service, households as household_service, household_settings as settings_service, invitations as invitation_service};
+use crate::services::{activity_logs as activity_log_service, households as household_service, household_settings as settings_service, invitations as invitation_service, solo_mode as solo_mode_service};
 use crate::handlers::{tasks, task_categories, rewards, punishments, point_conditions, activity_logs, chat, notes, journal, announcements, statistics};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -24,6 +24,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{id}/leaderboard", web::get().to(get_leaderboard))
             .route("/{id}/settings", web::get().to(get_household_settings))
             .route("/{id}/settings", web::put().to(update_household_settings))
+            .route("/{id}/solo-mode/activate", web::post().to(activate_solo_mode))
+            .route("/{id}/solo-mode/request-exit", web::post().to(request_solo_mode_exit))
+            .route("/{id}/solo-mode/cancel-exit", web::post().to(cancel_solo_mode_exit))
             .service(
                 web::scope("/{household_id}")
                     .configure(tasks::configure)
@@ -925,6 +928,17 @@ async fn update_household_settings(
         }
     };
 
+    // Check if Solo Mode is active - block all settings changes
+    let current_settings = settings_service::get_or_create_settings(&state.db, &household_id).await;
+    if let Ok(settings) = &current_settings {
+        if settings.solo_mode {
+            return Ok(HttpResponse::Forbidden().json(ApiError {
+                error: "solo_mode_active".to_string(),
+                message: "Settings cannot be changed while Solo Mode is active".to_string(),
+            }));
+        }
+    }
+
     // Only owner can modify settings
     let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
     if !role.map(|r| r == shared::Role::Owner).unwrap_or(false) {
@@ -955,6 +969,222 @@ async fn update_household_settings(
             Ok(HttpResponse::InternalServerError().json(ApiError {
                 error: "internal_error".to_string(),
                 message: "Failed to update settings".to_string(),
+            }))
+        }
+    }
+}
+
+/// Activate Solo Mode (owner only)
+async fn activate_solo_mode(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Only owner can activate Solo Mode
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if !role.map(|r| r == shared::Role::Owner).unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Only owners can activate Solo Mode".to_string(),
+        }));
+    }
+
+    match solo_mode_service::activate_solo_mode(&state.db, &household_id).await {
+        Ok(settings) => {
+            // Log activity
+            let _ = activity_log_service::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::SettingsChanged,
+                Some("solo_mode_activated"),
+                None,
+                None,
+            )
+            .await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(settings)))
+        }
+        Err(solo_mode_service::SoloModeError::AlreadyActive) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "already_active".to_string(),
+                message: "Solo Mode is already active".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error activating Solo Mode: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to activate Solo Mode".to_string(),
+            }))
+        }
+    }
+}
+
+/// Request to exit Solo Mode (any member)
+async fn request_solo_mode_exit(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Any member can request exit
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if role.is_none() {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match solo_mode_service::request_solo_mode_exit(&state.db, &household_id).await {
+        Ok(settings) => {
+            // Log activity
+            let _ = activity_log_service::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::SettingsChanged,
+                Some("solo_mode_exit_requested"),
+                None,
+                None,
+            )
+            .await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(settings)))
+        }
+        Err(solo_mode_service::SoloModeError::NotActive) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "not_active".to_string(),
+                message: "Solo Mode is not active".to_string(),
+            }))
+        }
+        Err(solo_mode_service::SoloModeError::ExitAlreadyPending) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "exit_already_pending".to_string(),
+                message: "An exit request is already pending".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error requesting Solo Mode exit: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to request Solo Mode exit".to_string(),
+            }))
+        }
+    }
+}
+
+/// Cancel a pending Solo Mode exit request (any member)
+async fn cancel_solo_mode_exit(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = match crate::middleware::auth::extract_user_id(&req, &state.config.jwt_secret) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let household_id = match Uuid::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_id".to_string(),
+                message: "Invalid household ID format".to_string(),
+            }));
+        }
+    };
+
+    // Any member can cancel exit
+    let role = household_service::get_member_role(&state.db, &household_id, &user_id).await;
+    if role.is_none() {
+        return Ok(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "You are not a member of this household".to_string(),
+        }));
+    }
+
+    match solo_mode_service::cancel_solo_mode_exit(&state.db, &household_id).await {
+        Ok(settings) => {
+            // Log activity
+            let _ = activity_log_service::log_activity(
+                &state.db,
+                &household_id,
+                &user_id,
+                None,
+                ActivityType::SettingsChanged,
+                Some("solo_mode_exit_cancelled"),
+                None,
+                None,
+            )
+            .await;
+
+            Ok(HttpResponse::Ok().json(ApiSuccess::new(settings)))
+        }
+        Err(solo_mode_service::SoloModeError::NotActive) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "not_active".to_string(),
+                message: "Solo Mode is not active".to_string(),
+            }))
+        }
+        Err(solo_mode_service::SoloModeError::NoExitPending) => {
+            Ok(HttpResponse::BadRequest().json(ApiError {
+                error: "no_exit_pending".to_string(),
+                message: "No exit request is pending".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Error cancelling Solo Mode exit: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to cancel Solo Mode exit".to_string(),
             }))
         }
     }

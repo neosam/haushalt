@@ -85,8 +85,8 @@ pub async fn get_or_create_settings(
     let default_timezone = "UTC";
     sqlx::query(
         r#"
-        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, auto_archive_days, allow_task_suggestions, week_start_day, default_points_reward, default_points_penalty, updated_at)
-        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, 7, TRUE, 0, NULL, NULL, ?)
+        INSERT INTO household_settings (household_id, dark_mode, role_label_owner, role_label_admin, role_label_member, hierarchy_type, timezone, rewards_enabled, punishments_enabled, chat_enabled, vacation_mode, vacation_start, vacation_end, auto_archive_days, allow_task_suggestions, week_start_day, default_points_reward, default_points_penalty, solo_mode, solo_mode_exit_requested_at, solo_mode_previous_hierarchy_type, updated_at)
+        VALUES (?, FALSE, 'Owner', 'Admin', 'Member', ?, ?, FALSE, FALSE, FALSE, FALSE, NULL, NULL, 7, TRUE, 0, NULL, NULL, FALSE, NULL, NULL, ?)
         "#,
     )
     .bind(&household_id_str)
@@ -117,6 +117,9 @@ pub async fn get_or_create_settings(
         default_points_penalty: None,
         default_rewards: Vec::new(),
         default_punishments: Vec::new(),
+        solo_mode: false,
+        solo_mode_exit_requested_at: None,
+        solo_mode_previous_hierarchy_type: None,
         updated_at: now,
     })
 }
@@ -189,6 +192,7 @@ pub async fn update_settings(
     settings.updated_at = now;
 
     // Update main settings table
+    // Note: solo_mode fields are NOT updated here - they are managed via dedicated endpoints
     sqlx::query(
         r#"
         UPDATE household_settings
