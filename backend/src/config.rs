@@ -10,6 +10,7 @@ pub struct Config {
     pub refresh_token_expiration_days: i64,
     pub static_files_path: Option<String>,
     pub cors_origins: Vec<String>,
+    pub legal_dir: Option<String>,
 }
 
 impl Config {
@@ -39,6 +40,7 @@ impl Config {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
+            legal_dir: env::var("LEGAL_DIR").ok(),
         })
     }
 }
@@ -60,6 +62,7 @@ mod tests {
         env::remove_var("REFRESH_TOKEN_EXPIRATION_DAYS");
         env::remove_var("STATIC_FILES_PATH");
         env::remove_var("CORS_ORIGINS");
+        env::remove_var("LEGAL_DIR");
     }
 
     #[test]

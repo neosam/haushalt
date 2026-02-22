@@ -1698,6 +1698,40 @@ impl ApiClient {
         )
         .await
     }
+
+    // =========================================================================
+    // Legal pages (public, no auth required)
+    // =========================================================================
+
+    /// Fetch legal page content (returns raw markdown)
+    async fn fetch_legal_page(page: &str) -> Result<String, String> {
+        let url = format!("{}/legal/{}", API_BASE, page);
+        let response = Request::get(&url)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if response.ok() {
+            response.text().await.map_err(|e| e.to_string())
+        } else {
+            Err(format!("Failed to load legal page: {}", response.status()))
+        }
+    }
+
+    /// Get Impressum content
+    pub async fn get_impressum() -> Result<String, String> {
+        Self::fetch_legal_page("impressum").await
+    }
+
+    /// Get Datenschutz (Privacy Policy) content
+    pub async fn get_datenschutz() -> Result<String, String> {
+        Self::fetch_legal_page("datenschutz").await
+    }
+
+    /// Get AGB (Terms of Service) content
+    pub async fn get_agb() -> Result<String, String> {
+        Self::fetch_legal_page("agb").await
+    }
 }
 
 #[cfg(test)]

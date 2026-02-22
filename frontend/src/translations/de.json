@@ -60,6 +60,12 @@
   "auth.choose_username": "Benutzername wählen",
   "auth.create_password": "Passwort erstellen (mind. 8 Zeichen)",
   "auth.confirm_your_password": "Passwort bestätigen",
+  "auth.agb_required": "Bitte akzeptieren Sie die AGB und die Datenschutzerklärung",
+  "auth.agb_accept_prefix": "Ich akzeptiere die",
+  "auth.agb_link": "AGB",
+  "auth.agb_and": "und die",
+  "auth.datenschutz_link": "Datenschutzerklärung",
+  "auth.agb_accept_suffix": "",
 
   "dashboard.title": "Ihre Haushalte",
   "dashboard.subtitle": "Verwalten Sie Ihre Haushalte und Aufgaben",

@@ -17,11 +17,17 @@ pub fn Register() -> impl IntoView {
     let email = create_rw_signal(String::new());
     let password = create_rw_signal(String::new());
     let confirm_password = create_rw_signal(String::new());
+    let agb_accepted = create_rw_signal(false);
     let error = create_rw_signal(Option::<String>::None);
     let loading = create_rw_signal(false);
 
     let on_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
+
+        if !agb_accepted.get() {
+            error.set(Some(i18n_stored.get_value().t("auth.agb_required")));
+            return;
+        }
 
         if password.get() != confirm_password.get() {
             error.set(Some(i18n_stored.get_value().t("auth.password_mismatch")));
@@ -125,6 +131,26 @@ pub fn Register() -> impl IntoView {
                         />
                     </div>
 
+                    <div class="agb-checkbox-container">
+                        <input
+                            type="checkbox"
+                            id="agb"
+                            prop:checked=move || agb_accepted.get()
+                            on:change=move |ev| agb_accepted.set(event_target_checked(&ev))
+                        />
+                        <label for="agb">
+                            {move || i18n_stored.get_value().t("auth.agb_accept_prefix")}
+                            " "
+                            <a href="/agb" target="_blank">{move || i18n_stored.get_value().t("auth.agb_link")}</a>
+                            " "
+                            {move || i18n_stored.get_value().t("auth.agb_and")}
+                            " "
+                            <a href="/datenschutz" target="_blank">{move || i18n_stored.get_value().t("auth.datenschutz_link")}</a>
+                            " "
+                            {move || i18n_stored.get_value().t("auth.agb_accept_suffix")}
+                        </label>
+                    </div>
+
                     <button
                         type="submit"
                         class="btn btn-primary"
@@ -139,6 +165,12 @@ pub fn Register() -> impl IntoView {
                     {move || i18n_stored.get_value().t("auth.have_account")} " "
                     <a href="/login" style="color: var(--primary-color);">{move || i18n_stored.get_value().t("auth.sign_in")}</a>
                 </p>
+
+                <div class="legal-links" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <a href="/impressum">"Impressum"</a>
+                    <a href="/datenschutz">"Datenschutz"</a>
+                    <a href="/agb">"AGB"</a>
+                </div>
             </div>
         </div>
     }

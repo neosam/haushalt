@@ -103,6 +103,12 @@ pub fn Login() -> impl IntoView {
                     " "
                     <a href="/register" style="color: var(--primary-color);">{move || i18n_stored.get_value().t("auth.sign_up")}</a>
                 </p>
+
+                <div class="legal-links" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <a href="/impressum">"Impressum"</a>
+                    <a href="/datenschutz">"Datenschutz"</a>
+                    <a href="/agb">"AGB"</a>
+                </div>
             </div>
         </div>
     }

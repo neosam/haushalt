@@ -8,9 +8,11 @@ use crate::components::quick_task_fab::QuickTaskFab;
 use crate::i18n::{provide_i18n, use_i18n};
 use crate::pages::{
     activity::ActivityPage, chat::ChatPage, dashboard::Dashboard, household::HouseholdPage,
-    household_settings::HouseholdSettingsPage, journal::JournalPage, login::Login, notes::NotesPage,
-    punishments::PunishmentsPage, register::Register, rewards::RewardsPage,
-    settings::SettingsPage, statistics::StatisticsPage, tasks::TasksPage, user_settings::UserSettingsPage,
+    household_settings::HouseholdSettingsPage, journal::JournalPage,
+    legal::{AGBPage, DatenschutzPage, ImpressumPage},
+    login::Login, notes::NotesPage, punishments::PunishmentsPage, register::Register,
+    rewards::RewardsPage, settings::SettingsPage, statistics::StatisticsPage, tasks::TasksPage,
+    user_settings::UserSettingsPage,
 };
 
 #[component]
@@ -28,6 +30,10 @@ pub fn App() -> impl IntoView {
                 <Routes>
                     <Route path="/login" view=Login />
                     <Route path="/register" view=Register />
+                    // Public legal pages
+                    <Route path="/impressum" view=ImpressumPage />
+                    <Route path="/datenschutz" view=DatenschutzPage />
+                    <Route path="/agb" view=AGBPage />
                     <Route path="/" view=AuthenticatedLayout>
                         <Route path="" view=Dashboard />
                         // Household routes - nested under HouseholdLayout for shared tabs

@@ -2248,3 +2248,85 @@ body.dark-mode .task-item.selected {
     background: var(--primary-color);
     transition: width 0.2s;
 }
+
+/* ============================
+   Legal Pages
+   ============================ */
+
+.legal-page {
+    min-height: 100vh;
+    background-color: var(--background-color);
+    padding: 1rem;
+}
+
+.legal-page-header {
+    max-width: 800px;
+    margin: 0 auto 1rem;
+}
+
+.legal-back-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.legal-back-link:hover {
+    text-decoration: underline;
+}
+
+.legal-page-content {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.legal-page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--text-color);
+}
+
+/* Legal links in footer */
+.legal-links {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    font-size: 0.875rem;
+}
+
+.legal-links a {
+    color: var(--text-muted);
+    text-decoration: none;
+}
+
+.legal-links a:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+/* AGB checkbox on registration */
+.agb-checkbox-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.agb-checkbox-container input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-top: 0.125rem;
+    flex-shrink: 0;
+}
+
+.agb-checkbox-container label {
+    font-size: 0.875rem;
+    color: var(--text-color);
+    line-height: 1.4;
+}
+
+.agb-checkbox-container a {
+    color: var(--primary-color);
+    text-decoration: underline;
+}

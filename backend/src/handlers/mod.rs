@@ -16,6 +16,7 @@ pub mod notes;
 pub mod journal;
 pub mod announcements;
 pub mod dashboard;
+pub mod legal;
 pub mod statistics;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
@@ -26,5 +27,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .configure(households::configure)
             .configure(invitations::configure)
             .configure(dashboard::configure)
+            .configure(legal::configure)
     );
 }
