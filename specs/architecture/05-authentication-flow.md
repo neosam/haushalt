@@ -222,36 +222,87 @@ flowchart TB
     end
 ```
 
-## Frontend Token Refresh Synchronization
+## Frontend Token Refresh Synchronization (Critical)
 
-When the access token expires, multiple API requests may receive 401 errors simultaneously. To prevent race conditions during token refresh:
+When the access token expires, multiple API requests may receive 401 errors simultaneously. **This is a critical mechanism** that prevents race conditions during token refresh which would otherwise cause users to be logged out unexpectedly.
+
+### The Race Condition Problem
+
+Without proper synchronization, the following can occur:
 
 ```mermaid
 sequenceDiagram
     participant R1 as Request 1
     participant R2 as Request 2
-    participant Lock as Refresh Lock
+    participant Lock as Non-Atomic Check
     participant BE as Backend
 
-    R1->>Lock: Check lock
-    Lock-->>R1: Not locked
-    R1->>Lock: Acquire lock
+    Note over R1,R2: Both receive 401 simultaneously
+    R1->>Lock: Load flag (false)
+    R2->>Lock: Load flag (false)
+    Note over Lock: Gap! Both see "not locked"
+    R1->>Lock: Store flag (true)
+    R2->>Lock: Store flag (true)
+    R1->>BE: POST /auth/refresh (token: abc123)
+    R2->>BE: POST /auth/refresh (token: abc123)
+    BE-->>R1: Success (rotates to xyz789)
+    BE-->>R2: ERROR: Invalid token (abc123 no longer exists!)
+    Note over R2: User gets logged out!
+```
+
+The problem is that `if (flag) { ... } flag = true` is not atomic - multiple requests can check the flag before any sets it.
+
+### The Solution: Atomic Compare-Exchange
+
+The frontend uses `AtomicBool::compare_exchange` for truly atomic check-and-set:
+
+```mermaid
+sequenceDiagram
+    participant R1 as Request 1
+    participant R2 as Request 2
+    participant Lock as AtomicBool
+    participant Gen as Generation Counter
+    participant BE as Backend
+
+    Note over R1,R2: Both receive 401 simultaneously
+    R1->>Lock: compare_exchange(false→true)
+    Lock-->>R1: Ok (won the race)
+    R2->>Lock: compare_exchange(false→true)
+    Lock-->>R2: Err (someone else is refreshing)
+    R2->>Gen: Read generation (0)
     R1->>BE: POST /api/auth/refresh
-    R2->>Lock: Check lock
-    Lock-->>R2: Locked (wait)
+    R2->>R2: Wait loop (check generation)
     BE-->>R1: New tokens
     R1->>R1: Store tokens
-    R1->>Lock: Release lock
-    R2->>Lock: Check lock
-    Lock-->>R2: Not locked
-    R2->>R2: Tokens now valid
-    R2->>R2: Retry original request
+    R1->>Gen: Increment generation (→1)
+    R1->>Lock: Store false (release)
+    R2->>Gen: Read generation (1 > 0)
+    R2->>R2: Generation changed! Check tokens
+    R2->>R2: Tokens valid, retry original request
 ```
+
+### Implementation Details
+
+**Static atomics used:**
+
+```rust
+static REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static REFRESH_GENERATION: AtomicU64 = AtomicU64::new(0);
+```
+
+**Why a generation counter?**
+
+Simply checking if "any token exists" after waiting is insufficient - the old token might still be in localStorage during the refresh. The generation counter increments only after a successful refresh, allowing waiters to detect when new tokens are actually available.
 
 **Key behaviors:**
 
-1. **Single refresh guarantee** - Only one token refresh request is made at a time using an atomic lock
-2. **Concurrent requests wait** - Other requests that receive 401 wait briefly for the in-progress refresh
-3. **Shared result** - All waiting requests use the newly refreshed tokens from localStorage
+1. **Atomic lock acquisition** - Uses `compare_exchange` to atomically check and set the lock
+2. **Generation-based completion detection** - Waiters check if generation incremented, not just if tokens exist
+3. **Timeout protection** - Waiters give up after 5 seconds to prevent infinite blocking
+4. **Single refresh guarantee** - Exactly one token refresh request is made regardless of concurrent 401s
 
-This prevents the scenario where multiple concurrent refresh attempts cause token rotation conflicts on the backend (first refresh succeeds, subsequent ones fail because the old token was already rotated).
+**Why this matters:**
+
+- Without this, users can be randomly logged out when the access token expires and multiple requests are in flight
+- The backend uses token rotation (old token is deleted when new one is created), so the race condition is particularly severe
+- This is especially common on page load when multiple API calls happen simultaneously

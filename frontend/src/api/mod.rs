@@ -20,7 +20,7 @@ use shared::{
     UserPunishmentWithUser, UserReward, UserRewardWithUser, UserSettings, WeeklyStatisticsResponse,
 };
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 const API_BASE: &str = "/api";
 const TOKEN_KEY: &str = "auth_token";
@@ -29,8 +29,12 @@ const REFRESH_TOKEN_KEY: &str = "refresh_token";
 /// Global flag to signal that authentication has failed and user should re-login
 static AUTH_FAILED: AtomicBool = AtomicBool::new(false);
 
-/// Global flag to prevent concurrent token refresh attempts
+/// Global flag to prevent concurrent token refresh attempts (used with compare_exchange)
 static REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// Generation counter - incremented after each successful refresh.
+/// Used by waiting requests to detect when a refresh has completed.
+static REFRESH_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub struct AuthState {
@@ -126,29 +130,77 @@ impl ApiClient {
     }
 
     /// Attempt to refresh tokens, ensuring only one refresh happens at a time.
-    /// If a refresh is already in progress, waits briefly and checks if tokens are now valid.
+    /// Uses atomic compare_exchange to prevent race conditions where multiple
+    /// concurrent 401 responses could trigger parallel refresh attempts.
+    ///
+    /// ## Race Condition Prevention
+    /// Without proper synchronization, the following could happen:
+    /// 1. Request A gets 401, checks REFRESH_IN_PROGRESS (false), proceeds
+    /// 2. Request B gets 401, checks REFRESH_IN_PROGRESS (false), proceeds
+    /// 3. Both A and B try to refresh with the same token
+    /// 4. One succeeds, rotates the token (invalidating the old one)
+    /// 5. The other fails because its refresh token is now invalid
+    ///
+    /// This implementation uses compare_exchange for atomic check-and-set,
+    /// and a generation counter so waiting requests can detect when a
+    /// refresh has actually completed (not just that some token exists).
     async fn try_refresh_token() -> Result<(), String> {
-        // If refresh is already in progress, wait and check if tokens are valid
-        if REFRESH_IN_PROGRESS.load(Ordering::Relaxed) {
-            // Wait a bit for the other refresh to complete
-            gloo_timers::future::TimeoutFuture::new(100).await;
-            // Check if we now have a valid token (other refresh succeeded)
-            if Self::get_token().is_some() {
-                return Ok(());
+        // Atomically try to become the refresher
+        // compare_exchange: if current value is `false`, set to `true` and return Ok(false)
+        // if current value is `true`, return Err(true) - someone else is refreshing
+        match REFRESH_IN_PROGRESS.compare_exchange(
+            false,  // expected: not in progress
+            true,   // new value: mark as in progress
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => {
+                // We won the race - we're the refresher
+                let result = Self::do_refresh().await;
+
+                if result.is_ok() {
+                    // Increment generation so waiters know refresh completed
+                    REFRESH_GENERATION.fetch_add(1, Ordering::SeqCst);
+                }
+
+                // Mark refresh as complete (must happen after generation increment)
+                REFRESH_IN_PROGRESS.store(false, Ordering::SeqCst);
+
+                result
             }
-            // Still no token - the other refresh must have failed
-            return Err("Refresh failed".to_string());
+            Err(_) => {
+                // Someone else is refreshing - wait for them to complete
+                // Capture current generation before waiting
+                let start_generation = REFRESH_GENERATION.load(Ordering::SeqCst);
+
+                // Wait up to 5 seconds for refresh to complete (50 * 100ms)
+                for _ in 0..50 {
+                    gloo_timers::future::TimeoutFuture::new(100).await;
+
+                    // Check if refresh completed (generation changed)
+                    let current_generation = REFRESH_GENERATION.load(Ordering::SeqCst);
+                    if current_generation > start_generation {
+                        // Refresh completed successfully - we should have a new token
+                        if Self::get_token().is_some() {
+                            return Ok(());
+                        }
+                    }
+
+                    // Check if refresh is no longer in progress (might have failed)
+                    if !REFRESH_IN_PROGRESS.load(Ordering::SeqCst) {
+                        // Refresh finished - check if we have a token
+                        if Self::get_token().is_some() {
+                            return Ok(());
+                        }
+                        // No token - refresh must have failed
+                        return Err("Refresh failed".to_string());
+                    }
+                }
+
+                // Timeout waiting for refresh
+                Err("Refresh timeout".to_string())
+            }
         }
-
-        // Mark refresh as in progress
-        REFRESH_IN_PROGRESS.store(true, Ordering::Relaxed);
-
-        let result = Self::do_refresh().await;
-
-        // Mark refresh as complete
-        REFRESH_IN_PROGRESS.store(false, Ordering::Relaxed);
-
-        result
     }
 
     /// Perform the actual token refresh
