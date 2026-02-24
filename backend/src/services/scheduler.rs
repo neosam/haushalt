@@ -224,7 +224,8 @@ pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate)
     // Determine period: explicit or inferred from recurrence_type
     let period = task.time_period.unwrap_or(match task.recurrence_type {
         RecurrenceType::Daily => TimePeriod::Day,
-        RecurrenceType::Weekly | RecurrenceType::Weekdays => TimePeriod::Week,
+        RecurrenceType::Weekly => TimePeriod::Week,
+        RecurrenceType::Weekdays => TimePeriod::Day,
         RecurrenceType::Monthly => TimePeriod::Month,
         RecurrenceType::Custom | RecurrenceType::OneTime => TimePeriod::None,
     });
@@ -721,5 +722,39 @@ mod tests {
 
         let jan20 = NaiveDate::from_ymd_opt(2024, 1, 20).unwrap();
         assert_eq!(get_next_due_date(&task, jan20), None);
+    }
+
+    #[test]
+    fn test_get_period_bounds_weekdays_uses_daily_periods() {
+        // Weekdays task (Sun, Mon, Tue, Wed, Thu) should use daily periods
+        let task = create_test_task(
+            RecurrenceType::Weekdays,
+            Some(RecurrenceValue::Weekdays(vec![0, 1, 2, 3, 4])), // Sun-Thu
+        );
+
+        // Sunday Feb 23, 2025 - period should be just that day, not the week
+        let sunday = NaiveDate::from_ymd_opt(2025, 2, 23).unwrap();
+        let (start, end) = get_period_bounds(&task, sunday);
+        assert_eq!(start, sunday, "Weekdays period_start should be the completion date");
+        assert_eq!(end, sunday, "Weekdays period_end should be the completion date");
+
+        // Monday Feb 24, 2025 - should also be daily
+        let monday = NaiveDate::from_ymd_opt(2025, 2, 24).unwrap();
+        let (start, end) = get_period_bounds(&task, monday);
+        assert_eq!(start, monday, "Monday period_start should be Monday");
+        assert_eq!(end, monday, "Monday period_end should be Monday");
+    }
+
+    #[test]
+    fn test_get_period_bounds_weekly_uses_week_periods() {
+        // Weekly task should still use weekly periods
+        let task = create_test_task(RecurrenceType::Weekly, Some(RecurrenceValue::WeekDay(1))); // Monday
+
+        let monday = NaiveDate::from_ymd_opt(2025, 2, 24).unwrap(); // Monday
+        let (start, end) = get_period_bounds(&task, monday);
+
+        // Week should be Mon-Sun
+        assert_eq!(start, monday, "Weekly period_start should be Monday");
+        assert_eq!(end, NaiveDate::from_ymd_opt(2025, 3, 2).unwrap(), "Weekly period_end should be Sunday");
     }
 }
