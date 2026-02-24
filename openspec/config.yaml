@@ -1,0 +1,28 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Rust full-stack
+  - Backend: Actix-web, SQLx, SQLite
+  - Frontend: Leptos CSR, WASM, Trunk
+  - Build: Nix
+
+  Key patterns:
+  - JWT auth with refresh token rotation
+  - Role hierarchy: Owner > Admin > Member
+  - HierarchyType controls who can manage (Equals/Organized/Hierarchy)
+  - Shared types crate between frontend/backend
+
+  Conventions:
+  - No warnings (workspace denies)
+  - Tests required for changes
+  - Use jj for commits (not git)
+  - Mobile-first CSS (min-width media queries)
+
+  Domain: Household task management with gamification (points, rewards, punishments)
+
+  See docs/constitution.md for full domain model and architecture.
+
+rules:
+  tasks:
+    - Break tasks into chunks completable in one session
+    - Include tests for code changes

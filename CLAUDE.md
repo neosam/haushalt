@@ -67,13 +67,17 @@ Leptos CSR (client-side rendered) WASM app:
 
 ## Specifications
 
-This project uses speckit structure for managing specifications and requirements.
+This project uses OpenSpec for managing specifications and changes.
 
-- **specs/baseline/stories/**: User stories with acceptance criteria (e.g., `05-tasks.md`)
-- **specs/baseline/constitution/**: Core project principles
-- **specs/architecture/**: Technical architecture documentation
+- **openspec/specs/**: Capability specs with BDD-style requirements (e.g., `tasks/spec.md`)
+- **openspec/changes/**: Active change proposals (proposal → specs → design → tasks)
+- **docs/constitution.md**: Core project principles and domain model
+- **docs/architecture/**: Technical architecture documentation
 
-When implementing features, check the relevant spec file for acceptance criteria. When adding new features, update or create spec files first.
+When implementing features:
+1. Use `/opsx:propose` to create a change proposal
+2. Use `/opsx:apply` to implement tasks from the change
+3. Use `/opsx:archive` when implementation is complete
 
 ## Coding Principles
 
@@ -92,11 +96,10 @@ When implementing features, check the relevant spec file for acceptance criteria
 - Self-documenting code preferred over comments
 
 ### Spec-Driven Development (SDD)
-- Update specs **before** implementing code changes
-- Code changes follow this flow:
-  1. Update spec and show spec change to the user
-  2. Plan the code change
-  3. When user approves, implement the change
+- Use OpenSpec workflow for changes:
+  1. `/opsx:propose` - Create change with proposal, specs, design, tasks
+  2. `/opsx:apply` - Implement tasks from the change
+  3. `/opsx:archive` - Archive completed change
   4. Commit with jj
 
 ### Mobile First (CSS)
@@ -120,6 +123,6 @@ When implementing features, check the relevant spec file for acceptance criteria
 - No clippy warnings allowed
 - Always include tests for changes
 - Always use jujutsu vcs to create commits.  Basically use jj commit -m "commit message"
-- When planning, always think about what needs to be updated in the spec.  Which stories, architecture diagrams and constitution parts must be adjusted to reflect the change and the current state of the change.
-- Always think about updating the spec.
-- Code changes have this flow: Update spec and show spec change to the user.  Then plan the code change and when user approves, do the code change.  Finally commit with jj.
+- Use OpenSpec workflow for all changes: `/opsx:propose` → `/opsx:apply` → `/opsx:archive`
+- Check `openspec/specs/` for existing capability requirements before implementing
+- If openspec is not in the path, try using nix develop because it is mentioned in the flake.
