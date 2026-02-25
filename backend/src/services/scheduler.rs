@@ -227,7 +227,8 @@ pub fn get_period_bounds(task: &Task, date: NaiveDate) -> (NaiveDate, NaiveDate)
         RecurrenceType::Weekly => TimePeriod::Week,
         RecurrenceType::Weekdays => TimePeriod::Day,
         RecurrenceType::Monthly => TimePeriod::Month,
-        RecurrenceType::Custom | RecurrenceType::OneTime => TimePeriod::None,
+        RecurrenceType::Custom => TimePeriod::Day,
+        RecurrenceType::OneTime => TimePeriod::None,
     });
 
     match period {
@@ -756,5 +757,31 @@ mod tests {
         // Week should be Mon-Sun
         assert_eq!(start, monday, "Weekly period_start should be Monday");
         assert_eq!(end, NaiveDate::from_ymd_opt(2025, 3, 2).unwrap(), "Weekly period_end should be Sunday");
+    }
+
+    #[test]
+    fn test_get_period_bounds_custom_uses_daily_periods() {
+        // Custom task with specific dates should use daily periods
+        let dates = vec![
+            NaiveDate::from_ymd_opt(2024, 2, 25).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 2, 28).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 3, 5).unwrap(),
+        ];
+        let task = create_test_task(
+            RecurrenceType::Custom,
+            Some(RecurrenceValue::CustomDates(dates)),
+        );
+
+        // Each custom date should be its own period
+        let feb25 = NaiveDate::from_ymd_opt(2024, 2, 25).unwrap();
+        let (start, end) = get_period_bounds(&task, feb25);
+        assert_eq!(start, feb25, "Custom period_start should be the custom date");
+        assert_eq!(end, feb25, "Custom period_end should be the custom date");
+
+        // Different custom date = different period
+        let feb28 = NaiveDate::from_ymd_opt(2024, 2, 28).unwrap();
+        let (start, end) = get_period_bounds(&task, feb28);
+        assert_eq!(start, feb28, "Different custom date = different period start");
+        assert_eq!(end, feb28, "Different custom date = different period end");
     }
 }

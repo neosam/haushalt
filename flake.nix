@@ -120,8 +120,9 @@
             pkg-config
             openssl
 
-            # OpenSpec
+            # AI tools
             openspec.packages.${system}.default
+            claude-code
           ];
 
           shellHook = ''
