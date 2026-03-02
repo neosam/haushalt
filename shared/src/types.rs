@@ -468,7 +468,7 @@ impl FromStr for RecurrenceType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RecurrenceValue {
     /// For weekly: day of week (0 = Sunday, 1 = Monday, etc.)
     WeekDay(u8),
@@ -591,7 +591,7 @@ impl FromStr for SuggestionStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Task {
     pub id: Uuid,
     pub household_id: Uuid,
@@ -731,7 +731,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TaskWithStatus {
     pub task: Task,
     pub completions_today: i32,
@@ -1315,7 +1315,7 @@ pub struct TaskPeriodResult {
 }
 
 /// Simplified period info for habit tracker display
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PeriodDisplay {
     pub period_start: NaiveDate,
     pub status: PeriodStatus,

@@ -10,6 +10,7 @@ use crate::api::ApiClient;
 use crate::components::announcement_banner::AnnouncementBanner;
 use crate::components::announcement_modal::AnnouncementModal;
 use crate::components::loading::Loading;
+use crate::utils::matches_text_filter;
 use crate::components::modal::Modal;
 use crate::components::pending_confirmations::PendingConfirmations;
 use crate::components::pending_reviews::PendingReviews;
@@ -19,6 +20,7 @@ use crate::components::set_date_modal::SetDateModal;
 use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
+use crate::components::text_filter_input::TextFilterInput;
 use crate::i18n::use_i18n;
 
 #[component]
@@ -76,6 +78,33 @@ pub fn HouseholdPage() -> impl IntoView {
 
     // Assignment filter state
     let show_only_assigned = create_rw_signal(false);
+
+    // Text filter state
+    let text_filter = create_rw_signal(String::new());
+    let text_filter_placeholder = store_value(i18n_stored.get_value().t("tasks.filter_by_title"));
+    let text_filter_callback = Callback::new(move |value: String| text_filter.set(value));
+
+    // Filtered tasks memo (design.md: "create a Memo that filters tasks reactively")
+    let filtered_tasks = create_memo(move |_| {
+        let user_id = current_user_id.get();
+        let only_assigned = show_only_assigned.get();
+        let filter_text = text_filter.get().to_lowercase();
+
+        tasks.get()
+            .into_iter()
+            .filter(|t| {
+                if only_assigned {
+                    match (user_id, t.task.assigned_user_id) {
+                        (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+                        _ => false,
+                    }
+                } else {
+                    true
+                }
+            })
+            .filter(|t| matches_text_filter(&t.task.title, &filter_text))
+            .collect::<Vec<_>>()
+    });
 
     // Adjust points modal state
     let show_adjust_points_modal = create_rw_signal(false);
@@ -565,9 +594,7 @@ pub fn HouseholdPage() -> impl IntoView {
                 <div class="alert alert-error">{e}</div>
             })}
 
-            {move || household.get().map(|h| {
-                let id = h.id.to_string();
-                view! {
+            <Show when=move || household.get().is_some() fallback=|| ()>
                     // Announcement Banner
                     {move || {
                         let announcements = active_announcements.get();
@@ -603,7 +630,7 @@ pub fn HouseholdPage() -> impl IntoView {
                     }}
 
                     <div class="dashboard-header">
-                        <h1 class="dashboard-title">{h.name}</h1>
+                        <h1 class="dashboard-title">{move || household.get().map(|h| h.name.clone()).unwrap_or_default()}</h1>
                     </div>
 
                     <div class="grid grid-2">
@@ -678,32 +705,27 @@ pub fn HouseholdPage() -> impl IntoView {
                                 </button>
                             </div>
 
-                            {
+                            // Text filter input (outside reactive household block to prevent re-creation)
+                            <TextFilterInput
+                                on_change=text_filter_callback
+                                placeholder=text_filter_placeholder.get_value()
+                                id="household-text-filter".to_string()
+                            />
+
+                            {move || {
                                 let current_settings = settings.get();
                                 let tz = current_settings.as_ref().map(|s| s.timezone.clone()).unwrap_or_else(|| "UTC".to_string());
                                 let is_solo_mode = current_settings.as_ref().map(|s| s.solo_mode).unwrap_or(false);
                                 let dashboard_ids = dashboard_task_ids.get();
-                                let hh_id = id.clone();
-                                let user_id = current_user_id.get();
-                                let only_assigned = show_only_assigned.get();
-                                // Convert TaskWithStatus to TaskWithHousehold for the unified component
-                                // Apply assignment filter
-                                let tasks_with_household: Vec<TaskWithHousehold> = tasks.get()
+                                let hh_id = household_id();
+
+                                // Use filtered tasks from memo
+                                let tasks_with_household: Vec<TaskWithHousehold> = filtered_tasks.get()
                                     .into_iter()
-                                    .filter(|t| {
-                                        if only_assigned {
-                                            match (user_id, t.task.assigned_user_id) {
-                                                (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
-                                                _ => false,
-                                            }
-                                        } else {
-                                            true
-                                        }
-                                    })
                                     .map(|t| TaskWithHousehold::new(t, Some(hh_id.clone()), None))
                                     .collect();
                                 view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date on_pause=on_context_pause solo_mode=is_solo_mode /> }
-                            }
+                            }}
                         </div>
 
                         <div>
@@ -987,8 +1009,7 @@ pub fn HouseholdPage() -> impl IntoView {
                             </div>
                         </div>
                     </div>
-                }
-            })}
+            </Show>
 
             // Invite Modal
             <Show when=move || show_invite_modal.get() fallback=|| ()>

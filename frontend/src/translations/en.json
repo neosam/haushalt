@@ -117,6 +117,7 @@
   "tasks.all_tasks": "All Tasks",
   "tasks.filter_all": "All",
   "tasks.filter_mine": "Mine",
+  "tasks.filter_by_title": "Filter by title...",
   "tasks.assigned_to_name": "Assigned to",
   "tasks.description": "Description",
   "tasks.assigned_to": "Assigned To",

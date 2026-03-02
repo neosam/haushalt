@@ -117,6 +117,7 @@
   "tasks.all_tasks": "Alle Aufgaben",
   "tasks.filter_all": "Alle",
   "tasks.filter_mine": "Meine",
+  "tasks.filter_by_title": "Nach Titel filtern...",
   "tasks.assigned_to_name": "Zugewiesen an",
   "tasks.description": "Beschreibung",
   "tasks.assigned_to": "Zugewiesen an",

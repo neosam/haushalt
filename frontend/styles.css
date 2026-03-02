@@ -15,6 +15,10 @@
     --text-color: #1e293b;
     --text-muted: #64748b;
     --border-color: #e2e8f0;
+
+    /* Input sizing */
+    --input-padding: 0.75rem;
+    --input-max-width: 400px;
 }
 
 body {
@@ -1480,6 +1484,35 @@ body.dark-mode .chat-input-area {
     border-radius: 0.375rem;
 }
 
+/* Text Filter Input - Mobile First */
+.text-filter-input {
+    width: 100%;
+    padding: var(--input-padding);
+    font-size: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background-color: var(--card-color);
+    color: var(--text-color);
+}
+
+.text-filter-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.text-filter-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Desktop enhancement */
+@media (min-width: 768px) {
+    .text-filter-input {
+        max-width: var(--input-max-width);
+    }
+}
+
 .filter-checkbox {
     display: flex;
     align-items: center;
@@ -1554,6 +1587,21 @@ body.dark-mode .markdown-content th {
 body.dark-mode .filter-controls {
     background-color: var(--card-color);
     border-color: var(--border-color);
+}
+
+body.dark-mode .text-filter-input {
+    background-color: var(--card-color);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .text-filter-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2);
+}
+
+body.dark-mode .text-filter-input::placeholder {
+    color: var(--text-muted);
 }
 
 /* Assignment Filter Button - Mobile First */

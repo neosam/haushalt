@@ -614,7 +614,7 @@ pub fn GroupedTaskList(
 
 /// Task with associated household information for display.
 /// This is the unified type used by GroupedTaskList.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct TaskWithHousehold {
     pub task: TaskWithStatus,
     pub household_name: Option<String>,

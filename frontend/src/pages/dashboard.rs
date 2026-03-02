@@ -7,12 +7,13 @@ use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
-use crate::utils::TaskModalData;
+use crate::utils::{matches_text_filter, TaskModalData};
 use crate::components::modal::Modal;
 use crate::components::set_date_modal::SetDateModal;
 use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
+use crate::components::text_filter_input::TextFilterInput;
 use crate::i18n::use_i18n;
 
 #[component]
@@ -58,6 +59,43 @@ pub fn Dashboard() -> impl IntoView {
     // Assignment filter state
     let current_user_id = create_rw_signal(Option::<Uuid>::None);
     let show_only_assigned = create_rw_signal(false);
+
+    // Text filter state
+    let text_filter = create_rw_signal(String::new());
+    let text_filter_placeholder = store_value(i18n_stored.get_value().t("tasks.filter_by_title"));
+    let text_filter_callback = Callback::new(move |value: String| text_filter.set(value));
+
+    // Filtered tasks memo (design.md: "create a Memo that filters tasks reactively")
+    //
+    // AUDIT NOTE (Task 7.3): This memo applies all filters once and passes results
+    // directly to GroupedTaskList. No double-filtering occurs:
+    // 1. Household filter (enabled_households)
+    // 2. Assignment filter (show_only_assigned)
+    // 3. Text filter (matches_text_filter)
+    //
+    // The filtered result is used directly in the view without additional filtering.
+    let filtered_tasks = create_memo(move |_| {
+        let tasks = all_tasks.get();
+        let user_id = current_user_id.get();
+        let only_assigned = show_only_assigned.get();
+        let filter_text = text_filter.get().to_lowercase();
+
+        tasks
+            .into_iter()
+            .filter(|t| t.household_id.as_ref().map(|id| enabled_households.get().contains(id)).unwrap_or(false))
+            .filter(|t| {
+                if only_assigned {
+                    match (user_id, t.task.task.assigned_user_id) {
+                        (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
+                        _ => false,
+                    }
+                } else {
+                    true
+                }
+            })
+            .filter(|t| matches_text_filter(&t.task.task.title, &filter_text))
+            .collect::<Vec<_>>()
+    });
 
     // Load households, invitations, and tasks on mount
     create_effect(move |_| {
@@ -494,32 +532,22 @@ pub fn Dashboard() -> impl IntoView {
                         }
                     }}
 
+                    // Text filter input (separate component prevents re-rendering)
+                    <TextFilterInput
+                        on_change=text_filter_callback
+                        placeholder=text_filter_placeholder.get_value()
+                        id="dashboard-text-filter".to_string()
+                    />
+
                     // Tasks section
                     {move || {
-                        let tasks = all_tasks.get();
-                        let user_id = current_user_id.get();
-                        let only_assigned = show_only_assigned.get();
-                        // Filter tasks by enabled households and assignment
-                        let filtered_tasks: Vec<_> = tasks
-                            .into_iter()
-                            .filter(|t| t.household_id.as_ref().map(|id| enabled_households.get().contains(id)).unwrap_or(false))
-                            .filter(|t| {
-                                if only_assigned {
-                                    match (user_id, t.task.task.assigned_user_id) {
-                                        (Some(uid), Some(assigned_uid)) => uid == assigned_uid,
-                                        _ => false,
-                                    }
-                                } else {
-                                    true
-                                }
-                            })
-                            .collect();
+                        let tasks = filtered_tasks.get();
 
-                        if !filtered_tasks.is_empty() {
+                        if !tasks.is_empty() {
                             view! {
                                 <div>
                                     <GroupedTaskList
-                                        tasks=filtered_tasks
+                                        tasks=tasks
                                         on_complete=on_complete_task
                                         on_uncomplete=on_uncomplete_task
                                         timezone="Europe/Berlin".to_string()

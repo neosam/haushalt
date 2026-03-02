@@ -31,6 +31,7 @@ pub mod household_picker_modal;
 pub mod quick_task_fab;
 pub mod set_date_modal;
 pub mod period_tracker;
+pub mod text_filter_input;
 
 // Primitive UI components
 pub mod button;

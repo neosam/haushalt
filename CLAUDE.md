@@ -102,6 +102,51 @@ When implementing features:
   3. `/opsx:archive` - Archive completed change
   4. Commit with jj
 
+### Design-Driven Implementation (CRITICAL)
+
+**The design document is the source of truth.** Always follow the design document exactly when implementing tasks.
+
+#### Before Each Task:
+1. **Read design.md** - Re-read the relevant section for the task you're implementing
+2. **Identify the pattern** - What specific code pattern or architecture does the design describe?
+3. **Document your understanding** - Mentally note: "Design says: [pattern/approach]"
+
+#### During Implementation:
+4. **Follow the design pattern exactly** - Do NOT adapt to existing code if it contradicts the design
+5. **Stop on contradictions** - If existing code differs from the design document:
+   - PAUSE implementation
+   - Ask the user: "Existing code uses [X], but design.md specifies [Y]. How should I proceed?"
+6. **No assumptions** - Do not assume existing patterns are correct
+
+#### After Implementation:
+7. **Verify against design** - Before marking a task as complete:
+   - Does my code match the design pattern described?
+   - Does it use the exact approach specified (e.g., `create_memo` not inline logic)?
+8. **Document verification** - Add a comment in your response: "✓ Verified: Uses [pattern] as specified in design.md"
+
+#### When Design is Missing or Unclear:
+- STOP and ask the user before implementing
+- Do NOT fill in gaps with assumptions
+- Say: "Design doesn't specify [X]. Should I [option A] or [option B]?"
+
+#### Example (Correct):
+```
+Task: "Implement filtering logic"
+Design says: "create a Memo that filters tasks reactively"
+Implementation: ✓ Uses create_memo(move |_| { ... })
+Verification: ✓ Matches design pattern exactly
+```
+
+#### Example (Incorrect - Do NOT do this):
+```
+Task: "Implement filtering logic"
+Design says: "create a Memo"
+Implementation: ✗ Used inline filtering in view because existing code did it that way
+Problem: Ignored design, followed existing code instead
+```
+
+**Remember**: Design documents exist to prevent mistakes. Following them strictly prevents bugs and rework.
+
 ### Mobile First (CSS)
 - Write base styles for mobile screens first
 - Use `min-width` media queries to add desktop enhancements
