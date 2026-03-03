@@ -4,14 +4,8 @@ use actix_web::{middleware::Logger, web, App, HttpServer};
 use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
 
-mod config;
-mod db;
-mod handlers;
-mod middleware;
-mod models;
-mod services;
-
-use config::Config;
+use backend::config::Config;
+use backend::{handlers, middleware, models, services};
 
 async fn index(config: web::Data<models::AppState>) -> actix_web::Result<NamedFile> {
     let static_path = config.config.static_files_path.as_deref().unwrap_or("./static");
