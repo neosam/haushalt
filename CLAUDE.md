@@ -65,19 +65,31 @@ Leptos CSR (client-side rendered) WASM app:
 
 **SQLx offline mode**: Backend compiles against `sqlx-data.json` snapshots. Run `cargo sqlx prepare` after schema changes.
 
-## Specifications
+## Planning & Spec-Driven Development
 
-This project uses OpenSpec for managing specifications and changes.
+This project uses **GSD (Get Shit Done)** for spec-driven development. The `.planning/` directory is the source of truth for project state, requirements, roadmap, and execution context.
 
-- **openspec/specs/**: Capability specs with BDD-style requirements (e.g., `tasks/spec.md`)
-- **openspec/changes/**: Active change proposals (proposal → specs → design → tasks)
-- **docs/constitution.md**: Core project principles and domain model
-- **docs/architecture/**: Technical architecture documentation
+- **`.planning/PROJECT.md`**: Project vision, validated/active requirements, constraints, key decisions
+- **`.planning/REQUIREMENTS.md`**: Checkable requirements (REQ-IDs) with BDD scenarios and traceability to phases
+- **`.planning/ROADMAP.md`**: Milestone-grouped phases, plans, success criteria, progress
+- **`.planning/STATE.md`**: Living project memory — current position, blockers, session continuity (read first in every session)
+- **`.planning/config.json`**: GSD workflow config (granularity, agents, model profile)
+- **`.planning/codebase/`**: STRUCTURE.md + CONVENTIONS.md (where things live and how code is written)
+- **`docs/constitution.md`**: Core project principles and domain model
+- **`docs/architecture/`**: Technical architecture documentation
 
-When implementing features:
-1. Use `/opsx:propose` to create a change proposal
-2. Use `/opsx:apply` to implement tasks from the change
-3. Use `/opsx:archive` when implementation is complete
+> **Note:** This project was migrated from OpenSpec. The legacy `openspec/` directory (if still present) is kept only as a historical reference and is **not** the source of truth — use `.planning/` instead. It can be removed once verified.
+
+### GSD Workflow
+
+Before making file-changing edits, start work through a GSD command so planning artifacts and execution context stay in sync:
+
+- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd-debug` for investigation and bug fixing
+- `/gsd-execute-phase` for planned phase work
+- `/gsd-discuss-phase N` → `/gsd-plan-phase N` → `/gsd-execute-phase N` → `/gsd-verify-phase N` → `/gsd-transition` for full phase work
+
+Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it. Always commit with `jj`.
 
 ## Coding Principles
 
@@ -96,11 +108,13 @@ When implementing features:
 - Self-documenting code preferred over comments
 
 ### Spec-Driven Development (SDD)
-- Use OpenSpec workflow for changes:
-  1. `/opsx:propose` - Create change with proposal, specs, design, tasks
-  2. `/opsx:apply` - Implement tasks from the change
-  3. `/opsx:archive` - Archive completed change
-  4. Commit with jj
+- Use the GSD workflow for changes:
+  1. `/gsd-discuss-phase` - Gather context and clarify approach for a phase
+  2. `/gsd-plan-phase` - Create an executable plan for the phase
+  3. `/gsd-execute-phase` - Execute the plan (fresh context per plan, atomic commits)
+  4. `/gsd-verify-phase` - Verify deliverables match phase goals/requirements
+  5. `/gsd-transition` - Mark phase complete, update PROJECT/REQUIREMENTS/STATE
+  6. Commit with jj
 
 ### Design-Driven Implementation (CRITICAL)
 
@@ -167,7 +181,7 @@ Problem: Ignored design, followed existing code instead
 - Project must build without warnings (workspace denies warnings)
 - No clippy warnings allowed
 - Always include tests for changes
-- Always use jujutsu vcs to create commits.  Basically use jj commit -m "commit message"
-- Use OpenSpec workflow for all changes: `/opsx:propose` → `/opsx:apply` → `/opsx:archive`
-- Check `openspec/specs/` for existing capability requirements before implementing
-- If openspec is not in the path, try using nix develop because it is mentioned in the flake.
+- Always use jujutsu vcs to create commits. Basically use `jj commit -m "commit message"`
+- Use the GSD workflow for all changes: `/gsd-discuss-phase` → `/gsd-plan-phase` → `/gsd-execute-phase` → `/gsd-verify-phase` → `/gsd-transition`
+- Check `.planning/REQUIREMENTS.md` and `.planning/ROADMAP.md` for existing requirements/current phase before implementing
+- If `pi-gsd-tools` is not in the path, it is provided by the pi environment (the `.pi/gsd/` extension is installed)

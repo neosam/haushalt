@@ -1,0 +1,116 @@
+# Requirements: Household Manager
+
+**Defined:** 2026-07-23
+**Core Value:** Households can fairly delegate, track, and gamify recurring chores and habits across members with transparent points and streaks.
+
+## Validated Requirements
+
+The v1.0 application is shipped. These capabilities are live and verified by the running app and its test suite. Listed at capability level; the codebase + tests are the living behavioral spec.
+
+| Capability | REQ Range | Count | Summary |
+| ---------- | --------- | ----- | ------- |
+| authentication | AUTH-01..05 | 5 | Signup/login, refresh-token rotation, persistent sessions, logout |
+| households | HSH-01..17 | 17 | Create/manage households, members, roles, settings, vacation mode |
+| user-management | USR-01..04 | 4 | Profiles, preferences, language (en/de) |
+| tasks | TASK-01..27 | 27 | CRUD, recurrence, completion, review, good/bad habits, archive, bulk edit, suggestions, pause, FAB, context menu |
+| task-categories | TCAT-01..05 | 5 | Categorize tasks |
+| task-period-tracking | TPT-01..09 | 9 | Per-recurrence period bounds, streak/period results, early completion |
+| task-text-filter | TFIL-01 | 1 | Filter household tasks by text |
+| rewards | RWD-01..21 | 21 | Point rewards linked to tasks |
+| punishments | PUN-01..20 | 20 | Point punishments linked to tasks |
+| point-conditions | PCON-01..05 | 5 | Conditional point rules |
+| dashboard | DASH-01..13 | 13 | Aggregated dashboard views |
+| household-statistics | HSTAT-01..10 | 10 | Household-level statistics |
+| announcements | ANN-01..06 | 6 | Household announcements and banner |
+| invitations | INV-01..06 | 6 | Invite members to households |
+| chat | CHAT-01..05 | 5 | Real-time household chat over WebSocket |
+| journal | JRN-01..06 | 6 | Journal entries |
+| notes | NOTE-01..05 | 5 | Notes |
+| activity-logs | ALOG-01..02 | 2 | Activity logging |
+| task-period-tracking (custom fix) | TPT-FIX-01 | 1 | Custom recurrence tracks each date as an independent period (shipped) |
+
+> Detailed BDD scenarios for shipped capabilities are preserved in jj history under the former `openspec/specs/`. The authoritative source for shipped behavior is the code and tests in `backend/` and `frontend/`.
+
+## v1 Requirements
+
+Active milestone **v1.1 Hardening & Connectivity**. Each maps to a roadmap phase.
+
+### Habit Tracker Test Coverage
+
+- [ ] **TEST-01**: Task service has comprehensive tests for creation, completion, uncompleting, and assignment validation
+  - Complete assigned/unassigned tasks; reject completion of others' assigned tasks
+  - `requires_review` produces Pending; otherwise Approved and points awarded
+  - Uncomplete removes the record and reverts points; cannot uncomplete others' completions
+- [ ] **TEST-02**: Period results service has tests for period tracking, completion counting, and target validation
+  - Period result created/updated when completion reaches target; `target_count` frozen at finalization
+  - Deleted when uncomplete drops below target; failed periods finalized for incomplete "yesterday"
+  - Skipped periods (paused/vacation) excluded from completion-rate and streak calculations
+  - Early completion (`completion_due_date`) and period bounds for every recurrence type
+  - Multiple completions honored only when `allow_exceed_target=true`
+- [ ] **TEST-03**: Task consequences service has tests for rewards/punishments and good/bad habit logic
+  - Good habit: completion awards points/rewards; miss deducts penalty/punishments
+  - Bad habit: completion (indulge) deducts; resistance (failed period) awards
+  - No points configured → no-op
+- [ ] **TEST-04**: Background jobs service has tests for automated punishments, streak updates, and auto-archiving
+  - Auto-archive one-time/custom tasks after grace period; never archive incomplete tasks; configurable grace period; `TaskAutoArchived` activity logged
+  - Period finalization respects household timezone; handles paused tasks and vacation mode
+- [ ] **TEST-05**: Integration tests cover complete habit workflows (daily, weekly, custom recurrence, vacation, good/bad habits)
+- [ ] **TEST-06**: Edge case tests cover timezone handling (DST, UTC±), leap years, end-of-month, concurrent completions
+- [ ] **TEST-07**: Paused tasks and vacation mode interactions are tested (penalties skipped, manual completion allowed, resume after unpause/vacation)
+- [ ] **TEST-08**: Shared test infrastructure exists (in-memory DB pool, migrations, fixture builders, domain assertion helpers)
+
+### Extend Recurrence Types
+
+- [ ] **RECTR-01**: Extend supported recurrence types (scope to be defined — run `/gsd-discuss-phase` for this phase before planning)
+
+### Offline Support
+
+- [ ] **OFFLINE-01**: User can view cached task data while offline (read-only)
+- [ ] **OFFLINE-02**: Task data is cached locally using IndexedDB (stores for Tasks, TaskWithStatus, Households)
+- [ ] **OFFLINE-03**: An offline indicator is shown when the connection is lost
+- [ ] **OFFLINE-04**: Data auto-syncs when the connection is restored (server wins on conflict)
+- [ ] **OFFLINE-05**: Interactive actions (complete/edit/create) are disabled while offline
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+| ------- | ------ |
+| Frontend/UI automated tests | Backend service-layer tests are sufficient for habit logic |
+| HTTP endpoint integration tests | Mostly boilerplate; service layer is the focus |
+| Performance/load testing | Not needed at household scale |
+| Automated coverage tooling | Manual verification via code review is sufficient |
+| Offline editing/creation | Offline is read-only by design; server wins |
+| Migration of old custom-recurrence period records | Old 1970-2100 records are superseded by correct per-date records; harmless |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+| ----------- | ----- | ------ |
+| TPT-FIX-01 | Phase 1 | Complete |
+| TEST-01 | Phase 2 | In Progress |
+| TEST-02 | Phase 2 | In Progress |
+| TEST-03 | Phase 2 | Pending |
+| TEST-04 | Phase 2 | Pending |
+| TEST-05 | Phase 2 | Pending |
+| TEST-06 | Phase 2 | Pending |
+| TEST-07 | Phase 2 | Pending |
+| TEST-08 | Phase 2 | In Progress |
+| RECTR-01 | Phase 3 | Pending |
+| OFFLINE-01 | Phase 4 | Pending |
+| OFFLINE-02 | Phase 4 | Pending |
+| OFFLINE-03 | Phase 4 | Pending |
+| OFFLINE-04 | Phase 4 | Pending |
+| OFFLINE-05 | Phase 4 | Pending |
+
+**Coverage:**
+- v1 requirements: 14 total
+- Mapped to phases: 14
+- Unmapped: 0 ✓
+
+---
+*Requirements defined: 2026-07-23*
+*Last updated: 2026-07-23 after migration from OpenSpec to GSD*

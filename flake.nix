@@ -4,7 +4,6 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    openspec.url = "github:Fission-AI/OpenSpec";
     jj-ws.url = "github:neosam/jj-ws";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -12,7 +11,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, jj-ws, rust-overlay, openspec }:
+  outputs = { self, nixpkgs, flake-utils, jj-ws, rust-overlay }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
@@ -124,7 +123,6 @@
             jj-ws.packages.${system}.default
 
             # AI tools
-            openspec.packages.${system}.default
             claude-code
           ];
 

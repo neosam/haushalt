@@ -2,3 +2,6 @@ target
 dist
 result
 household.db*
+
+# pi agent harness + GSD extension tooling (environment-specific, installed by pi)
+.pi/
