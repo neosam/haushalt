@@ -19,6 +19,8 @@ pub enum TaskError {
     NotCompleted,
     #[error("User is not assigned to this task")]
     NotAssigned,
+    #[error("The assigned user may not undo a completion of this task")]
+    AssigneeCannotUncomplete,
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 }
@@ -34,6 +36,7 @@ pub async fn create_task(
     let target_count = request.target_count.unwrap_or(1);
     let allow_exceed_target = request.allow_exceed_target.unwrap_or(true);
     let anyone_can_complete = request.anyone_can_complete.unwrap_or(false);
+    let assignee_cannot_uncomplete = request.assignee_cannot_uncomplete.unwrap_or(false);
     let requires_review = request.requires_review.unwrap_or(false);
     let habit_type = request.habit_type.unwrap_or_default();
 
@@ -53,8 +56,8 @@ pub async fn create_task(
 
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, anyone_can_complete, requires_review, points_reward, points_penalty, due_time, habit_type, category_id, suggestion, suggested_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, anyone_can_complete, assignee_cannot_uncomplete, requires_review, points_reward, points_penalty, due_time, habit_type, category_id, suggestion, suggested_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -68,6 +71,7 @@ pub async fn create_task(
     .bind(time_period_str)
     .bind(allow_exceed_target)
     .bind(anyone_can_complete)
+    .bind(assignee_cannot_uncomplete)
     .bind(requires_review)
     .bind(request.points_reward)
     .bind(request.points_penalty)
@@ -93,6 +97,7 @@ pub async fn create_task(
         time_period: request.time_period,
         allow_exceed_target,
         anyone_can_complete,
+        assignee_cannot_uncomplete,
         requires_review,
         points_reward: request.points_reward,
         points_penalty: request.points_penalty,
@@ -472,6 +477,9 @@ pub async fn update_task(
     if let Some(anyone_can_complete) = request.anyone_can_complete {
         task.anyone_can_complete = anyone_can_complete;
     }
+    if let Some(assignee_cannot_uncomplete) = request.assignee_cannot_uncomplete {
+        task.assignee_cannot_uncomplete = assignee_cannot_uncomplete;
+    }
     if let Some(requires_review) = request.requires_review {
         task.requires_review = requires_review;
     }
@@ -502,7 +510,7 @@ pub async fn update_task(
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, anyone_can_complete = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, archived = ?, paused = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, anyone_can_complete = ?, assignee_cannot_uncomplete = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, archived = ?, paused = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -515,6 +523,7 @@ pub async fn update_task(
     .bind(&task.time_period)
     .bind(task.allow_exceed_target)
     .bind(task.anyone_can_complete)
+    .bind(task.assignee_cannot_uncomplete)
     .bind(task.requires_review)
     .bind(task.points_reward)
     .bind(task.points_penalty)
@@ -631,23 +640,29 @@ pub async fn delete_task(pool: &SqlitePool, task_id: &Uuid) -> Result<(), TaskEr
 }
 
 /// Returns whether `user_id` may complete/uncomplete `task`.
-/// Only the assignee may do so, unless the task is flagged `anyone_can_complete`
-/// or has no assignee at all.
+/// Only the assignee may do so, unless the task is open to the whole household
+/// (`Task::is_household_wide`) or has no assignee at all.
 fn is_completable_by(task: &Task, user_id: &Uuid) -> bool {
-    task.anyone_can_complete
+    task.is_household_wide()
         || task
             .assigned_user_id
             .map(|assigned_id| assigned_id == *user_id)
             .unwrap_or(true)
 }
 
+/// Returns whether `user_id` is the assigned user of `task`.
+fn is_assignee(task: &Task, user_id: &Uuid) -> bool {
+    task.assigned_user_id == Some(*user_id)
+}
+
 /// Returns the user that completion counts must be filtered by, or `None` when every
 /// member's completions count toward the task target.
 ///
-/// Tasks flagged `anyone_can_complete` pool all members' completions - otherwise a shared
-/// task could never reach its `target_count`, since each member would only ever see their own.
+/// Household-wide tasks (`Task::is_household_wide`) pool all members' completions - otherwise a
+/// shared task could never reach its `target_count`, since each member would only ever see their
+/// own.
 fn completion_count_filter<'a>(task: &Task, user_id: &'a Uuid) -> Option<&'a Uuid> {
-    if task.anyone_can_complete {
+    if task.is_household_wide() {
         None
     } else {
         Some(user_id)
@@ -898,6 +913,12 @@ pub async fn uncomplete_task(
         return Err(TaskError::NotAssigned);
     }
 
+    // The assigned user must not be able to clear a completion that was pinned on them -
+    // somebody else from the household has to do it
+    if task.assignee_cannot_uncomplete && is_assignee(&task, user_id) {
+        return Err(TaskError::AssigneeCannotUncomplete);
+    }
+
     let today = Utc::now().date_naive();
     // A task anyone may check off can also be unchecked by anyone, so the completion to
     // remove is not restricted to the current user
@@ -1020,6 +1041,7 @@ pub async fn list_pending_reviews(
         t_time_period: Option<String>,
         t_allow_exceed_target: bool,
         t_anyone_can_complete: bool,
+        t_assignee_cannot_uncomplete: bool,
         t_requires_review: bool,
         t_points_reward: Option<i64>,
         t_points_penalty: Option<i64>,
@@ -1045,7 +1067,9 @@ pub async fn list_pending_reviews(
             t.recurrence_value as t_recurrence_value, t.assigned_user_id as t_assigned_user_id,
             t.target_count as t_target_count, t.time_period as t_time_period,
             t.allow_exceed_target as t_allow_exceed_target,
-            t.anyone_can_complete as t_anyone_can_complete, t.requires_review as t_requires_review,
+            t.anyone_can_complete as t_anyone_can_complete,
+            t.assignee_cannot_uncomplete as t_assignee_cannot_uncomplete,
+            t.requires_review as t_requires_review,
             t.points_reward as t_points_reward, t.points_penalty as t_points_penalty,
             t.due_time as t_due_time, t.habit_type as t_habit_type,
             t.created_at as t_created_at, t.updated_at as t_updated_at,
@@ -1091,6 +1115,7 @@ pub async fn list_pending_reviews(
                     time_period,
                     allow_exceed_target: row.t_allow_exceed_target,
                     anyone_can_complete: row.t_anyone_can_complete,
+                    assignee_cannot_uncomplete: row.t_assignee_cannot_uncomplete,
                     requires_review: row.t_requires_review,
                     points_reward: row.t_points_reward,
                     points_penalty: row.t_points_penalty,
@@ -1590,6 +1615,7 @@ mod tests {
                 time_period TEXT,
                 allow_exceed_target BOOLEAN NOT NULL DEFAULT 1,
                 anyone_can_complete BOOLEAN NOT NULL DEFAULT 0,
+                assignee_cannot_uncomplete BOOLEAN NOT NULL DEFAULT 0,
                 requires_review BOOLEAN NOT NULL DEFAULT 0,
                 points_reward INTEGER,
                 points_penalty INTEGER,
@@ -1852,6 +1878,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -1892,6 +1919,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(false),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -1928,6 +1956,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(false),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -1968,6 +1997,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None, // Default
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2007,6 +2037,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2030,6 +2061,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2069,6 +2101,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2109,6 +2142,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2141,6 +2175,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2161,6 +2196,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2210,6 +2246,7 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: None,
                 anyone_can_complete: None,
+                assignee_cannot_uncomplete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2247,6 +2284,7 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: None,
                 anyone_can_complete: None,
+                assignee_cannot_uncomplete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2284,6 +2322,7 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: None,
                 anyone_can_complete: None,
+                assignee_cannot_uncomplete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2321,6 +2360,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2353,6 +2393,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2391,6 +2432,7 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: None,
                 anyone_can_complete: None,
+                assignee_cannot_uncomplete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2433,6 +2475,7 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: None,
                 anyone_can_complete: None,
+                assignee_cannot_uncomplete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2510,6 +2553,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2531,6 +2575,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2570,6 +2615,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2590,6 +2636,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2629,6 +2676,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: Some(10),
             points_penalty: Some(5),
@@ -2683,6 +2731,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2736,6 +2785,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2817,6 +2867,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2851,6 +2902,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2888,6 +2940,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2922,6 +2975,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2953,6 +3007,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3078,6 +3133,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: Some(true),
+            assignee_cannot_uncomplete: Some(true),
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3149,6 +3205,245 @@ mod tests {
         assert!(matches!(third, Err(TaskError::AlreadyCompleted)));
     }
 
+    // ------------------------------------------------------------------------
+    // assignee_cannot_uncomplete: everyone may check the task off, but the assigned
+    // user may not undo it - somebody else from the household has to clear it
+    // ------------------------------------------------------------------------
+
+    /// Daily task assigned to `assignee` with the `assignee_cannot_uncomplete` flag set.
+    fn restricted_task_request(
+        assignee: Uuid,
+        assignee_cannot_uncomplete: Option<bool>,
+    ) -> CreateTaskRequest {
+        let mut request = assigned_task_request(assignee, None);
+        request.assignee_cannot_uncomplete = assignee_cannot_uncomplete;
+        request
+    }
+
+    #[tokio::test]
+    async fn test_create_task_assignee_cannot_uncomplete_defaults_to_false() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        let request = restricted_task_request(user_id, None);
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        assert!(!task.assignee_cannot_uncomplete);
+
+        // And it round-trips through the database
+        let loaded = get_task(&pool, &task.id).await.unwrap().unwrap();
+        assert!(!loaded.assignee_cannot_uncomplete);
+    }
+
+    #[tokio::test]
+    async fn test_update_task_toggles_assignee_cannot_uncomplete() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        let request = restricted_task_request(user_id, None);
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+        assert!(!task.assignee_cannot_uncomplete);
+
+        let update = UpdateTaskRequest {
+            title: None,
+            description: None,
+            recurrence_type: None,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: None,
+            time_period: None,
+            allow_exceed_target: None,
+            anyone_can_complete: None,
+            assignee_cannot_uncomplete: Some(true),
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            archived: None,
+            paused: None,
+        };
+        let updated = update_task(&pool, &task.id, &update).await.unwrap();
+        assert!(updated.assignee_cannot_uncomplete);
+
+        let loaded = get_task(&pool, &task.id).await.unwrap().unwrap();
+        assert!(loaded.assignee_cannot_uncomplete);
+    }
+
+    #[tokio::test]
+    async fn test_assignee_cannot_uncomplete_refuses_the_assignee() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // The bad habit is pinned on user1 by user2
+        let request = restricted_task_request(user1, Some(true));
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+        complete_task(&pool, &task.id, &user2, &household_id).await.unwrap();
+
+        // user1 (the assignee) must not be able to clear it
+        let result = uncomplete_task(&pool, &task.id, &user1).await;
+        assert!(matches!(result, Err(TaskError::AssigneeCannotUncomplete)));
+
+        // ... and the completion is still there
+        let remaining: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_completions WHERE task_id = ?")
+                .bind(task.id.to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(remaining, 1);
+    }
+
+    #[tokio::test]
+    async fn test_assignee_cannot_uncomplete_allows_other_member() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        let request = restricted_task_request(user1, Some(true));
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+
+        // A different household member clears it
+        uncomplete_task(&pool, &task.id, &user2)
+            .await
+            .expect("another member should be allowed to uncomplete");
+
+        let remaining: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_completions WHERE task_id = ?")
+                .bind(task.id.to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(remaining, 0);
+    }
+
+    #[tokio::test]
+    async fn test_assignee_cannot_uncomplete_still_lets_assignee_complete() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        let request = restricted_task_request(user1, Some(true));
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        // The assignee may still check the task off ...
+        let completion = complete_task(&pool, &task.id, &user1, &household_id)
+            .await
+            .expect("assignee should still be allowed to complete");
+        assert_eq!(completion.user_id, user1);
+
+        // ... and so may everybody else in the household
+        complete_task(&pool, &task.id, &user2, &household_id)
+            .await
+            .expect("other members should be allowed to complete");
+    }
+
+    #[tokio::test]
+    async fn test_uncomplete_without_restriction_still_allows_assignee() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Flag off - behaviour must be byte-for-byte the old one
+        let request = restricted_task_request(user1, Some(false));
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+
+        // The non-assignee is still refused with the plain NotAssigned error
+        let other = uncomplete_task(&pool, &task.id, &user2).await;
+        assert!(matches!(other, Err(TaskError::NotAssigned)));
+
+        // The assignee may undo their own completion
+        uncomplete_task(&pool, &task.id, &user1)
+            .await
+            .expect("assignee should be allowed to uncomplete when the flag is off");
+    }
+
+    #[tokio::test]
+    async fn test_assignee_cannot_uncomplete_unassigned_task_refuses_nobody() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+
+        // Flag set but nobody is assigned -> there is no assignee to refuse
+        let mut request = restricted_task_request(user1, Some(true));
+        request.assigned_user_id = None;
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+        uncomplete_task(&pool, &task.id, &user1)
+            .await
+            .expect("unassigned tasks have no assignee to refuse");
+    }
+
+    #[tokio::test]
+    async fn test_assignee_cannot_uncomplete_counts_all_members_toward_target() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Like anyone_can_complete, the flag pools every member's completions
+        let mut request = restricted_task_request(user1, Some(true));
+        request.target_count = Some(2);
+        request.allow_exceed_target = Some(false);
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+        complete_task(&pool, &task.id, &user2, &household_id).await.unwrap();
+
+        let period_result: Option<(String, i32)> = sqlx::query_as(
+            "SELECT status, completions_count FROM task_period_results WHERE task_id = ?",
+        )
+        .bind(task.id.to_string())
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+
+        let (status, completions_count) = period_result.expect("period should be finalized");
+        assert_eq!(status, "completed");
+        assert_eq!(completions_count, 2);
+
+        // Pooled target already met
+        let third = complete_task(&pool, &task.id, &user2, &household_id).await;
+        assert!(matches!(third, Err(TaskError::AlreadyCompleted)));
+    }
+
+    #[tokio::test]
+    async fn test_list_pending_reviews_projects_completion_flags() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        let mut request = restricted_task_request(user1, Some(true));
+        request.requires_review = Some(true);
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+        complete_task(&pool, &task.id, &user2, &household_id).await.unwrap();
+
+        let reviews = list_pending_reviews(&pool, &household_id).await.unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0].task.id, task.id);
+        assert!(reviews[0].task.assignee_cannot_uncomplete);
+        assert!(!reviews[0].task.anyone_can_complete);
+        assert_eq!(reviews[0].user.id, user2);
+    }
+
     #[tokio::test]
     async fn test_task_with_status_is_user_assigned_true() {
         let pool = setup_test_db().await;
@@ -3166,6 +3461,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3204,6 +3500,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3242,6 +3539,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3283,6 +3581,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3333,6 +3632,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3399,6 +3699,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3457,6 +3758,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(false),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3525,6 +3827,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(false),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3595,6 +3898,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(false),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3653,6 +3957,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(false),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3725,6 +4030,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(false),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3807,6 +4113,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: Some(true),
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: Some(false),
             points_reward: Some(10i64),
             points_penalty: Some(-5i64),
@@ -3845,6 +4152,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,

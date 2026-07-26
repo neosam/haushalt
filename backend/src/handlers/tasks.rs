@@ -54,6 +54,7 @@ fn is_solo_mode_set_date_request(request: &UpdateTaskRequest, task: &Task) -> bo
         && request.time_period.is_none()
         && request.allow_exceed_target.is_none()
         && request.anyone_can_complete.is_none()
+        && request.assignee_cannot_uncomplete.is_none()
         && request.requires_review.is_none()
         && request.points_reward.is_none()
         && request.points_penalty.is_none()
@@ -1237,6 +1238,13 @@ async fn uncomplete_task(
 
     match task_service::uncomplete_task(&state.db, &task_id, &user_id).await {
         Ok(_) => Ok(HttpResponse::Ok().json(ApiSuccess::new(()))),
+        // Distinct from NotAssigned: the user may check the task off, they just may not undo it
+        Err(e @ task_service::TaskError::AssigneeCannotUncomplete) => {
+            Ok(HttpResponse::Forbidden().json(ApiError {
+                error: "assignee_cannot_uncomplete".to_string(),
+                message: e.to_string(),
+            }))
+        }
         Err(e) => {
             log::error!("Error uncompleting task: {:?}", e);
             Ok(HttpResponse::BadRequest().json(ApiError {
@@ -2356,6 +2364,7 @@ mod tests {
             time_period: Some(TimePeriod::Day),
             allow_exceed_target: false,
             anyone_can_complete: false,
+            assignee_cannot_uncomplete: false,
             requires_review: false,
             points_reward: None,
             points_penalty: None,
@@ -2383,6 +2392,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2447,6 +2457,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2477,6 +2488,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2507,6 +2519,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: None,
             anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,

@@ -130,6 +130,21 @@ mod tests {
     }
 
     #[test]
+    fn test_assignee_cannot_uncomplete_keys_present_in_both_languages() {
+        let en = load_translations("en");
+        let de = load_translations("de");
+
+        for key in [
+            "task_modal.assignee_cannot_uncomplete",
+            "task_modal.assignee_cannot_uncomplete_hint",
+            "task_card.cannot_uncomplete",
+        ] {
+            assert!(en.contains_key(key), "missing english key: {}", key);
+            assert!(de.contains_key(key), "missing german key: {}", key);
+        }
+    }
+
+    #[test]
     fn test_supported_languages() {
         let langs = supported_languages();
         assert_eq!(langs.len(), 2);

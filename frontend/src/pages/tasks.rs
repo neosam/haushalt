@@ -818,6 +818,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: true,
             anyone_can_complete: false,
+            assignee_cannot_uncomplete: false,
             requires_review: false,
             points_reward: None,
             points_penalty: None,

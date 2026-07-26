@@ -195,6 +195,7 @@
   "tasks.detail.recent_periods": "Letzte Perioden",
 
   "task_card.add_to_dashboard": "Zum Dashboard hinzufügen",
+  "task_card.cannot_uncomplete": "Du darfst diese Erledigung nicht selbst zurücknehmen - jemand anderes aus dem Haushalt muss das tun",
   "task_card.remove_from_dashboard": "Vom Dashboard entfernen",
   "task_card.set_date": "Datum setzen",
   "task_card.set_date_title": "Datum setzen",
@@ -244,6 +245,8 @@
   "task_modal.allow_exceed_hint": "Wenn deaktiviert, wird der Erledigt-Button deaktiviert, sobald das Ziel erreicht ist",
   "task_modal.anyone_can_complete": "Jeder darf abhaken",
   "task_modal.anyone_can_complete_hint": "Wenn aktiviert, kann jedes Haushaltsmitglied diese Aufgabe abhaken - nicht nur die zugewiesene Person. Die Punkte gehen an die Person, die abhakt.",
+  "task_modal.assignee_cannot_uncomplete": "Zugewiesene Person darf nicht zurücknehmen",
+  "task_modal.assignee_cannot_uncomplete_hint": "Wenn aktiviert, kann jedes Haushaltsmitglied diese Aufgabe abhaken - auch die zugewiesene Person. Zurücknehmen darf sie aber jeder ausser der zugewiesenen Person.",
   "task_modal.require_review": "Überprüfung erforderlich",
   "task_modal.require_review_hint": "Wenn aktiviert, müssen Erledigungen vom Eigentümer genehmigt werden, bevor Punkte/Belohnungen vergeben werden",
   "task_modal.assigned_to": "Zugewiesen an",

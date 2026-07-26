@@ -615,6 +615,10 @@ pub struct Task {
     /// When true, any household member may complete/uncomplete this task, not just the
     /// assigned user, and every member's completions count toward the target.
     pub anyone_can_complete: bool,
+    /// When true, every household member may check this task off (including the assigned user)
+    /// and every member's completions count toward the target, but the assigned user may NOT
+    /// undo a completion - somebody else has to clear it.
+    pub assignee_cannot_uncomplete: bool,
     /// When true, task completions require owner/admin approval before being finalized.
     pub requires_review: bool,
     /// Points awarded when this task is completed
@@ -641,6 +645,17 @@ pub struct Task {
     pub updated_at: DateTime<Utc>,
 }
 
+impl Task {
+    /// Returns true when this task belongs to the whole household: every member may check it
+    /// off and every member's completions pool toward `target_count`.
+    ///
+    /// Both flags open the task up household-wide - `assignee_cannot_uncomplete` additionally
+    /// denies the assigned user the undo (see `TaskWithStatus::can_uncomplete`).
+    pub fn is_household_wide(&self) -> bool {
+        self.anyone_can_complete || self.assignee_cannot_uncomplete
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTaskRequest {
     pub title: String,
@@ -654,6 +669,9 @@ pub struct CreateTaskRequest {
     pub allow_exceed_target: Option<bool>,
     /// When true, any household member may complete this task (default: false).
     pub anyone_can_complete: Option<bool>,
+    /// When true, anyone may check the task off but the assigned user may not undo it
+    /// (default: false).
+    pub assignee_cannot_uncomplete: Option<bool>,
     /// When true, completions require owner/admin approval.
     pub requires_review: Option<bool>,
     /// Points awarded when this task is completed
@@ -682,6 +700,9 @@ pub struct UpdateTaskRequest {
     pub allow_exceed_target: Option<bool>,
     /// When true, any household member may complete this task (default: false).
     pub anyone_can_complete: Option<bool>,
+    /// When true, anyone may check the task off but the assigned user may not undo it
+    /// (default: false).
+    pub assignee_cannot_uncomplete: Option<bool>,
     pub requires_review: Option<bool>,
     /// Points awarded when this task is completed
     pub points_reward: Option<i64>,
@@ -777,18 +798,37 @@ impl TaskWithStatus {
     /// Returns true if the current user is allowed to check this task off at all,
     /// ignoring whether the target is already met.
     /// This is the case when the user is the assignee (or the task is unassigned),
-    /// or when the task is flagged as completable by anyone.
+    /// or when the task is open to the whole household.
     pub fn is_completable_by_user(&self) -> bool {
-        self.is_user_assigned || self.task.anyone_can_complete
+        self.is_user_assigned || self.task.is_household_wide()
+    }
+
+    /// Returns true if the current user is the assigned user of this task.
+    ///
+    /// `is_user_assigned` alone is not enough: it is also true for *unassigned* tasks.
+    pub fn is_assignee(&self) -> bool {
+        self.task.assigned_user_id.is_some() && self.is_user_assigned
     }
 
     /// Returns true if the user can add more completions
     /// This is false when:
     /// - User is not assigned to the task (when task has an assigned user)
-    ///   and the task is not flagged `anyone_can_complete`
+    ///   and the task is not open to the whole household
     /// - Target is met AND allow_exceed_target is false
     pub fn can_complete(&self) -> bool {
         self.is_completable_by_user() && (self.task.allow_exceed_target || !self.is_target_met())
+    }
+
+    /// Returns true if the user may undo a completion of this task.
+    ///
+    /// Same rule as `is_completable_by_user`, except that a task flagged
+    /// `assignee_cannot_uncomplete` refuses the assigned user: somebody else from the household
+    /// has to clear the completion.
+    pub fn can_uncomplete(&self) -> bool {
+        if self.task.assignee_cannot_uncomplete && self.is_assignee() {
+            return false;
+        }
+        self.is_completable_by_user()
     }
 }
 
@@ -2045,6 +2085,7 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: allow_exceed,
                 anyone_can_complete,
+                assignee_cannot_uncomplete: false,
                 requires_review: false,
                 points_reward: None,
                 points_penalty: None,
@@ -2186,6 +2227,68 @@ mod tests {
         // Assignee stays completable regardless of the anyone_can_complete flag
         let task = create_task_with_status_full(0, 3, true, true, false);
         assert!(task.is_completable_by_user());
+    }
+
+    /// Task with a real assignee and the `assignee_cannot_uncomplete` flag applied.
+    fn create_assigned_task_with_status(
+        is_user_assigned: bool,
+        assignee_cannot_uncomplete: bool,
+    ) -> TaskWithStatus {
+        let mut task = create_task_with_status_full(1, 3, true, is_user_assigned, false);
+        task.task.assigned_user_id = Some(Uuid::new_v4());
+        task.task.assignee_cannot_uncomplete = assignee_cannot_uncomplete;
+        task
+    }
+
+    #[test]
+    fn test_task_is_household_wide() {
+        // Either flag opens the task up to the whole household
+        let neither = create_task_with_status_full(0, 3, true, true, false);
+        assert!(!neither.task.is_household_wide());
+
+        let anyone = create_task_with_status_full(0, 3, true, true, true);
+        assert!(anyone.task.is_household_wide());
+
+        let restricted = create_assigned_task_with_status(true, true);
+        assert!(restricted.task.is_household_wide());
+    }
+
+    #[test]
+    fn test_can_uncomplete_false_for_assignee_when_restricted() {
+        // The person the task is pinned on may check it off but not undo it
+        let task = create_assigned_task_with_status(true, true);
+        assert!(task.is_assignee());
+        assert!(task.can_complete());
+        assert!(!task.can_uncomplete());
+    }
+
+    #[test]
+    fn test_can_uncomplete_true_for_other_member_when_restricted() {
+        // Everybody else in the household may clear it
+        let task = create_assigned_task_with_status(false, true);
+        assert!(!task.is_assignee());
+        assert!(task.can_complete());
+        assert!(task.can_uncomplete());
+    }
+
+    #[test]
+    fn test_can_uncomplete_true_for_assignee_without_restriction() {
+        // Flag off -> unchanged behaviour
+        let task = create_assigned_task_with_status(true, false);
+        assert!(task.can_uncomplete());
+
+        // ... and a non-assignee still cannot touch the task at all
+        let other = create_assigned_task_with_status(false, false);
+        assert!(!other.can_uncomplete());
+    }
+
+    #[test]
+    fn test_can_uncomplete_unassigned_task_is_unaffected() {
+        // is_user_assigned is also true for unassigned tasks - there is no assignee to refuse
+        let mut task = create_task_with_status_full(1, 3, true, true, false);
+        task.task.assignee_cannot_uncomplete = true;
+        assert!(!task.is_assignee());
+        assert!(task.can_uncomplete());
     }
 
     #[test]

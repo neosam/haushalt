@@ -112,6 +112,11 @@ pub fn TaskModal(
             .map(|t| t.anyone_can_complete)
             .unwrap_or(false)  // Default to false for new tasks
     );
+    let assignee_cannot_uncomplete = create_rw_signal(
+        source_task
+            .map(|t| t.assignee_cannot_uncomplete)
+            .unwrap_or(false)  // Default to false for new tasks
+    );
     let requires_review = create_rw_signal(
         source_task
             .map(|t| t.requires_review)
@@ -237,6 +242,7 @@ pub fn TaskModal(
     let apply_target_count = create_rw_signal(false);
     let apply_allow_exceed = create_rw_signal(false);
     let apply_anyone_can_complete = create_rw_signal(false);
+    let apply_assignee_cannot_uncomplete = create_rw_signal(false);
     let apply_requires_review = create_rw_signal(false);
     let apply_on_dashboard = create_rw_signal(false);
     let apply_habit_type = create_rw_signal(false);
@@ -350,6 +356,7 @@ pub fn TaskModal(
                         time_period: None,
                         allow_exceed_target: Some(allow_exceed_target.get()),
                         anyone_can_complete: Some(anyone_can_complete.get()),
+                        assignee_cannot_uncomplete: Some(assignee_cannot_uncomplete.get()),
                         requires_review: Some(requires_review.get()),
                         points_reward: pts_reward,
                         points_penalty: pts_penalty,
@@ -441,6 +448,7 @@ pub fn TaskModal(
                         time_period: None,
                         allow_exceed_target: Some(allow_exceed_target.get()),
                         anyone_can_complete: Some(anyone_can_complete.get()),
+                        assignee_cannot_uncomplete: Some(assignee_cannot_uncomplete.get()),
                         requires_review: Some(requires_review.get()),
                         points_reward: pts_reward,
                         points_penalty: pts_penalty,
@@ -571,6 +579,11 @@ pub fn TaskModal(
                         },
                         anyone_can_complete: if apply_anyone_can_complete.get() {
                             Some(anyone_can_complete.get())
+                        } else {
+                            None
+                        },
+                        assignee_cannot_uncomplete: if apply_assignee_cannot_uncomplete.get() {
+                            Some(assignee_cannot_uncomplete.get())
                         } else {
                             None
                         },
@@ -1038,6 +1051,8 @@ pub fn TaskModal(
 
                         <TaskAnyoneCanCompleteField value=anyone_can_complete />
 
+                        <TaskAssigneeCannotUncompleteField value=assignee_cannot_uncomplete />
+
                         <div class="form-group">
                             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                                 <input
@@ -1463,6 +1478,11 @@ pub fn TaskModal(
                                         <TaskAnyoneCanCompleteField value=anyone_can_complete hide_label=true />
                                     </BulkEditField>
 
+                                    // Assignee Cannot Uncomplete
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.assignee_cannot_uncomplete") apply=apply_assignee_cannot_uncomplete>
+                                        <TaskAssigneeCannotUncompleteField value=assignee_cannot_uncomplete hide_label=true />
+                                    </BulkEditField>
+
                                     // Requires Review
                                     <BulkEditField label=i18n_stored.get_value().t("task_modal.require_review") apply=apply_requires_review>
                                         <TaskRequiresReviewField value=requires_review hide_label=true />
@@ -1788,6 +1808,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: true,
             anyone_can_complete: false,
+            assignee_cannot_uncomplete: false,
             requires_review: false,
             points_reward: Some(10),
             points_penalty: None,
@@ -1826,6 +1847,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: false,
             anyone_can_complete: false,
+            assignee_cannot_uncomplete: false,
             requires_review: true,
             points_reward: None,
             points_penalty: None,
@@ -1853,6 +1875,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: true,
             anyone_can_complete: false,
+            assignee_cannot_uncomplete: false,
             requires_review: false,
             points_reward: None,
             points_penalty: None,
@@ -1890,6 +1913,7 @@ mod tests {
             time_period: None,
             allow_exceed_target: true,
             anyone_can_complete: false,
+            assignee_cannot_uncomplete: false,
             requires_review: false,
             points_reward: None,
             points_penalty: None,

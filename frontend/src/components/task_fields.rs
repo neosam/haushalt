@@ -191,6 +191,36 @@ pub fn TaskAnyoneCanCompleteField(
     }
 }
 
+/// Assignee cannot uncomplete checkbox
+#[component]
+pub fn TaskAssigneeCannotUncompleteField(
+    value: RwSignal<bool>,
+    #[prop(default = false)] disabled: bool,
+    #[prop(default = false)] hide_label: bool,
+) -> impl IntoView {
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n);
+
+    view! {
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input
+                    type="checkbox"
+                    disabled=disabled
+                    prop:checked=move || value.get()
+                    on:change=move |ev| value.set(event_target_checked(&ev))
+                />
+                <Show when=move || !hide_label fallback=|| ()>
+                    <span>{i18n_stored.get_value().t("task_modal.assignee_cannot_uncomplete")}</span>
+                </Show>
+            </label>
+            <Show when=move || !hide_label fallback=|| ()>
+                <small class="form-hint">{i18n_stored.get_value().t("task_modal.assignee_cannot_uncomplete_hint")}</small>
+            </Show>
+        </div>
+    }
+}
+
 /// Requires review checkbox
 #[component]
 pub fn TaskRequiresReviewField(

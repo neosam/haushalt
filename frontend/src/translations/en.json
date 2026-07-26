@@ -195,6 +195,7 @@
   "tasks.detail.recent_periods": "Recent Periods",
 
   "task_card.add_to_dashboard": "Add to dashboard",
+  "task_card.cannot_uncomplete": "You may not undo this completion yourself - somebody else from the household has to do it",
   "task_card.remove_from_dashboard": "Remove from dashboard",
   "task_card.set_date": "Set date",
   "task_card.set_date_title": "Set Date",
@@ -244,6 +245,8 @@
   "task_modal.allow_exceed_hint": "When unchecked, the complete button is disabled once the target is reached",
   "task_modal.anyone_can_complete": "Anyone can check off",
   "task_modal.anyone_can_complete_hint": "When enabled, any household member can check this task off - not only the assigned person. Points go to whoever checks it off.",
+  "task_modal.assignee_cannot_uncomplete": "Assigned person cannot undo",
+  "task_modal.assignee_cannot_uncomplete_hint": "When enabled, any household member can check this task off - including the assigned person. Undoing it is allowed for everyone except the assigned person.",
   "task_modal.require_review": "Require review",
   "task_modal.require_review_hint": "When enabled, completions must be approved by an owner before points/rewards are finalized",
   "task_modal.assigned_to": "Assigned To",

@@ -67,6 +67,9 @@ pub fn TaskCard(
 
     let is_target_met = task.is_target_met();
     let can_complete = task.can_complete();
+    // Whether the user may undo a completion: false for the assignee of a task flagged
+    // assignee_cannot_uncomplete - somebody else has to clear it
+    let can_uncomplete = task.can_uncomplete();
     let is_user_assigned = task.is_user_assigned;
     // Whether to show the +/- controls at all: the assignee, or anyone when the task allows it
     let is_completable_by_user = task.is_completable_by_user();
@@ -102,7 +105,7 @@ pub fn TaskCard(
     };
 
     let on_minus = move |_| {
-        if has_completions {
+        if has_completions && can_uncomplete {
             on_uncomplete.call(task_id_for_minus.clone());
         }
     };
@@ -174,6 +177,13 @@ pub fn TaskCard(
     };
 
     let task_title = task.task.title.clone();
+
+    // Explain the disabled "-" button when the assignee is not allowed to undo the completion
+    let cannot_uncomplete_title = if can_uncomplete {
+        String::new()
+    } else {
+        i18n_stored.get_value().t("task_card.cannot_uncomplete")
+    };
 
     view! {
         <div class=card_class>
@@ -264,7 +274,8 @@ pub fn TaskCard(
                         <button
                             class="btn btn-outline"
                             style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
-                            disabled=!has_completions
+                            disabled=!has_completions || !can_uncomplete
+                            title=cannot_uncomplete_title
                             on:click=on_minus
                         >
                             "-"
@@ -706,6 +717,7 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: allow_exceed,
                 anyone_can_complete: false,
+                assignee_cannot_uncomplete: false,
                 requires_review: false,
                 points_reward: None,
                 points_penalty: None,
@@ -820,6 +832,7 @@ mod tests {
                 time_period: None,
                 allow_exceed_target: true,
                 anyone_can_complete: false,
+                assignee_cannot_uncomplete: false,
                 requires_review: false,
                 points_reward: None,
                 points_penalty: None,
@@ -921,4 +934,30 @@ mod tests {
         assert!(!task.can_complete());
     }
 
+    // Tests for assignee_cannot_uncomplete: the "-" button is gated on can_uncomplete()
+
+    fn create_restricted_test_task(is_user_assigned: bool) -> TaskWithStatus {
+        let mut task = create_test_task_with_exceed(1, 3, true);
+        task.task.assigned_user_id = Some(Uuid::new_v4());
+        task.task.assignee_cannot_uncomplete = true;
+        task.is_user_assigned = is_user_assigned;
+        task
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignee_cannot_uncomplete_hides_minus_for_assignee() {
+        let task = create_restricted_test_task(true);
+        // The assignee still sees the controls and may check the task off ...
+        assert!(task.is_completable_by_user());
+        assert!(task.can_complete());
+        // ... but the "-" button is disabled for them
+        assert!(!task.can_uncomplete());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_assignee_cannot_uncomplete_keeps_minus_for_other_member() {
+        let task = create_restricted_test_task(false);
+        assert!(task.can_complete());
+        assert!(task.can_uncomplete());
+    }
 }
