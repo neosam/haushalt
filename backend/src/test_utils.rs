@@ -70,16 +70,32 @@ async fn create_test_schema(pool: &SqlitePool) {
     .await
     .unwrap();
 
-    // Household settings table
+    // Household settings table (22-column production shape — must stay column-for-column
+    // identical to HouseholdSettingsRow so `SELECT * FROM household_settings` + FromRow works)
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS household_settings (
             household_id TEXT PRIMARY KEY NOT NULL REFERENCES households(id),
+            dark_mode BOOLEAN NOT NULL DEFAULT 0,
+            role_label_owner TEXT NOT NULL DEFAULT 'Owner',
+            role_label_admin TEXT NOT NULL DEFAULT 'Admin',
+            role_label_member TEXT NOT NULL DEFAULT 'Member',
+            hierarchy_type TEXT NOT NULL DEFAULT 'organized',
             timezone TEXT NOT NULL DEFAULT 'UTC',
-            hierarchy_type TEXT NOT NULL DEFAULT 'democratic',
-            vacation_mode BOOLEAN NOT NULL DEFAULT FALSE,
-            auto_archive_days INTEGER NOT NULL DEFAULT 30,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            rewards_enabled BOOLEAN NOT NULL DEFAULT 0,
+            punishments_enabled BOOLEAN NOT NULL DEFAULT 0,
+            chat_enabled BOOLEAN NOT NULL DEFAULT 0,
+            vacation_mode BOOLEAN NOT NULL DEFAULT 0,
+            vacation_start DATE,
+            vacation_end DATE,
+            auto_archive_days INTEGER DEFAULT 7,
+            allow_task_suggestions BOOLEAN NOT NULL DEFAULT 1,
+            week_start_day INTEGER NOT NULL DEFAULT 0,
+            default_points_reward INTEGER,
+            default_points_penalty INTEGER,
+            solo_mode BOOLEAN NOT NULL DEFAULT 0,
+            solo_mode_exit_requested_at DATETIME,
+            solo_mode_previous_hierarchy_type TEXT,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         "#,
@@ -169,7 +185,7 @@ async fn create_test_schema(pool: &SqlitePool) {
             category_id TEXT REFERENCES task_categories(id),
             archived BOOLEAN NOT NULL DEFAULT FALSE,
             paused BOOLEAN NOT NULL DEFAULT FALSE,
-            suggestion TEXT CHECK(suggestion IN ('suggested', 'accepted', 'rejected')),
+            suggestion TEXT CHECK(suggestion IN ('suggested', 'approved', 'denied')),
             suggested_by TEXT REFERENCES users(id),
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -203,6 +219,28 @@ async fn create_test_schema(pool: &SqlitePool) {
     .unwrap();
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_completions_task ON task_completions(task_id)")
+        .execute(pool)
+        .await
+        .unwrap();
+
+    // Missed task penalties table — tracks which tasks have been processed for missed
+    // penalties on which dates, preventing duplicate penalties across background job runs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS missed_task_penalties (
+            task_id TEXT NOT NULL,
+            due_date DATE NOT NULL,
+            processed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, due_date),
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_missed_task_penalties_date ON missed_task_penalties(due_date)")
         .execute(pool)
         .await
         .unwrap();
@@ -278,6 +316,7 @@ async fn create_test_schema(pool: &SqlitePool) {
             point_cost INTEGER,
             is_purchasable BOOLEAN NOT NULL DEFAULT FALSE,
             requires_confirmation BOOLEAN NOT NULL DEFAULT FALSE,
+            reward_type TEXT NOT NULL DEFAULT 'standard',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         "#,
@@ -295,7 +334,38 @@ async fn create_test_schema(pool: &SqlitePool) {
             name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
             requires_confirmation BOOLEAN NOT NULL DEFAULT FALSE,
+            punishment_type TEXT NOT NULL DEFAULT 'standard',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // Household default rewards (junction table for multiple default rewards per household)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS household_default_rewards (
+            household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            reward_id TEXT NOT NULL REFERENCES rewards(id) ON DELETE CASCADE,
+            amount INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (household_id, reward_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // Household default punishments (junction table for multiple default punishments per household)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS household_default_punishments (
+            household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            punishment_id TEXT NOT NULL REFERENCES punishments(id) ON DELETE CASCADE,
+            amount INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (household_id, punishment_id)
         )
         "#,
     )
@@ -418,13 +488,12 @@ pub async fn create_test_household_with_name(pool: &SqlitePool, name: &str) -> U
     .await
     .unwrap();
 
-    // Create default household settings
+    // Create default household settings (no created_at column in production schema)
     sqlx::query(
-        r#"INSERT INTO household_settings (household_id, timezone, hierarchy_type, vacation_mode, auto_archive_days, created_at, updated_at)
-        VALUES (?, 'UTC', 'democratic', FALSE, 30, ?, ?)"#,
+        r#"INSERT INTO household_settings (household_id, timezone, hierarchy_type, vacation_mode, auto_archive_days, updated_at)
+        VALUES (?, 'UTC', 'democratic', FALSE, 30, ?)"#,
     )
     .bind(id.to_string())
-    .bind(now)
     .bind(now)
     .execute(pool)
     .await
