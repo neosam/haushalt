@@ -18,6 +18,7 @@ pub mod announcements;
 pub mod dashboard;
 pub mod legal;
 pub mod statistics;
+pub mod report;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
