@@ -262,8 +262,19 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
         .fetch_one(pool)
         .await?;
 
-        if completion_count > 0 {
-            // Task was completed, skip
+        // A good habit only counts as done once its TARGET is reached — a task with
+        // target_count = 3 and a single completion is still outstanding and must be
+        // penalized. For an inverted (bad) habit the target has no such meaning: a
+        // single completion already means the habit was indulged, so any completion
+        // ends the check. target_count = 0 is free-form and has no target to reach,
+        // so any completion counts as done rather than penalizing it forever.
+        let counts_as_done = if task.habit_type.is_inverted() || task.target_count <= 0 {
+            completion_count > 0
+        } else {
+            completion_count >= i64::from(task.target_count)
+        };
+
+        if counts_as_done {
             continue;
         }
 
@@ -907,6 +918,144 @@ mod tests {
         .unwrap();
 
         household_id
+    }
+
+    // --- process_missed_tasks: "done" means the target is reached, not one completion ---
+
+    /// Inserts a completion for `due_date`, mirroring what the completion endpoint writes.
+    async fn insert_completion_on(
+        pool: &SqlitePool,
+        task_id: &Uuid,
+        user_id: &Uuid,
+        due_date: chrono::NaiveDate,
+    ) {
+        sqlx::query(
+            "INSERT INTO task_completions (id, task_id, user_id, due_date, status) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(task_id.to_string())
+        .bind(user_id.to_string())
+        .bind(due_date)
+        .bind("approved")
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    /// `is_task_due_on_date` returns false for any date before the task was created, so a
+    /// freshly built task is never "due yesterday". Backdate it to make it eligible.
+    async fn backdate_task(pool: &SqlitePool, task_id: &Uuid) {
+        sqlx::query("UPDATE tasks SET created_at = ? WHERE id = ?")
+            .bind(Utc::now() - Duration::days(7))
+            .bind(task_id.to_string())
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
+    /// Household in UTC with one member, so "yesterday" in the household timezone is
+    /// simply UTC yesterday.
+    async fn setup_missed_task_env() -> (SqlitePool, Uuid, Uuid, chrono::NaiveDate) {
+        let pool = crate::test_utils::create_test_pool().await;
+        let household_id = crate::test_utils::create_test_household(&pool).await;
+        let user_id =
+            crate::test_utils::create_test_user(&pool, "member@test.com", shared::Role::Member)
+                .await;
+        crate::test_utils::create_test_membership(&pool, &household_id, &user_id, shared::Role::Member)
+            .await;
+        crate::test_utils::set_household_timezone(&pool, &household_id, "UTC").await;
+
+        let yesterday = Utc::now().date_naive() - Duration::days(1);
+        (pool, household_id, user_id, yesterday)
+    }
+
+    #[tokio::test]
+    async fn test_missed_tasks_penalizes_partially_completed_target() {
+        let (pool, household_id, user_id, yesterday) = setup_missed_task_env().await;
+        let task = crate::test_utils::create_test_task(&pool, &household_id)
+            .with_title("Drink water")
+            .with_target_count(3)
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+        backdate_task(&pool, &task.id).await;
+
+        // 1 of 3 — the task was NOT finished yesterday.
+        insert_completion_on(&pool, &task.id, &user_id, yesterday).await;
+
+        let report = process_missed_tasks(&pool).await.unwrap();
+
+        assert_eq!(
+            report.missed_tasks, 1,
+            "a task with target_count 3 and 1 completion must count as missed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_missed_tasks_skips_when_target_reached() {
+        let (pool, household_id, user_id, yesterday) = setup_missed_task_env().await;
+        let task = crate::test_utils::create_test_task(&pool, &household_id)
+            .with_title("Drink water")
+            .with_target_count(3)
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+        backdate_task(&pool, &task.id).await;
+
+        for _ in 0..3 {
+            insert_completion_on(&pool, &task.id, &user_id, yesterday).await;
+        }
+
+        let report = process_missed_tasks(&pool).await.unwrap();
+
+        assert_eq!(
+            report.missed_tasks, 0,
+            "reaching the target must not be penalized"
+        );
+    }
+
+    /// For an inverted (bad) habit a single completion already means it was indulged —
+    /// target_count must not turn that into "still outstanding".
+    #[tokio::test]
+    async fn test_missed_tasks_bad_habit_indulged_once_is_not_missed() {
+        let (pool, household_id, user_id, yesterday) = setup_missed_task_env().await;
+        let task = crate::test_utils::create_test_task(&pool, &household_id)
+            .with_title("Smoke")
+            .with_habit_type(shared::HabitType::Bad)
+            .with_target_count(3)
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+        backdate_task(&pool, &task.id).await;
+
+        insert_completion_on(&pool, &task.id, &user_id, yesterday).await;
+
+        let report = process_missed_tasks(&pool).await.unwrap();
+
+        assert_eq!(
+            report.missed_tasks, 0,
+            "one indulgence already ends the check for a bad habit"
+        );
+    }
+
+    /// target_count 0 is free-form: there is no target to reach, so any completion counts
+    /// as done rather than penalizing the task every single day.
+    #[tokio::test]
+    async fn test_missed_tasks_free_form_task_completed_once_is_not_missed() {
+        let (pool, household_id, user_id, yesterday) = setup_missed_task_env().await;
+        let task = crate::test_utils::create_test_task(&pool, &household_id)
+            .with_title("Tidy up")
+            .with_target_count(0)
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+        backdate_task(&pool, &task.id).await;
+
+        insert_completion_on(&pool, &task.id, &user_id, yesterday).await;
+
+        let report = process_missed_tasks(&pool).await.unwrap();
+
+        assert_eq!(report.missed_tasks, 0);
     }
 
     #[tokio::test]
