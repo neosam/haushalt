@@ -38,9 +38,12 @@ echo
 
 for pkg in backend frontend; do
   echo "==> Building $pkg ..."
-  nix build "${ZIP_URL}#${pkg}" --print-out-paths
+  # --no-link so we never clobber ./result in a working copy; the out path is
+  # read from stdout instead.
+  OUT=$(nix build "${ZIP_URL}#${pkg}" --no-link --print-out-paths)
+  echo "    $OUT"
   echo "==> Copying $pkg closure to $HOST ..."
-  nix-copy-closure --to "$HOST" result
+  nix-copy-closure --to "$HOST" "$OUT"
   echo
 done
 
