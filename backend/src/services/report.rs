@@ -143,7 +143,13 @@ async fn build_due_today_section(
 
 /// D-07: a task already completed today stays listed, marked `(done)`.
 ///
-/// Mirrors `tasks::get_task_with_status` exactly. A raw `due_date = today` check would be
+/// A task counts as done when its TARGET is met, not after a single completion — a task
+/// with `target_count = 3` and one completion is still outstanding. This mirrors
+/// `TaskWithStatus::is_target_met` in the shared crate, which is the project-wide
+/// definition of "done", including its treatment of `target_count = 0` as free-form
+/// (never "met").
+///
+/// The period bounds matter as much as the count. A raw `due_date = today` check would be
 /// WRONG: `scheduler::get_next_due_date`'s Weekdays and Custom branches deliberately skip
 /// today when today is itself a scheduled occurrence, so those completions are stored with
 /// a FUTURE `due_date`.
@@ -164,7 +170,7 @@ async fn is_completed_for_today(
     .fetch_one(pool)
     .await?;
 
-    Ok(count > 0)
+    Ok(task.target_count > 0 && count >= i64::from(task.target_count))
 }
 
 /// The "Missed yesterday" section — "everything that went wrong yesterday", from TWO
@@ -716,6 +722,89 @@ mod tests {
             report.contains("- Empty the dishwasher (done)"),
             "got: {report}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_due_today_not_done_until_target_count_reached() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Drink water")
+            .with_target_count(3)
+            .build()
+            .await;
+        // One of three — the target is not met yet.
+        insert_completion(&pool, &task.id, &user_id, pinned_today()).await;
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(report.contains("- Drink water"), "got: {report}");
+        assert!(
+            !report.contains("- Drink water (done)"),
+            "1 of 3 completions must not count as done, got: {report}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_due_today_done_once_target_count_reached() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Drink water")
+            .with_target_count(3)
+            .build()
+            .await;
+        for _ in 0..3 {
+            insert_completion(&pool, &task.id, &user_id, pinned_today()).await;
+        }
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(report.contains("- Drink water (done)"), "got: {report}");
+    }
+
+    #[tokio::test]
+    async fn test_due_today_done_when_target_count_exceeded() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Drink water")
+            .with_target_count(2)
+            .build()
+            .await;
+        for _ in 0..4 {
+            insert_completion(&pool, &task.id, &user_id, pinned_today()).await;
+        }
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(report.contains("- Drink water (done)"), "got: {report}");
+    }
+
+    /// Matches `TaskWithStatus::is_target_met`: target_count 0 is free-form and never "met".
+    #[tokio::test]
+    async fn test_due_today_free_form_task_is_never_done() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Tidy up")
+            .with_target_count(0)
+            .build()
+            .await;
+        insert_completion(&pool, &task.id, &user_id, pinned_today()).await;
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(report.contains("- Tidy up"), "got: {report}");
+        assert!(!report.contains("- Tidy up (done)"), "got: {report}");
     }
 
     #[tokio::test]
