@@ -71,6 +71,20 @@ Active milestone **v1.1 Hardening & Connectivity**. Each maps to a roadmap phase
 - [ ] **OFFLINE-04**: Data auto-syncs when the connection is restored (server wins on conflict)
 - [ ] **OFFLINE-05**: Interactive actions (complete/edit/create) are disabled while offline
 
+### Daily Task Report
+
+- [ ] **RPT-01**: The logged-in user can see a report of the tasks that are due for them today in the current household
+- [ ] **RPT-02**: The logged-in user can see a report of the tasks they missed on the previous day
+- [ ] **RPT-03**: Both reports are reachable from the household as a dedicated view, with an empty state when nothing is due/missed
+- [ ] **RPT-04**: Report data is served by the backend (service-layer logic, covered by tests) rather than assembled ad-hoc in the frontend
+
+### Task Deletion from Edit Modal
+
+- [ ] **TDEL-01**: The task edit modal offers a delete action, available from both the Tasks page and the household Overview page
+- [ ] **TDEL-02**: Deleting requires an explicit in-modal confirmation step before the task is removed
+- [ ] **TDEL-03**: After a successful delete the modal closes and the underlying task list reflects the removal
+- [ ] **TDEL-04**: The delete action respects existing task permissions — it is not offered to users who may not delete the task
+
 ## Out of Scope
 
 Explicitly excluded. Documented to prevent scope creep.
@@ -105,12 +119,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OFFLINE-03 | Phase 4 | Pending |
 | OFFLINE-04 | Phase 4 | Pending |
 | OFFLINE-05 | Phase 4 | Pending |
+| RPT-01 | Phase 5 | Pending |
+| RPT-02 | Phase 5 | Pending |
+| RPT-03 | Phase 5 | Pending |
+| RPT-04 | Phase 5 | Pending |
+| TDEL-01 | Phase 6 | Pending |
+| TDEL-02 | Phase 6 | Pending |
+| TDEL-03 | Phase 6 | Pending |
+| TDEL-04 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 14 total
-- Mapped to phases: 14
+- v1 requirements: 22 total
+- Mapped to phases: 22
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-23*
-*Last updated: 2026-07-23 after migration from OpenSpec to GSD*
+*Last updated: 2026-07-26 — added Daily Task Report (RPT-01..04) and Task Deletion from Edit Modal (TDEL-01..04)*
