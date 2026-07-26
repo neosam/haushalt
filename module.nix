@@ -66,8 +66,10 @@ in
             Path to a systemd EnvironmentFile containing the JWT secret, i.e. a
             file with a single line `JWT_SECRET=<secret>`.
 
-            This is the recommended way to configure the secret: the file is read
-            at service start and never ends up in the world-readable Nix store.
+            Optional. If neither this nor `jwtSecret` is set, the service
+            generates a random secret into its state directory on first start
+            and reuses it from then on. Set this when you want to manage the
+            secret yourself (e.g. via sops/agenix) or share it across instances.
             Takes precedence over `jwtSecret`.
           '';
         };
@@ -78,7 +80,8 @@ in
           description = ''
             JWT secret as a plain string. WARNING: this lands in the Nix store and
             is readable by every local user. Only for local/test instances — use
-            `jwtSecretFile` for anything reachable from the network.
+            `jwtSecretFile`, or leave both unset and let the service auto-generate
+            one, for anything reachable from the network.
           '';
         };
 
@@ -122,26 +125,29 @@ in
   };
 
   config = lib.mkMerge [
-    # Fail early on a misconfigured instance instead of starting with a default secret.
-    {
-      assertions = lib.flatten (lib.mapAttrsToList (name: instanceCfg: [
-        {
-          assertion = !instanceCfg.enable
-            || instanceCfg.jwtSecretFile != null
-            || instanceCfg.jwtSecret != null;
-          message = ''
-            services.haushalt.${name}: either jwtSecretFile (recommended) or
-            jwtSecret must be set — the backend refuses to start without JWT_SECRET.
-          '';
-        }
-      ]) cfg);
-    }
-
     # Systemd services
     {
       systemd.services = lib.mapAttrs' (name: instanceCfg:
         let
           stateDir = "/var/lib/haushalt-${name}";
+
+          # The backend refuses to start without JWT_SECRET. Rather than shipping a
+          # default secret in the Nix store (world-readable) or forcing every
+          # instance to configure one, generate a random secret into the state
+          # directory on first start and reuse it afterwards. An explicitly
+          # configured secret — via jwtSecretFile or jwtSecret — always wins.
+          startScript = pkgs.writeShellScript "haushalt-${name}-start" ''
+            set -eu
+            if [ -z "''${JWT_SECRET:-}" ]; then
+              if [ ! -s "${stateDir}/jwt-secret" ]; then
+                echo "haushalt-${name}: no JWT secret configured, generating one at ${stateDir}/jwt-secret" >&2
+                ( umask 077; ${pkgs.openssl}/bin/openssl rand -base64 48 | tr -d '\n' > "${stateDir}/jwt-secret" )
+              fi
+              JWT_SECRET=$(cat "${stateDir}/jwt-secret")
+              export JWT_SECRET
+            fi
+            exec ${instanceCfg.package}/bin/backend
+          '';
         in
         lib.nameValuePair "haushalt-${name}" (lib.mkIf instanceCfg.enable {
           description = "Haushalt Service (${name})";
@@ -172,7 +178,7 @@ in
 
           serviceConfig = {
             Type = "simple";
-            ExecStart = "${instanceCfg.package}/bin/backend";
+            ExecStart = startScript;
             StateDirectory = "haushalt-${name}";
             WorkingDirectory = stateDir;
             Restart = "on-failure";
