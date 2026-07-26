@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Hardening & Connectivity
-current_phase: 2.1
-current_phase_name: INSERTED, urgent
+current_phase: 02.1
+current_phase_name: daily-task-report-inserted-urgent
 status: executing
-stopped_at: Phase 2.1 context gathered
-last_updated: "2026-07-26T16:22:00.356Z"
+stopped_at: Completed 02.1-01-PLAN.md
+last_updated: "2026-07-26T16:56:34.838Z"
 last_activity: 2026-07-26
-last_activity_desc: "Completed quick task 260726-nxt: added nodejs and the gsd-flake to the devShell"
+last_activity_desc: Phase 02.1 execution started
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 6
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,17 +24,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-23)
 
 **Core value:** Households can fairly delegate, track, and gamify recurring chores and habits across members with transparent points and streaks.
-**Current focus:** v1.1 — Phase 2 Habit Tracker Test Coverage
+**Current focus:** Phase 02.1 — daily-task-report-inserted-urgent
 
 ## Current Position
 
 Milestone: v1.1 Hardening & Connectivity
-Phase: 2.1 Daily Task Report (INSERTED, urgent) — next up
-Plan: none yet; Phase 2 paused at 2 of 5 plans (02-03 pending)
+Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-26 - Completed quick task 260726-nxt: added nodejs and the gsd-flake to the devShell
+Last activity: 2026-07-26 — Phase 02.1 execution started
 
-Progress: [███░░░░░░░] 30% (3 of ~10 plans across v1.1)
+Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
 ## Performance Metrics
 
@@ -54,6 +54,11 @@ Progress: [███░░░░░░░] 30% (3 of ~10 plans across v1.1)
 **Recent Trend:** (no data yet — first GSD sessions)
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 02.1 P01 | 28min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -65,6 +70,7 @@ Recent decisions affecting current work:
 - [v1.1]: In-memory SQLite per test; pass `current_date` to functions under test (no global time mocking)
 - [v1.1]: Tests stay in `#[cfg(test)] mod tests` next to code; fixtures use builder pattern
 - [migration]: Switched spec-driven workflow from OpenSpec to GSD (`.planning/`)
+- [Phase 02.1]: Extended TestTaskBuilder with with_suggestion() to unblock Task 2's suggestion-CHECK smoke test (builder had no way to set the field before this plan)
 
 ### Pending Todos
 
@@ -78,6 +84,7 @@ None yet. Use `/gsd-add-todo` to capture ideas during sessions.
 - Pre-existing clippy failure unrelated to current work: `frontend/src/components/solo_mode_banner.rs:66` trips `clippy::type_complexity` under the current toolchain, which fails `-D warnings`.
 - GSD tooling must be run through the devShell (`nix develop -c gsd-tools ...`) — `node`, `cargo` and `gsd-tools` are not on the bare system PATH. Resolved for the devShell by quick task 260726-nxt; the old `NIXPKGS_ALLOW_UNFREE=1 --impure` note is obsolete since `claude-code` left the devShell in `2e42e4e`.
 - GSD subagents (`gsd-planner`, `gsd-phase-researcher`, ...) ship in `.pi/gsd/agents/` but Claude Code only reads `~/.claude/agents/`. They were copied there on 2026-07-26; the agent registry loads at session start, so a fresh Claude Code session is required after any re-install. `gsd-pattern-mapper` is missing from `.pi/gsd/agents/` entirely (its plan:pre hook is non-blocking).
+- Two pre-existing, out-of-scope clippy findings discovered during 02.1-01 verification: backend/src/services/tasks.rs (6 errors) and 61 frontend errors across ~20 unrelated files (see phases/02.1-daily-task-report-inserted-urgent/deferred-items.md for full detail and recommended /gsd-quick follow-up)
 
 ### Quick Tasks Completed
 
@@ -87,6 +94,6 @@ None yet. Use `/gsd-add-todo` to capture ideas during sessions.
 
 ## Session Continuity
 
-Last session: 2026-07-26T14:54:06.043Z
-Stopped at: Phase 2.1 context gathered
+Last session: 2026-07-26T16:56:26.676Z
+Stopped at: Completed 02.1-01-PLAN.md
 Resume file: .planning/phases/02.1-daily-task-report-inserted-urgent/02.1-CONTEXT.md
