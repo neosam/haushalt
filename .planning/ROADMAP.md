@@ -7,7 +7,7 @@ The v1.0 MVP is shipped (18 capability areas, full household task/habit manageme
 ## Milestones
 
 - ✅ **v1.0 MVP** - Phases shipped across 18 capabilities (shipped before GSD migration)
-- 🚧 **v1.1 Hardening & Connectivity** - Phases 1-6 (in progress)
+- 🚧 **v1.1 Hardening & Connectivity** - Phases 1-4 incl. inserted 2.1 (in progress)
 - 📋 **v2.0 (future)** - TBD
 
 ## Phases
@@ -63,6 +63,25 @@ Plans:
 - [ ] 02-04: Background jobs, integration workflows & edge/timezone cases
 - [ ] 02-05: Verification & cleanup (run suite, clippy, review coverage)
 
+#### Phase 2.1: Daily Task Report (INSERTED — urgent)
+**Goal**: The logged-in user can see, per household, which tasks are due today and which they missed yesterday
+**Depends on**: v1.0 MVP
+**Requirements**: RPT-01, RPT-02, RPT-03, RPT-04
+**Success Criteria** (what must be TRUE):
+  1. A user sees the tasks due for them today in the current household
+  2. A user sees the tasks they missed on the previous day
+  3. Both reports are reachable from the household and show a clear empty state when nothing applies
+  4. Report data comes from a backend service covered by tests
+**Plans**: TBD
+
+Assumptions to confirm in `/gsd-discuss-phase 2.1`:
+- Single report view with two sections, as a household tab at `/households/:id/report`
+- New backend endpoint(s); "missed yesterday" derived from `missed_task_penalties` (`task_id`, `due_date`)
+- Scope limited to the logged-in user's own tasks in the selected household
+
+Plans:
+- [ ] 02.1-01: TBD — discuss scope, then plan
+
 #### Phase 3: Extend Recurrence Types
 **Goal**: Extend the set of supported recurrence types (scope undefined — define via `/gsd-discuss-phase` before planning)
 **Depends on**: Phase 2
@@ -91,53 +110,24 @@ Plans:
 - [ ] 04-02: Offline detection, UI indicators, disabled action buttons
 - [ ] 04-03: Network-first API client with cache fallback and reconnect sync
 
-#### Phase 5: Daily Task Report
-**Goal**: The logged-in user can see, per household, which tasks are due today and which they missed yesterday
-**Depends on**: Phase 2
-**Requirements**: RPT-01, RPT-02, RPT-03, RPT-04
-**Success Criteria** (what must be TRUE):
-  1. A user sees the tasks due for them today in the current household
-  2. A user sees the tasks they missed on the previous day
-  3. Both reports are reachable from the household and show a clear empty state when nothing applies
-  4. Report data comes from a backend service covered by tests
-**Plans**: TBD
+### Completed Outside Phases
 
-Assumptions to confirm in `/gsd-discuss-phase 5`:
-- Single report view with two sections, as a household tab at `/households/:id/report`
-- New backend endpoint(s); "missed yesterday" derived from `missed_task_penalties` (`task_id`, `due_date`)
-- Scope limited to the logged-in user's own tasks in the selected household
-
-Plans:
-- [ ] 05-01: TBD — discuss scope, then plan
-
-#### Phase 6: Delete Task from Edit Modal
-**Goal**: A task can be deleted directly from its edit modal, on both the Tasks page and the household Overview page
-**Depends on**: v1.0 MVP
-**Requirements**: TDEL-01, TDEL-02, TDEL-03, TDEL-04
-**Success Criteria** (what must be TRUE):
-  1. The edit modal offers a delete action from both call sites (`pages/tasks.rs`, `pages/household.rs`)
-  2. Deleting requires an explicit in-modal confirmation
-  3. After deleting, the modal closes and the task list no longer shows the task
-  4. The action is not offered to users without delete permission
-**Plans**: TBD
-
-Notes:
-- Backend already provides `DELETE /households/{id}/tasks/{task_id}` and `ApiClient::delete_task`; this is frontend-only work in `components/task_modal.rs` plus its call sites.
-
-Plans:
-- [ ] 06-01: TBD — discuss scope, then plan
+**Delete Task from Edit Modal** (TDEL-01..04) — done 2026-07-26 as a quick task.
+Backend already provided `DELETE /households/{id}/tasks/{task_id}`; the change was
+frontend-only: an opt-in `on_delete` prop on `TaskModal` with an in-modal confirmation
+step, wired into `pages/tasks.rs` and `pages/household.rs` behind the existing
+manage-tasks permission.
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
-Phase 6 is independent of Phases 3-5 and can be pulled forward on request.
+Phases execute in numeric order: 1 → 2.1 → 2 → 3 → 4
+Phase 2.1 is an urgent insertion and runs before the remainder of Phase 2.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. Custom Recurrence Period Fix | v1.1 | 1/1 | Complete | 2026-07-23 |
 | 2. Habit Tracker Test Coverage | v1.1 | 2/5 | In progress | - |
+| 2.1 Daily Task Report (INSERTED) | v1.1 | 0/TBD | Next | - |
 | 3. Extend Recurrence Types | v1.1 | 0/TBD | Not started | - |
 | 4. Offline Task Viewing | v1.1 | 0/3 | Not started | - |
-| 5. Daily Task Report | v1.1 | 0/TBD | Not started | - |
-| 6. Delete Task from Edit Modal | v1.1 | 0/TBD | Not started | - |

@@ -292,6 +292,13 @@ pub fn HouseholdPage() -> impl IntoView {
         task_linked_punishments.set(vec![]);
     };
 
+    // The edit modal deletes on the server itself; this only drops the task from the list.
+    let on_task_deleted = Callback::new(move |task_id: String| {
+        tasks.update(|t| t.retain(|tw| tw.task.id.to_string() != task_id));
+        task_linked_rewards.set(vec![]);
+        task_linked_punishments.set(vec![]);
+    });
+
     let on_invite_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
 
@@ -1342,6 +1349,7 @@ pub fn HouseholdPage() -> impl IntoView {
                             task_linked_punishments.set(vec![]);
                         }
                         on_save=on_task_save
+                        on_delete=current_user_can_manage.get().then_some(on_task_deleted)
                     />
                 }
             })}

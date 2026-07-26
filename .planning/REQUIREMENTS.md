@@ -80,10 +80,10 @@ Active milestone **v1.1 Hardening & Connectivity**. Each maps to a roadmap phase
 
 ### Task Deletion from Edit Modal
 
-- [ ] **TDEL-01**: The task edit modal offers a delete action, available from both the Tasks page and the household Overview page
-- [ ] **TDEL-02**: Deleting requires an explicit in-modal confirmation step before the task is removed
-- [ ] **TDEL-03**: After a successful delete the modal closes and the underlying task list reflects the removal
-- [ ] **TDEL-04**: The delete action respects existing task permissions — it is not offered to users who may not delete the task
+- [x] **TDEL-01**: The task edit modal offers a delete action, available from both the Tasks page and the household Overview page
+- [x] **TDEL-02**: Deleting requires an explicit in-modal confirmation step before the task is removed
+- [x] **TDEL-03**: After a successful delete the modal closes and the underlying task list reflects the removal
+- [x] **TDEL-04**: The delete action respects existing task permissions — it is not offered to users who may not delete the task
 
 ## Out of Scope
 
@@ -119,14 +119,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OFFLINE-03 | Phase 4 | Pending |
 | OFFLINE-04 | Phase 4 | Pending |
 | OFFLINE-05 | Phase 4 | Pending |
-| RPT-01 | Phase 5 | Pending |
-| RPT-02 | Phase 5 | Pending |
-| RPT-03 | Phase 5 | Pending |
-| RPT-04 | Phase 5 | Pending |
-| TDEL-01 | Phase 6 | Pending |
-| TDEL-02 | Phase 6 | Pending |
-| TDEL-03 | Phase 6 | Pending |
-| TDEL-04 | Phase 6 | Pending |
+| RPT-01 | Phase 2.1 | Pending |
+| RPT-02 | Phase 2.1 | Pending |
+| RPT-03 | Phase 2.1 | Pending |
+| RPT-04 | Phase 2.1 | Pending |
+| TDEL-01 | Quick task | Complete |
+| TDEL-02 | Quick task | Complete |
+| TDEL-03 | Quick task | Complete |
+| TDEL-04 | Quick task | Complete |
 
 **Coverage:**
 - v1 requirements: 22 total

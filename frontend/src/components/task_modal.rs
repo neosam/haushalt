@@ -7,6 +7,15 @@ use crate::components::calendar_picker::CalendarPicker;
 use crate::components::task_fields::*;
 use crate::i18n::use_i18n;
 
+/// Whether the edit modal should offer the delete action.
+///
+/// Delete applies to exactly one existing task, so it is hidden in create/duplicate
+/// mode and during bulk edit. The caller opts in by passing a callback, which is how
+/// permission is expressed — no callback means no delete.
+fn delete_action_available(is_bulk_edit: bool, has_task: bool, has_callback: bool) -> bool {
+    !is_bulk_edit && has_task && has_callback
+}
+
 #[component]
 pub fn TaskModal(
     task: Option<Task>,
@@ -36,12 +45,27 @@ pub fn TaskModal(
     #[prop(default = vec![])] bulk_task_ids: Vec<String>,
     /// Callback for bulk edit completion (returns count of successfully updated tasks)
     #[prop(optional)] on_bulk_save: Option<Callback<usize>>,
+    /// Enables the delete action in edit mode. Receives the deleted task id after the
+    /// task was removed on the server, so the caller can update its list.
+    /// Omit to hide the action (e.g. for users without delete permission).
+    #[prop(default = None)] on_delete: Option<Callback<String>>,
     #[prop(into)] on_close: Callback<()>,
     #[prop(into)] on_save: Callback<Task>,
 ) -> impl IntoView {
     let is_edit = task.is_some();
     let is_bulk_edit = !bulk_task_ids.is_empty();
     let bulk_task_count = bulk_task_ids.len();
+
+    // Delete is only offered for a single existing task, and only when the caller
+    // provided a callback (which doubles as the permission check).
+    let delete_task_id = task.as_ref().map(|t| t.id.to_string());
+    let can_delete =
+        delete_action_available(is_bulk_edit, delete_task_id.is_some(), on_delete.is_some());
+    let delete_task_id = store_value(delete_task_id);
+    let on_delete_stored = store_value(on_delete);
+    let delete_household_id = store_value(household_id.clone());
+    let confirming_delete = create_rw_signal(false);
+    let deleting = create_rw_signal(false);
 
     // Store members early so it can be used multiple times
     let members_stored = store_value(members);
@@ -612,6 +636,37 @@ pub fn TaskModal(
 
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n.clone());
+
+    // Deletes on the server first, then hands the id to the caller so it can drop the
+    // task from its list. The modal stays open on failure so the error is visible.
+    let confirm_delete = move |_| {
+        let Some(task_id) = delete_task_id.get_value() else {
+            return;
+        };
+        let household_id = delete_household_id.get_value();
+        deleting.set(true);
+        error.set(None);
+        wasm_bindgen_futures::spawn_local(async move {
+            match ApiClient::delete_task(&household_id, &task_id).await {
+                Ok(()) => {
+                    if let Some(callback) = on_delete_stored.get_value() {
+                        callback.call(task_id);
+                    }
+                    deleting.set(false);
+                    on_close.call(());
+                }
+                Err(e) => {
+                    deleting.set(false);
+                    confirming_delete.set(false);
+                    error.set(Some(format!(
+                        "{}: {}",
+                        i18n_stored.get_value().t("task_modal.delete_failed"),
+                        e
+                    )));
+                }
+            }
+        });
+    };
 
     let modal_title = if is_bulk_edit {
         i18n.t("tasks.bulk_edit_title").replace("{count}", &bulk_task_count.to_string())
@@ -1432,19 +1487,57 @@ pub fn TaskModal(
                         </Show>
                     </div>
 
+                    <Show when=move || can_delete && confirming_delete.get() fallback=|| ()>
+                        <div class="modal-footer task-delete-confirm">
+                            <span class="task-delete-confirm-text">
+                                {i18n_stored.get_value().t("task_modal.delete_confirm_question")}
+                            </span>
+                            <button
+                                type="button"
+                                class="btn btn-outline"
+                                on:click=move |_| confirming_delete.set(false)
+                                disabled=move || deleting.get()
+                            >
+                                {i18n_stored.get_value().t("task_modal.delete_keep")}
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-danger"
+                                on:click=confirm_delete
+                                disabled=move || deleting.get()
+                            >
+                                {move || if deleting.get() {
+                                    i18n_stored.get_value().t("task_modal.deleting")
+                                } else {
+                                    i18n_stored.get_value().t("task_modal.delete_confirm")
+                                }}
+                            </button>
+                        </div>
+                    </Show>
+
                     <div class="modal-footer">
+                        <Show when=move || can_delete && !confirming_delete.get() fallback=|| ()>
+                            <button
+                                type="button"
+                                class="btn btn-danger btn-outline task-delete-trigger"
+                                on:click=move |_| confirming_delete.set(true)
+                                disabled=move || saving.get() || deleting.get()
+                            >
+                                {i18n_stored.get_value().t("task_modal.delete_task")}
+                            </button>
+                        </Show>
                         <button
                             type="button"
                             class="btn btn-outline"
                             on:click=move |_| on_close.call(())
-                            disabled=move || saving.get()
+                            disabled=move || saving.get() || deleting.get()
                         >
                             {i18n_stored.get_value().t("common.cancel")}
                         </button>
                         <button
                             type="submit"
                             class="btn btn-primary"
-                            disabled=move || saving.get()
+                            disabled=move || saving.get() || deleting.get()
                         >
                             {move || if saving.get() { saving_text.clone() } else { submit_button_text.clone() }}
                         </button>
@@ -1461,6 +1554,29 @@ mod tests {
     use wasm_bindgen_test::*;
 
     wasm_bindgen_test_configure!(run_in_browser);
+
+    #[test]
+    fn delete_offered_for_existing_task_with_callback() {
+        assert!(delete_action_available(false, true, true));
+    }
+
+    #[test]
+    fn delete_hidden_without_callback() {
+        // No callback means the caller withheld permission.
+        assert!(!delete_action_available(false, true, false));
+    }
+
+    #[test]
+    fn delete_hidden_in_create_mode() {
+        // Create/duplicate mode has no task to delete.
+        assert!(!delete_action_available(false, false, true));
+    }
+
+    #[test]
+    fn delete_hidden_during_bulk_edit() {
+        // Bulk edit targets many tasks; deleting one of them is ambiguous.
+        assert!(!delete_action_available(true, true, true));
+    }
 
     #[wasm_bindgen_test]
     fn test_recurrence_type_to_string_daily() {

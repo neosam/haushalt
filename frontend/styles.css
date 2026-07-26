@@ -743,6 +743,22 @@ body {
     margin-top: 1.5rem;
 }
 
+/* Delete action sits apart from the save/cancel pair */
+.task-delete-trigger {
+    margin-right: auto;
+}
+
+.task-delete-confirm {
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.task-delete-confirm-text {
+    margin-right: auto;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
 /* Task modal - responsive sizing */
 .modal-task {
     width: 95%;

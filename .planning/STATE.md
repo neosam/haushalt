@@ -10,12 +10,12 @@ See: .planning/PROJECT.md (updated 2026-07-23)
 ## Current Position
 
 Milestone: v1.1 Hardening & Connectivity
-Phase: 2 of 6 (Habit Tracker Test Coverage)
-Plan: 3 of 5 in current phase (02-03 next)
+Phase: 2.1 Daily Task Report (INSERTED, urgent) — next up
+Plan: none yet; Phase 2 paused at 2 of 5 plans (02-03 pending)
 Status: In progress
-Last activity: 2026-07-26 - Added Phase 5 (Daily Task Report) and Phase 6 (Delete Task from Edit Modal) to roadmap/requirements
+Last activity: 2026-07-26 - Shipped task delete from edit modal as a quick task; inserted Phase 2.1 for the daily/missed task report
 
-Progress: [███░░░░░░░] 27% (3 of ~11 plans across v1.1)
+Progress: [███░░░░░░░] 30% (3 of ~10 plans across v1.1)
 
 ## Performance Metrics
 
@@ -54,11 +54,12 @@ None yet. Use `/gsd-add-todo` to capture ideas during sessions.
 
 - Phase 2 plan 02-02 is partial: points-service integration tests for completion/uncomplete are still pending (TEST rows 4.6, 4.7, 4.9 in the former OpenSpec change) — they depend on the points service being wired into the test harness.
 - Phase 3 (Extend Recurrence Types) has no defined scope — must run `/gsd-discuss-phase 3` before planning.
-- Phases 5 and 6 are captured with assumed scope only — both need `/gsd-discuss-phase` before planning.
-- `node` is not available in this environment (`nix develop` fails on an unfree package), so `gsd-core/bin/gsd-tools.cjs` cannot run. Planning files are maintained directly until this is fixed.
+- Phase 2.1 is captured with assumed scope only — needs `/gsd-discuss-phase 2.1` before planning.
+- `nix develop` needs `NIXPKGS_ALLOW_UNFREE=1` and `--impure` because the devShell contains `claude-code` (unfree). Without it there is no `cargo` and no `node`, so `gsd-core/bin/gsd-tools.cjs` cannot run and planning files must be edited directly.
+- Pre-existing clippy failure unrelated to current work: `frontend/src/components/solo_mode_banner.rs:66` trips `clippy::type_complexity` under the current toolchain, which fails `-D warnings`.
 
 ## Session Continuity
 
 Last session: 2026-07-26
-Stopped at: Captured two new features as Phase 5 (Daily Task Report) and Phase 6 (Delete Task from Edit Modal); no code changes yet
+Stopped at: Delete-from-edit-modal shipped and committed; Phase 2.1 (Daily Task Report) inserted and awaiting discussion
 Resume file: None

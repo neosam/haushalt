@@ -135,6 +135,11 @@ pub fn TasksPage() -> impl IntoView {
         });
     };
 
+    // The edit modal deletes on the server itself; this only drops the task from the list.
+    let on_task_deleted = Callback::new(move |task_id: String| {
+        tasks.update(|t| t.retain(|task| task.id.to_string() != task_id));
+    });
+
     let on_archive = move |task_id: String| {
         let id = household_id();
         wasm_bindgen_futures::spawn_local(async move {
@@ -663,6 +668,7 @@ pub fn TasksPage() -> impl IntoView {
                         task_linked_punishments.set(vec![]);
                     }
                     on_save=on_save
+                    on_delete=can_manage.get().then_some(on_task_deleted)
                 />
             }
         })}
