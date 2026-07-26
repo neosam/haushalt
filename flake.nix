@@ -121,9 +121,6 @@
             openssl
             jujutsu
             jj-ws.packages.${system}.default
-
-            # AI tools
-            claude-code
           ];
 
           shellHook = ''
