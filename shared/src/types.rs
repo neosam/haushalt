@@ -423,6 +423,13 @@ pub struct TaskCategoriesResponse {
     pub categories: Vec<TaskCategory>,
 }
 
+/// D-17: the daily report is transported as a single plain-text block.
+/// Deliberately no structured task lists — the text is the contract.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyReportResponse {
+    pub report_text: String,
+}
+
 // ============================================================================
 // Task Types
 // ============================================================================
