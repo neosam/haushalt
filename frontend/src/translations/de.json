@@ -96,6 +96,7 @@
 
   "tabs.overview": "Übersicht",
   "tabs.tasks": "Aufgaben",
+  "tabs.report": "Bericht",
   "tabs.rewards": "Belohnungen",
   "tabs.punishments": "Strafen",
   "tabs.activity": "Aktivität",
@@ -105,6 +106,10 @@
   "tabs.leaderboard": "Rangliste",
   "tabs.notes": "Notizen",
   "tabs.journal": "Tagebuch",
+
+  "report.copy_button": "Kopieren",
+  "report.copied": "Kopiert!",
+  "report.load_error": "Bericht konnte nicht geladen werden",
 
   "tasks.title": "Aufgaben",
   "tasks.create": "Aufgabe erstellen",

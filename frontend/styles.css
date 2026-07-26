@@ -2394,3 +2394,45 @@ body.dark-mode .task-item.selected {
     color: var(--primary-color);
     text-decoration: underline;
 }
+
+/* Daily report page (mobile first) */
+.report-page {
+    display: block;
+    padding: 1rem 0;
+}
+
+.report-actions {
+    display: flex;
+    margin-bottom: 1rem;
+}
+
+.report-actions .btn {
+    width: 100%;
+}
+
+.report-text {
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    padding: 1rem;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text-color);
+}
+
+@media (min-width: 768px) {
+    .report-actions {
+        justify-content: flex-end;
+    }
+
+    .report-actions .btn {
+        width: auto;
+    }
+
+    .report-text {
+        font-size: 0.9375rem;
+    }
+}

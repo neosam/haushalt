@@ -100,6 +100,22 @@ mod tests {
     }
 
     #[test]
+    fn test_report_keys_present_in_both_languages() {
+        let en = load_translations("en");
+        let de = load_translations("de");
+
+        assert_eq!(en.get("tabs.report").unwrap(), "Report");
+        assert_eq!(de.get("tabs.report").unwrap(), "Bericht");
+        assert_eq!(en.get("report.copy_button").unwrap(), "Copy");
+        assert_eq!(de.get("report.copy_button").unwrap(), "Kopieren");
+
+        for key in ["report.copied", "report.load_error"] {
+            assert!(en.contains_key(key), "missing english key: {}", key);
+            assert!(de.contains_key(key), "missing german key: {}", key);
+        }
+    }
+
+    #[test]
     fn test_supported_languages() {
         let langs = supported_languages();
         assert_eq!(langs.len(), 2);

@@ -51,6 +51,8 @@ pub fn HouseholdLayout() -> impl IntoView {
 
         if path.ends_with("/tasks") {
             HouseholdTab::Tasks
+        } else if path.ends_with("/report") {
+            HouseholdTab::Report
         } else if path.ends_with("/notes") {
             HouseholdTab::Notes
         } else if path.ends_with("/journal") {

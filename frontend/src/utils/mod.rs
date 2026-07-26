@@ -1,8 +1,10 @@
+pub mod clipboard;
 pub mod filters;
 pub mod pending_action;
 pub mod task_modal;
 pub mod timezone;
 
+pub use clipboard::copy_to_clipboard;
 pub use filters::matches_text_filter;
 pub use pending_action::create_remove_action_handler;
 pub use task_modal::TaskModalData;

@@ -9,7 +9,7 @@ use shared::{
     AuthResponse, ChatMessageWithUser, CreateAnnouncementRequest, CreateChatMessageRequest,
     CreateHouseholdRequest, CreateInvitationRequest, CreateJournalEntryRequest, CreateNoteRequest, UpdateHouseholdRequest,
     CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
-    CreateUserRequest, Household, HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold,
+    CreateUserRequest, DailyReportResponse, Household, HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold,
     InviteUserRequest, JournalEntry, JournalEntryWithUser, LeaderboardEntry, LoginRequest, MemberWithUser,
     MonthlyStatisticsResponse, Note, NoteWithUser, PendingPunishmentCompletion, PendingReview,
     PendingRewardRedemption, PointCondition, Punishment, RandomPickResult, RandomRewardPickResult,
@@ -419,6 +419,18 @@ impl ApiClient {
             true,
         )
         .await
+    }
+
+    /// Daily task report as plain text, rendered by the backend.
+    pub async fn get_daily_report(household_id: &str) -> Result<String, String> {
+        let response: DailyReportResponse = Self::request(
+            "GET",
+            &format!("/households/{}/report", household_id),
+            None::<()>,
+            true,
+        )
+        .await?;
+        Ok(response.report_text)
     }
 
     pub async fn update_household_settings(

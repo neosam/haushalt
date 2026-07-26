@@ -96,6 +96,7 @@
 
   "tabs.overview": "Overview",
   "tabs.tasks": "Tasks",
+  "tabs.report": "Report",
   "tabs.rewards": "Rewards",
   "tabs.punishments": "Punishments",
   "tabs.activity": "Activity",
@@ -105,6 +106,10 @@
   "tabs.leaderboard": "Leaderboard",
   "tabs.notes": "Notes",
   "tabs.journal": "Journal",
+
+  "report.copy_button": "Copy",
+  "report.copied": "Copied!",
+  "report.load_error": "Could not load the report",
 
   "tasks.title": "Tasks",
   "tasks.create": "Create Task",

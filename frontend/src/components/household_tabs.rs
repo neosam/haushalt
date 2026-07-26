@@ -8,6 +8,7 @@ use crate::i18n::use_i18n;
 pub enum HouseholdTab {
     Overview,
     Tasks,
+    Report,
     Notes,
     Journal,
     Rewards,
@@ -23,6 +24,7 @@ impl HouseholdTab {
         match self {
             HouseholdTab::Overview => "tabs.overview",
             HouseholdTab::Tasks => "tabs.tasks",
+            HouseholdTab::Report => "tabs.report",
             HouseholdTab::Notes => "tabs.notes",
             HouseholdTab::Journal => "tabs.journal",
             HouseholdTab::Rewards => "tabs.rewards",
@@ -38,6 +40,7 @@ impl HouseholdTab {
         match self {
             HouseholdTab::Overview => format!("/households/{}", household_id),
             HouseholdTab::Tasks => format!("/households/{}/tasks", household_id),
+            HouseholdTab::Report => format!("/households/{}/report", household_id),
             HouseholdTab::Notes => format!("/households/{}/notes", household_id),
             HouseholdTab::Journal => format!("/households/{}/journal", household_id),
             HouseholdTab::Rewards => format!("/households/{}/rewards", household_id),
@@ -56,6 +59,7 @@ fn build_tabs(settings: &Option<HouseholdSettings>) -> Vec<HouseholdTab> {
     let mut tabs = vec![
         HouseholdTab::Overview,
         HouseholdTab::Tasks,
+        HouseholdTab::Report,
         HouseholdTab::Notes,
         HouseholdTab::Journal,
     ];
@@ -165,6 +169,31 @@ mod tests {
     fn test_tab_path_tasks() {
         let path = HouseholdTab::Tasks.path("abc-123");
         assert_eq!(path, "/households/abc-123/tasks");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_path_report() {
+        let path = HouseholdTab::Report.path("abc-123");
+        assert_eq!(path, "/households/abc-123/report");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_report_tab_follows_tasks() {
+        let tabs = build_tabs(&None);
+        let tasks_index = tabs
+            .iter()
+            .position(|t| *t == HouseholdTab::Tasks)
+            .expect("Tasks tab is always present");
+        let report_index = tabs
+            .iter()
+            .position(|t| *t == HouseholdTab::Report)
+            .expect("Report tab is always present");
+        assert_eq!(report_index, tasks_index + 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_tab_translation_key_report() {
+        assert_eq!(HouseholdTab::Report.translation_key(), "tabs.report");
     }
 
     #[wasm_bindgen_test]

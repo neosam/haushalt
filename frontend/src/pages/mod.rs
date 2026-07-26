@@ -4,6 +4,7 @@ pub mod dashboard;
 pub mod household;
 pub mod household_settings;
 pub mod tasks;
+pub mod report;
 pub mod rewards;
 pub mod punishments;
 pub mod activity;

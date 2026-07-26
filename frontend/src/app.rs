@@ -11,7 +11,8 @@ use crate::pages::{
     household_settings::HouseholdSettingsPage, journal::JournalPage,
     legal::{AGBPage, DatenschutzPage, ImpressumPage},
     login::Login, notes::NotesPage, punishments::PunishmentsPage, register::Register,
-    rewards::RewardsPage, settings::SettingsPage, statistics::StatisticsPage, tasks::TasksPage,
+    report::ReportPage, rewards::RewardsPage, settings::SettingsPage,
+    statistics::StatisticsPage, tasks::TasksPage,
     user_settings::UserSettingsPage,
 };
 
@@ -40,6 +41,7 @@ pub fn App() -> impl IntoView {
                         <Route path="/households/:id" view=HouseholdLayout>
                             <Route path="" view=HouseholdPage />
                             <Route path="tasks" view=TasksPage />
+                            <Route path="report" view=ReportPage />
                             <Route path="rewards" view=RewardsPage />
                             <Route path="punishments" view=PunishmentsPage />
                             <Route path="notes" view=NotesPage />
