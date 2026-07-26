@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use shared::{
     CompletionStatus, HabitType, PeriodStatus, RecurrenceType,
-    RecurrenceValue, Role, Task, TimePeriod,
+    RecurrenceValue, Role, SuggestionStatus, Task, TimePeriod,
 };
 
 // ============================================================================
@@ -569,6 +569,7 @@ pub struct TestTaskBuilder {
     category_id: Option<Uuid>,
     archived: bool,
     paused: bool,
+    suggestion: Option<SuggestionStatus>,
 }
 
 impl TestTaskBuilder {
@@ -658,6 +659,11 @@ impl TestTaskBuilder {
         self
     }
 
+    pub fn with_suggestion(mut self, suggestion: SuggestionStatus) -> Self {
+        self.suggestion = Some(suggestion);
+        self
+    }
+
     pub async fn build(self) -> Task {
         let id = Uuid::new_v4();
         let now = Utc::now();
@@ -675,9 +681,9 @@ impl TestTaskBuilder {
                 id, household_id, title, description, recurrence_type, recurrence_value,
                 assigned_user_id, target_count, time_period, allow_exceed_target,
                 requires_review, points_reward, points_penalty, due_time, habit_type,
-                category_id, archived, paused, created_at, updated_at
+                category_id, archived, paused, suggestion, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(id.to_string())
@@ -698,6 +704,7 @@ impl TestTaskBuilder {
         .bind(self.category_id.map(|c| c.to_string()))
         .bind(self.archived)
         .bind(self.paused)
+        .bind(self.suggestion.map(|s| s.as_str()))
         .bind(now)
         .bind(now)
         .execute(&self.pool)
@@ -724,7 +731,7 @@ impl TestTaskBuilder {
             category_name: None,
             archived: self.archived,
             paused: self.paused,
-            suggestion: None,
+            suggestion: self.suggestion,
             suggested_by: None,
             created_at: now,
             updated_at: now,
@@ -753,6 +760,7 @@ pub fn create_test_task(pool: &SqlitePool, household_id: &Uuid) -> TestTaskBuild
         category_id: None,
         archived: false,
         paused: false,
+        suggestion: None,
     }
 }
 
@@ -968,6 +976,24 @@ pub async fn set_vacation_mode(
         .unwrap();
 }
 
+/// Set household vacation start/end dates (independent of the vacation_mode toggle)
+pub async fn set_vacation_dates(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) {
+    sqlx::query(
+        "UPDATE household_settings SET vacation_start = ?, vacation_end = ? WHERE household_id = ?",
+    )
+    .bind(start)
+    .bind(end)
+    .bind(household_id.to_string())
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 /// Create a test reward
 pub async fn create_test_reward(
     pool: &SqlitePool,
@@ -1055,4 +1081,130 @@ pub async fn link_task_punishment(
     .execute(pool)
     .await
     .unwrap();
+}
+
+/// Insert a missed-task penalty row, as `process_missed_tasks` would
+pub async fn insert_missed_task_penalty(pool: &SqlitePool, task_id: &Uuid, due_date: NaiveDate) {
+    sqlx::query("INSERT INTO missed_task_penalties (task_id, due_date) VALUES (?, ?)")
+        .bind(task_id.to_string())
+        .bind(due_date)
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
+// ============================================================================
+// Harness Smoke Tests (Phase 2.1 Wave 0)
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::household_settings;
+
+    #[tokio::test]
+    async fn test_get_or_create_settings_works_against_test_schema() {
+        let pool = create_test_pool().await;
+        let household_id = create_test_household(&pool).await;
+
+        let settings = household_settings::get_or_create_settings(&pool, &household_id)
+            .await
+            .unwrap();
+
+        assert_eq!(settings.timezone, "UTC");
+        assert!(!settings.vacation_mode);
+    }
+
+    #[tokio::test]
+    async fn test_get_or_create_settings_creates_row_when_absent() {
+        let pool = create_test_pool().await;
+        // Create a household WITHOUT going through create_test_household_with_name, so no
+        // household_settings row exists yet — exercises the INSERT branch.
+        let owner_id = create_test_user(&pool, "no-settings-owner@test.com", Role::Owner).await;
+        let household_id = Uuid::new_v4();
+        let now = Utc::now();
+        sqlx::query(
+            "INSERT INTO households (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(household_id.to_string())
+        .bind("No Settings Household")
+        .bind(owner_id.to_string())
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let result = household_settings::get_or_create_settings(&pool, &household_id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_insert_missed_task_penalty() {
+        let pool = create_test_pool().await;
+        let household_id = create_test_household(&pool).await;
+        let task = create_test_task(&pool, &household_id).build().await;
+        let due_date = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
+
+        insert_missed_task_penalty(&pool, &task.id, due_date).await;
+
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM missed_task_penalties WHERE task_id = ? AND due_date = ?",
+        )
+        .bind(task.id.to_string())
+        .bind(due_date)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_task_with_approved_suggestion_insertable() {
+        let pool = create_test_pool().await;
+        let household_id = create_test_household(&pool).await;
+
+        let task = create_test_task(&pool, &household_id)
+            .with_suggestion(SuggestionStatus::Approved)
+            .build()
+            .await;
+
+        assert_eq!(task.suggestion, Some(SuggestionStatus::Approved));
+
+        let suggestion: Option<String> =
+            sqlx::query_scalar("SELECT suggestion FROM tasks WHERE id = ?")
+                .bind(task.id.to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(suggestion.as_deref(), Some("approved"));
+    }
+
+    #[tokio::test]
+    async fn test_set_vacation_mode_and_dates() {
+        let pool = create_test_pool().await;
+        let household_id = create_test_household(&pool).await;
+
+        set_vacation_mode(&pool, &household_id, true).await;
+        let start = NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
+        let end = NaiveDate::from_ymd_opt(2026, 7, 31).unwrap();
+        set_vacation_dates(&pool, &household_id, Some(start), Some(end)).await;
+
+        let settings = household_settings::get_or_create_settings(&pool, &household_id)
+            .await
+            .unwrap();
+
+        let inside_range = NaiveDate::from_ymd_opt(2026, 7, 15).unwrap();
+        let outside_range = NaiveDate::from_ymd_opt(2026, 8, 15).unwrap();
+
+        assert!(household_settings::is_household_on_vacation(
+            &settings,
+            inside_range
+        ));
+        assert!(!household_settings::is_household_on_vacation(
+            &settings,
+            outside_range
+        ));
+    }
 }
