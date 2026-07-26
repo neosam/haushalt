@@ -72,15 +72,21 @@ Plans:
   2. A user sees the tasks they missed on the previous day
   3. Both reports are reachable from the household and show a clear empty state when nothing applies
   4. Report data comes from a backend service covered by tests
-**Plans**: TBD
+**Plans**: 6 plans (5 waves: 0-4)
 
-Assumptions to confirm in `/gsd-discuss-phase 2.1`:
-- Single report view with two sections, as a household tab at `/households/:id/report`
-- New backend endpoint(s); "missed yesterday" derived from `missed_task_penalties` (`task_id`, `due_date`)
-- Scope limited to the logged-in user's own tasks in the selected household
+Scope confirmed in `/gsd-discuss-phase 2.1` (see `02.1-CONTEXT.md`, decisions D-01..D-27):
+a single English plain-text report generated in the backend, rendered read-only at
+`/households/:id/report` with a copy-to-clipboard button. "Today"/"yesterday" resolve in the
+household timezone; "missed yesterday" merges `missed_task_penalties` rows with indulged bad
+habits into one section. No schema change, no `?date=` parameter, no LLM integration.
 
 Plans:
-- [ ] 02.1-01: TBD — discuss scope, then plan
+- [ ] 02.1-01 (wave 0): Test-harness and web-sys build gaps — 22-column `household_settings`, `missed_task_penalties` + junction tables, `insert_missed_task_penalty` fixture, `Clipboard`/`Navigator` features
+- [ ] 02.1-02 (wave 1): `shared::DailyReportResponse` + report service core — timezone date resolution, "Due today" section, shared line formatter, empty states
+- [ ] 02.1-03 (wave 2): "Missed yesterday" section — penalized good habits plus indulged bad habits, one list, vacation-suppressed
+- [ ] 02.1-04 (wave 2): Thin handler `GET /api/households/{id}/report` + route registration
+- [ ] 02.1-05 (wave 3): Frontend — `ReportPage`, Report tab after Tasks, copy button, de/en strings, mobile-first CSS
+- [ ] 02.1-06 (wave 4): Human verification checkpoint — tab placement, verbatim rendering, clipboard, empty states, XSS probe
 
 #### Phase 3: Extend Recurrence Types
 **Goal**: Extend the set of supported recurrence types (scope undefined — define via `/gsd-discuss-phase` before planning)
@@ -128,6 +134,6 @@ Phase 2.1 is an urgent insertion and runs before the remainder of Phase 2.
 |-------|-----------|----------------|--------|-----------|
 | 1. Custom Recurrence Period Fix | v1.1 | 1/1 | Complete | 2026-07-23 |
 | 2. Habit Tracker Test Coverage | v1.1 | 2/5 | In progress | - |
-| 2.1 Daily Task Report (INSERTED) | v1.1 | 0/TBD | Next | - |
+| 2.1 Daily Task Report (INSERTED) | v1.1 | 0/6 | Planned | - |
 | 3. Extend Recurrence Types | v1.1 | 0/TBD | Not started | - |
 | 4. Offline Task Viewing | v1.1 | 0/3 | Not started | - |
