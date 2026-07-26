@@ -5,13 +5,14 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     jj-ws.url = "github:neosam/jj-ws";
+    gsd.url = "github:neosam/gsd-flake";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, jj-ws, rust-overlay }:
+  outputs = { self, nixpkgs, flake-utils, jj-ws, gsd, rust-overlay }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
@@ -121,6 +122,9 @@
             openssl
             jujutsu
             jj-ws.packages.${system}.default
+            # node is required by GSD's gsd-tools.cjs scripts
+            nodejs
+            gsd.packages.${system}.default
           ];
 
           shellHook = ''
