@@ -177,6 +177,7 @@ async fn create_test_schema(pool: &SqlitePool) {
             target_count INTEGER NOT NULL DEFAULT 1,
             time_period TEXT CHECK(time_period IN ('day', 'week', 'month', 'year', 'none')),
             allow_exceed_target BOOLEAN NOT NULL DEFAULT TRUE,
+            anyone_can_complete BOOLEAN NOT NULL DEFAULT FALSE,
             requires_review BOOLEAN NOT NULL DEFAULT FALSE,
             points_reward INTEGER,
             points_penalty INTEGER,
@@ -561,6 +562,7 @@ pub struct TestTaskBuilder {
     target_count: i32,
     time_period: Option<TimePeriod>,
     allow_exceed_target: bool,
+    anyone_can_complete: bool,
     requires_review: bool,
     points_reward: Option<i64>,
     points_penalty: Option<i64>,
@@ -610,6 +612,11 @@ impl TestTaskBuilder {
 
     pub fn with_allow_exceed_target(mut self, allow: bool) -> Self {
         self.allow_exceed_target = allow;
+        self
+    }
+
+    pub fn with_anyone_can_complete(mut self, anyone: bool) -> Self {
+        self.anyone_can_complete = anyone;
         self
     }
 
@@ -680,10 +687,11 @@ impl TestTaskBuilder {
             INSERT INTO tasks (
                 id, household_id, title, description, recurrence_type, recurrence_value,
                 assigned_user_id, target_count, time_period, allow_exceed_target,
-                requires_review, points_reward, points_penalty, due_time, habit_type,
-                category_id, archived, paused, suggestion, created_at, updated_at
+                anyone_can_complete, requires_review, points_reward, points_penalty,
+                due_time, habit_type, category_id, archived, paused, suggestion,
+                created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(id.to_string())
@@ -696,6 +704,7 @@ impl TestTaskBuilder {
         .bind(self.target_count)
         .bind(time_period_str)
         .bind(self.allow_exceed_target)
+        .bind(self.anyone_can_complete)
         .bind(self.requires_review)
         .bind(self.points_reward)
         .bind(self.points_penalty)
@@ -722,6 +731,7 @@ impl TestTaskBuilder {
             target_count: self.target_count,
             time_period: self.time_period,
             allow_exceed_target: self.allow_exceed_target,
+            anyone_can_complete: self.anyone_can_complete,
             requires_review: self.requires_review,
             points_reward: self.points_reward,
             points_penalty: self.points_penalty,
@@ -752,6 +762,7 @@ pub fn create_test_task(pool: &SqlitePool, household_id: &Uuid) -> TestTaskBuild
         target_count: 1,
         time_period: None,
         allow_exceed_target: true,
+        anyone_can_complete: false,
         requires_review: false,
         points_reward: None,
         points_penalty: None,
@@ -1179,6 +1190,30 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(suggestion.as_deref(), Some("approved"));
+    }
+
+    #[tokio::test]
+    async fn test_task_anyone_can_complete_insertable_and_defaults_off() {
+        let pool = create_test_pool().await;
+        let household_id = create_test_household(&pool).await;
+
+        // Default is off, mirroring the production schema default
+        let default_task = create_test_task(&pool, &household_id).build().await;
+        assert!(!default_task.anyone_can_complete);
+
+        let task = create_test_task(&pool, &household_id)
+            .with_anyone_can_complete(true)
+            .build()
+            .await;
+
+        assert!(task.anyone_can_complete);
+
+        let stored: bool = sqlx::query_scalar("SELECT anyone_can_complete FROM tasks WHERE id = ?")
+            .bind(task.id.to_string())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert!(stored);
     }
 
     #[tokio::test]

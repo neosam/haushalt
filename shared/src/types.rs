@@ -612,6 +612,9 @@ pub struct Task {
     /// When true, users can track completions beyond the target count.
     /// When false, the complete button is disabled once target is reached.
     pub allow_exceed_target: bool,
+    /// When true, any household member may complete/uncomplete this task, not just the
+    /// assigned user, and every member's completions count toward the target.
+    pub anyone_can_complete: bool,
     /// When true, task completions require owner/admin approval before being finalized.
     pub requires_review: bool,
     /// Points awarded when this task is completed
@@ -649,6 +652,8 @@ pub struct CreateTaskRequest {
     pub time_period: Option<TimePeriod>,
     /// When true (default), users can track completions beyond the target count.
     pub allow_exceed_target: Option<bool>,
+    /// When true, any household member may complete this task (default: false).
+    pub anyone_can_complete: Option<bool>,
     /// When true, completions require owner/admin approval.
     pub requires_review: Option<bool>,
     /// Points awarded when this task is completed
@@ -675,6 +680,8 @@ pub struct UpdateTaskRequest {
     pub target_count: Option<i32>,
     pub time_period: Option<TimePeriod>,
     pub allow_exceed_target: Option<bool>,
+    /// When true, any household member may complete this task (default: false).
+    pub anyone_can_complete: Option<bool>,
     pub requires_review: Option<bool>,
     /// Points awarded when this task is completed
     pub points_reward: Option<i64>,
@@ -767,12 +774,21 @@ impl TaskWithStatus {
         (self.task.target_count - self.completions_today).max(0)
     }
 
+    /// Returns true if the current user is allowed to check this task off at all,
+    /// ignoring whether the target is already met.
+    /// This is the case when the user is the assignee (or the task is unassigned),
+    /// or when the task is flagged as completable by anyone.
+    pub fn is_completable_by_user(&self) -> bool {
+        self.is_user_assigned || self.task.anyone_can_complete
+    }
+
     /// Returns true if the user can add more completions
     /// This is false when:
     /// - User is not assigned to the task (when task has an assigned user)
+    ///   and the task is not flagged `anyone_can_complete`
     /// - Target is met AND allow_exceed_target is false
     pub fn can_complete(&self) -> bool {
-        self.is_user_assigned && (self.task.allow_exceed_target || !self.is_target_met())
+        self.is_completable_by_user() && (self.task.allow_exceed_target || !self.is_target_met())
     }
 }
 
@@ -2006,6 +2022,16 @@ mod tests {
     }
 
     fn create_task_with_status_assigned(completions: i32, target: i32, allow_exceed: bool, is_user_assigned: bool) -> TaskWithStatus {
+        create_task_with_status_full(completions, target, allow_exceed, is_user_assigned, false)
+    }
+
+    fn create_task_with_status_full(
+        completions: i32,
+        target: i32,
+        allow_exceed: bool,
+        is_user_assigned: bool,
+        anyone_can_complete: bool,
+    ) -> TaskWithStatus {
         TaskWithStatus {
             task: Task {
                 id: Uuid::new_v4(),
@@ -2018,6 +2044,7 @@ mod tests {
                 target_count: target,
                 time_period: None,
                 allow_exceed_target: allow_exceed,
+                anyone_can_complete,
                 requires_review: false,
                 points_reward: None,
                 points_penalty: None,
@@ -2128,6 +2155,37 @@ mod tests {
         // Cannot complete when not assigned, even with allow_exceed_target true
         let task = create_task_with_status_assigned(0, 3, true, false);
         assert!(!task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_can_complete_not_assigned_but_anyone_can_complete() {
+        // Non-assignee can complete when the task is flagged anyone_can_complete
+        let task = create_task_with_status_full(0, 3, true, false, true);
+        assert!(task.is_completable_by_user());
+        assert!(task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_anyone_can_complete_defaults_off() {
+        // Default (flag off) preserves the previous behaviour for non-assignees
+        let task = create_task_with_status_full(0, 3, true, false, false);
+        assert!(!task.is_completable_by_user());
+        assert!(!task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_anyone_can_complete_still_respects_target() {
+        // anyone_can_complete does not bypass the allow_exceed_target limit
+        let task = create_task_with_status_full(3, 3, false, false, true);
+        assert!(task.is_completable_by_user());
+        assert!(!task.can_complete());
+    }
+
+    #[test]
+    fn test_task_with_status_is_completable_by_user_when_assigned() {
+        // Assignee stays completable regardless of the anyone_can_complete flag
+        let task = create_task_with_status_full(0, 3, true, true, false);
+        assert!(task.is_completable_by_user());
     }
 
     #[test]

@@ -33,6 +33,7 @@ pub async fn create_task(
     let now = Utc::now();
     let target_count = request.target_count.unwrap_or(1);
     let allow_exceed_target = request.allow_exceed_target.unwrap_or(true);
+    let anyone_can_complete = request.anyone_can_complete.unwrap_or(false);
     let requires_review = request.requires_review.unwrap_or(false);
     let habit_type = request.habit_type.unwrap_or_default();
 
@@ -52,8 +53,8 @@ pub async fn create_task(
 
     sqlx::query(
         r#"
-        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, requires_review, points_reward, points_penalty, due_time, habit_type, category_id, suggestion, suggested_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, household_id, title, description, recurrence_type, recurrence_value, assigned_user_id, target_count, time_period, allow_exceed_target, anyone_can_complete, requires_review, points_reward, points_penalty, due_time, habit_type, category_id, suggestion, suggested_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(id.to_string())
@@ -66,6 +67,7 @@ pub async fn create_task(
     .bind(target_count)
     .bind(time_period_str)
     .bind(allow_exceed_target)
+    .bind(anyone_can_complete)
     .bind(requires_review)
     .bind(request.points_reward)
     .bind(request.points_penalty)
@@ -90,6 +92,7 @@ pub async fn create_task(
         target_count,
         time_period: request.time_period,
         allow_exceed_target,
+        anyone_can_complete,
         requires_review,
         points_reward: request.points_reward,
         points_penalty: request.points_penalty,
@@ -466,6 +469,9 @@ pub async fn update_task(
     if let Some(allow_exceed_target) = request.allow_exceed_target {
         task.allow_exceed_target = allow_exceed_target;
     }
+    if let Some(anyone_can_complete) = request.anyone_can_complete {
+        task.anyone_can_complete = anyone_can_complete;
+    }
     if let Some(requires_review) = request.requires_review {
         task.requires_review = requires_review;
     }
@@ -496,7 +502,7 @@ pub async fn update_task(
 
     sqlx::query(
         r#"
-        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, archived = ?, paused = ?, updated_at = ?
+        UPDATE tasks SET title = ?, description = ?, recurrence_type = ?, recurrence_value = ?, assigned_user_id = ?, target_count = ?, time_period = ?, allow_exceed_target = ?, anyone_can_complete = ?, requires_review = ?, points_reward = ?, points_penalty = ?, due_time = ?, habit_type = ?, category_id = ?, archived = ?, paused = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
@@ -508,6 +514,7 @@ pub async fn update_task(
     .bind(task.target_count)
     .bind(&task.time_period)
     .bind(task.allow_exceed_target)
+    .bind(task.anyone_can_complete)
     .bind(task.requires_review)
     .bind(task.points_reward)
     .bind(task.points_penalty)
@@ -623,6 +630,80 @@ pub async fn delete_task(pool: &SqlitePool, task_id: &Uuid) -> Result<(), TaskEr
     Ok(())
 }
 
+/// Returns whether `user_id` may complete/uncomplete `task`.
+/// Only the assignee may do so, unless the task is flagged `anyone_can_complete`
+/// or has no assignee at all.
+fn is_completable_by(task: &Task, user_id: &Uuid) -> bool {
+    task.anyone_can_complete
+        || task
+            .assigned_user_id
+            .map(|assigned_id| assigned_id == *user_id)
+            .unwrap_or(true)
+}
+
+/// Returns the user that completion counts must be filtered by, or `None` when every
+/// member's completions count toward the task target.
+///
+/// Tasks flagged `anyone_can_complete` pool all members' completions - otherwise a shared
+/// task could never reach its `target_count`, since each member would only ever see their own.
+fn completion_count_filter<'a>(task: &Task, user_id: &'a Uuid) -> Option<&'a Uuid> {
+    if task.anyone_can_complete {
+        None
+    } else {
+        Some(user_id)
+    }
+}
+
+/// Count all completions of a task, optionally restricted to a single user.
+async fn count_completions(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    user_filter: Option<&Uuid>,
+) -> Result<i64, sqlx::Error> {
+    match user_filter {
+        Some(user_id) => sqlx::query_scalar(
+            "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ?",
+        )
+        .bind(task_id.to_string())
+        .bind(user_id.to_string())
+        .fetch_one(pool)
+        .await,
+        None => sqlx::query_scalar("SELECT COUNT(*) FROM task_completions WHERE task_id = ?")
+            .bind(task_id.to_string())
+            .fetch_one(pool)
+            .await,
+    }
+}
+
+/// Count completions of a task inside a period, optionally restricted to a single user.
+async fn count_completions_in_period(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    user_filter: Option<&Uuid>,
+    period_start: NaiveDate,
+    period_end: NaiveDate,
+) -> Result<i64, sqlx::Error> {
+    match user_filter {
+        Some(user_id) => sqlx::query_scalar(
+            "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
+        )
+        .bind(task_id.to_string())
+        .bind(user_id.to_string())
+        .bind(period_start)
+        .bind(period_end)
+        .fetch_one(pool)
+        .await,
+        None => sqlx::query_scalar(
+            "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date >= ? AND due_date <= ?",
+        )
+        .bind(task_id.to_string())
+        .bind(period_start)
+        .bind(period_end)
+        .fetch_one(pool)
+        .await,
+    }
+}
+
 pub async fn complete_task(
     pool: &SqlitePool,
     task_id: &Uuid,
@@ -632,25 +713,18 @@ pub async fn complete_task(
     let task = get_task(pool, task_id).await?.ok_or(TaskError::NotFound)?;
 
     // Check if user is allowed to complete this task based on assignment
-    if let Some(assigned_id) = task.assigned_user_id {
-        if assigned_id != *user_id {
-            return Err(TaskError::NotAssigned);
-        }
+    if !is_completable_by(&task, user_id) {
+        return Err(TaskError::NotAssigned);
     }
 
     let today = Utc::now().date_naive();
+    let count_filter = completion_count_filter(&task, user_id);
 
     // Special handling for RecurrenceType::OneTime (free-form and one-time tasks)
     if task.recurrence_type == shared::RecurrenceType::OneTime {
         if task.target_count > 0 && !task.allow_exceed_target {
             // One-time task with exceed disabled: check total completions EVER (across all time)
-            let total_completions = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ?"
-            )
-            .bind(task_id.to_string())
-            .bind(user_id.to_string())
-            .fetch_one(pool)
-            .await?;
+            let total_completions = count_completions(pool, task_id, count_filter).await?;
 
             if total_completions >= task.target_count as i64 {
                 return Err(TaskError::AlreadyCompleted);
@@ -671,15 +745,9 @@ pub async fn complete_task(
         if !task.allow_exceed_target {
             let period_date = next_due.unwrap_or(today);
             let (period_start, period_end) = scheduler::get_period_bounds(&task, period_date);
-            let existing = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
-            )
-            .bind(task_id.to_string())
-            .bind(user_id.to_string())
-            .bind(period_start)
-            .bind(period_end)
-            .fetch_one(pool)
-            .await?;
+            let existing =
+                count_completions_in_period(pool, task_id, count_filter, period_start, period_end)
+                    .await?;
 
             if existing >= task.target_count as i64 {
                 return Err(TaskError::AlreadyCompleted);
@@ -747,22 +815,16 @@ pub async fn complete_task(
 
     // Check if period target is now met and finalize as completed
     if task.target_count > 0 {
+        // Unassigned tasks and tasks anyone may complete pool every member's completions
+        let finalize_filter = if task.assigned_user_id.is_some() {
+            count_filter
+        } else {
+            None
+        };
+
         if task.recurrence_type == shared::RecurrenceType::OneTime {
             // For OneTime tasks, count all completions regardless of date
-            let total_completions: i64 = if task.assigned_user_id.is_some() {
-                sqlx::query_scalar(
-                    "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ?",
-                )
-                .bind(task_id.to_string())
-                .bind(user_id.to_string())
-                .fetch_one(pool)
-                .await?
-            } else {
-                sqlx::query_scalar("SELECT COUNT(*) FROM task_completions WHERE task_id = ?")
-                    .bind(task_id.to_string())
-                    .fetch_one(pool)
-                    .await?
-            };
+            let total_completions = count_completions(pool, task_id, finalize_filter).await?;
 
             // If target is met, finalize with the current completion date
             if total_completions >= task.target_count as i64 {
@@ -784,27 +846,16 @@ pub async fn complete_task(
             let (period_start, period_end) =
                 scheduler::get_period_bounds(&task, completion_due_date);
 
-            // Count completions for this period (all users if unassigned, specific user if assigned)
-            let completions_for_period: i64 = if task.assigned_user_id.is_some() {
-                sqlx::query_scalar(
-                    "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?",
-                )
-                .bind(task_id.to_string())
-                .bind(user_id.to_string())
-                .bind(period_start)
-                .bind(period_end)
-                .fetch_one(pool)
-                .await?
-            } else {
-                sqlx::query_scalar(
-                    "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date >= ? AND due_date <= ?",
-                )
-                .bind(task_id.to_string())
-                .bind(period_start)
-                .bind(period_end)
-                .fetch_one(pool)
-                .await?
-            };
+            // Count completions for this period (all users if unassigned or anyone may
+            // complete the task, otherwise only the assignee's completions)
+            let completions_for_period = count_completions_in_period(
+                pool,
+                task_id,
+                finalize_filter,
+                period_start,
+                period_end,
+            )
+            .await?;
 
             // If target is met, finalize the period as completed
             // This will create a new record or update an existing one (e.g., failed -> completed)
@@ -843,13 +894,14 @@ pub async fn uncomplete_task(
     let task = get_task(pool, task_id).await?.ok_or(TaskError::NotFound)?;
 
     // Check if user is allowed to uncomplete this task based on assignment
-    if let Some(assigned_id) = task.assigned_user_id {
-        if assigned_id != *user_id {
-            return Err(TaskError::NotAssigned);
-        }
+    if !is_completable_by(&task, user_id) {
+        return Err(TaskError::NotAssigned);
     }
 
     let today = Utc::now().date_naive();
+    // A task anyone may check off can also be unchecked by anyone, so the completion to
+    // remove is not restricted to the current user
+    let count_filter = completion_count_filter(&task, user_id);
 
     if task.recurrence_type == shared::RecurrenceType::OneTime {
         // For OneTime tasks, delete the most recent completion regardless of date
@@ -858,14 +910,15 @@ pub async fn uncomplete_task(
             DELETE FROM task_completions
             WHERE id = (
                 SELECT id FROM task_completions
-                WHERE task_id = ? AND user_id = ?
+                WHERE task_id = ? AND (? IS NULL OR user_id = ?)
                 ORDER BY completed_at DESC
                 LIMIT 1
             )
             "#,
         )
         .bind(task_id.to_string())
-        .bind(user_id.to_string())
+        .bind(count_filter.map(|u| u.to_string()))
+        .bind(count_filter.map(|u| u.to_string()))
         .execute(pool)
         .await?;
 
@@ -898,14 +951,16 @@ pub async fn uncomplete_task(
             DELETE FROM task_completions
             WHERE id = (
                 SELECT id FROM task_completions
-                WHERE task_id = ? AND user_id = ? AND due_date >= ? AND due_date <= ?
+                WHERE task_id = ? AND (? IS NULL OR user_id = ?)
+                  AND due_date >= ? AND due_date <= ?
                 ORDER BY completed_at DESC
                 LIMIT 1
             )
             "#,
         )
         .bind(task_id.to_string())
-        .bind(user_id.to_string())
+        .bind(count_filter.map(|u| u.to_string()))
+        .bind(count_filter.map(|u| u.to_string()))
         .bind(period_start)
         .bind(period_end)
         .execute(pool)
@@ -964,6 +1019,7 @@ pub async fn list_pending_reviews(
         t_target_count: i32,
         t_time_period: Option<String>,
         t_allow_exceed_target: bool,
+        t_anyone_can_complete: bool,
         t_requires_review: bool,
         t_points_reward: Option<i64>,
         t_points_penalty: Option<i64>,
@@ -988,7 +1044,8 @@ pub async fn list_pending_reviews(
             t.description as t_description, t.recurrence_type as t_recurrence_type,
             t.recurrence_value as t_recurrence_value, t.assigned_user_id as t_assigned_user_id,
             t.target_count as t_target_count, t.time_period as t_time_period,
-            t.allow_exceed_target as t_allow_exceed_target, t.requires_review as t_requires_review,
+            t.allow_exceed_target as t_allow_exceed_target,
+            t.anyone_can_complete as t_anyone_can_complete, t.requires_review as t_requires_review,
             t.points_reward as t_points_reward, t.points_penalty as t_points_penalty,
             t.due_time as t_due_time, t.habit_type as t_habit_type,
             t.created_at as t_created_at, t.updated_at as t_updated_at,
@@ -1033,6 +1090,7 @@ pub async fn list_pending_reviews(
                     target_count: row.t_target_count,
                     time_period,
                     allow_exceed_target: row.t_allow_exceed_target,
+                    anyone_can_complete: row.t_anyone_can_complete,
                     requires_review: row.t_requires_review,
                     points_reward: row.t_points_reward,
                     points_penalty: row.t_points_penalty,
@@ -1531,6 +1589,7 @@ mod tests {
                 target_count INTEGER NOT NULL DEFAULT 1,
                 time_period TEXT,
                 allow_exceed_target BOOLEAN NOT NULL DEFAULT 1,
+                anyone_can_complete BOOLEAN NOT NULL DEFAULT 0,
                 requires_review BOOLEAN NOT NULL DEFAULT 0,
                 points_reward INTEGER,
                 points_penalty INTEGER,
@@ -1792,6 +1851,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(true),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -1831,6 +1891,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(false),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -1866,6 +1927,7 @@ mod tests {
             target_count: Some(2),
             time_period: None,
             allow_exceed_target: Some(false),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -1905,6 +1967,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None, // Default
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -1943,6 +2006,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -1965,6 +2029,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2003,6 +2068,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2042,6 +2108,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2073,6 +2140,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2092,6 +2160,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2140,6 +2209,7 @@ mod tests {
                 target_count: Some(1),
                 time_period: None,
                 allow_exceed_target: None,
+                anyone_can_complete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2176,6 +2246,7 @@ mod tests {
                 target_count: Some(1),
                 time_period: None,
                 allow_exceed_target: None,
+                anyone_can_complete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2212,6 +2283,7 @@ mod tests {
                 target_count: Some(1),
                 time_period: None,
                 allow_exceed_target: None,
+                anyone_can_complete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2248,6 +2320,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2279,6 +2352,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2316,6 +2390,7 @@ mod tests {
                 target_count: Some(1),
                 time_period: None,
                 allow_exceed_target: None,
+                anyone_can_complete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2357,6 +2432,7 @@ mod tests {
                 target_count: Some(1),
                 time_period: None,
                 allow_exceed_target: None,
+                anyone_can_complete: None,
                 requires_review: None,
                 points_reward: None,
                 points_penalty: None,
@@ -2433,6 +2509,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2453,6 +2530,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2491,6 +2569,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2510,6 +2589,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2548,6 +2628,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: Some(10),
             points_penalty: Some(5),
@@ -2601,6 +2682,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(true),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2653,6 +2735,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2733,6 +2816,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(true),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2766,6 +2850,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(true),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2802,6 +2887,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(true),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2835,6 +2921,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(true),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2853,6 +2940,215 @@ mod tests {
         assert!(matches!(result, Err(TaskError::NotAssigned)));
     }
 
+    /// Request for a daily task assigned to `assignee`, with the anyone_can_complete flag
+    /// left at its default (None) unless explicitly set by the caller.
+    fn assigned_task_request(assignee: Uuid, anyone_can_complete: Option<bool>) -> CreateTaskRequest {
+        CreateTaskRequest {
+            title: "Shared Task".to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: Some(assignee),
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: Some(true),
+            anyone_can_complete,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            is_suggestion: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_task_anyone_can_complete_defaults_to_false() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        let request = assigned_task_request(user_id, None);
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        assert!(!task.anyone_can_complete);
+
+        // And it round-trips through the database
+        let loaded = get_task(&pool, &task.id).await.unwrap().unwrap();
+        assert!(!loaded.anyone_can_complete);
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_anyone_can_complete_allows_non_assignee() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        let request = assigned_task_request(user1, Some(true));
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+        assert!(task.anyone_can_complete);
+
+        // User2 is not the assignee but may still check the task off
+        let completion = complete_task(&pool, &task.id, &user2, &household_id)
+            .await
+            .expect("non-assignee should be allowed to complete");
+
+        // The completion is recorded for the user who checked it off, so points go to them
+        assert_eq!(completion.user_id, user2);
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_anyone_can_complete_off_forbids_non_assignee() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Flag explicitly off - existing behaviour must be unchanged
+        let request = assigned_task_request(user1, Some(false));
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        let result = complete_task(&pool, &task.id, &user2, &household_id).await;
+        assert!(matches!(result, Err(TaskError::NotAssigned)));
+    }
+
+    #[tokio::test]
+    async fn test_uncomplete_task_anyone_can_complete_allows_non_assignee() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        let request = assigned_task_request(user1, Some(true));
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        // The assignee completes it, a different member unchecks it again
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+        uncomplete_task(&pool, &task.id, &user2)
+            .await
+            .expect("non-assignee should be allowed to uncomplete");
+
+        let remaining: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM task_completions WHERE task_id = ?")
+                .bind(task.id.to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(remaining, 0);
+    }
+
+    #[tokio::test]
+    async fn test_uncomplete_task_anyone_can_complete_off_forbids_non_assignee() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        let request = assigned_task_request(user1, Some(false));
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+
+        let result = uncomplete_task(&pool, &task.id, &user2).await;
+        assert!(matches!(result, Err(TaskError::NotAssigned)));
+    }
+
+    #[tokio::test]
+    async fn test_update_task_toggles_anyone_can_complete() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        let request = assigned_task_request(user_id, None);
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+        assert!(!task.anyone_can_complete);
+
+        let update = UpdateTaskRequest {
+            title: None,
+            description: None,
+            recurrence_type: None,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: None,
+            time_period: None,
+            allow_exceed_target: None,
+            anyone_can_complete: Some(true),
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            archived: None,
+            paused: None,
+        };
+        let updated = update_task(&pool, &task.id, &update).await.unwrap();
+        assert!(updated.anyone_can_complete);
+
+        let loaded = get_task(&pool, &task.id).await.unwrap().unwrap();
+        assert!(loaded.anyone_can_complete);
+    }
+
+    #[tokio::test]
+    async fn test_anyone_can_complete_counts_all_members_toward_target() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let user2 = create_second_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+        add_user_to_household(&pool, &household_id, &user2).await;
+
+        // Target 2, exceeding disabled: both members' completions must pool together,
+        // otherwise the target could never be reached
+        let mut request = assigned_task_request(user1, Some(true));
+        request.target_count = Some(2);
+        request.allow_exceed_target = Some(false);
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+        complete_task(&pool, &task.id, &user2, &household_id).await.unwrap();
+
+        // Target reached by two different members -> period finalized as completed
+        let period_result: Option<(String, i32)> = sqlx::query_as(
+            "SELECT status, completions_count FROM task_period_results WHERE task_id = ?",
+        )
+        .bind(task.id.to_string())
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+
+        let (status, completions_count) = period_result.expect("period should be finalized");
+        assert_eq!(status, "completed");
+        assert_eq!(completions_count, 2);
+
+        // A third completion is rejected because the pooled target is already met
+        let third = complete_task(&pool, &task.id, &user1, &household_id).await;
+        assert!(matches!(third, Err(TaskError::AlreadyCompleted)));
+    }
+
+    #[tokio::test]
+    async fn test_assigned_task_without_flag_counts_only_assignee() {
+        let pool = setup_test_db().await;
+        let user1 = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user1).await;
+
+        // Flag off: the assignee alone must reach the target (unchanged behaviour)
+        let mut request = assigned_task_request(user1, None);
+        request.target_count = Some(2);
+        request.allow_exceed_target = Some(false);
+        let task = create_task(&pool, &household_id, &request, None).await.unwrap();
+
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+        complete_task(&pool, &task.id, &user1, &household_id).await.unwrap();
+
+        let third = complete_task(&pool, &task.id, &user1, &household_id).await;
+        assert!(matches!(third, Err(TaskError::AlreadyCompleted)));
+    }
+
     #[tokio::test]
     async fn test_task_with_status_is_user_assigned_true() {
         let pool = setup_test_db().await;
@@ -2869,6 +3165,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2906,6 +3203,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2943,6 +3241,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2983,6 +3282,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3032,6 +3332,7 @@ mod tests {
             target_count: Some(2),
             time_period: None,
             allow_exceed_target: Some(true),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3097,6 +3398,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3154,6 +3456,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(false),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3221,6 +3524,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(false),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3290,6 +3594,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(false),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3347,6 +3652,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(false),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3418,6 +3724,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(false),
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -3499,6 +3806,7 @@ mod tests {
             target_count: Some(1),
             time_period: None,
             allow_exceed_target: Some(true),
+            anyone_can_complete: None,
             requires_review: Some(false),
             points_reward: Some(10i64),
             points_penalty: Some(-5i64),
@@ -3536,6 +3844,7 @@ mod tests {
             target_count: None,
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,

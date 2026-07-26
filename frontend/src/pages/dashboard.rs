@@ -335,6 +335,7 @@ pub fn Dashboard() -> impl IntoView {
                     target_count: None,
                     time_period: None,
                     allow_exceed_target: None,
+                    anyone_can_complete: None,
                     requires_review: None,
                     points_reward: None,
                     points_penalty: None,

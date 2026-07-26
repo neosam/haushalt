@@ -242,6 +242,8 @@
   "task_modal.target_count_hint": "How many times per period (1 for regular tasks, more for habits)",
   "task_modal.allow_exceed": "Allow exceeding target",
   "task_modal.allow_exceed_hint": "When unchecked, the complete button is disabled once the target is reached",
+  "task_modal.anyone_can_complete": "Anyone can check off",
+  "task_modal.anyone_can_complete_hint": "When enabled, any household member can check this task off - not only the assigned person. Points go to whoever checks it off.",
   "task_modal.require_review": "Require review",
   "task_modal.require_review_hint": "When enabled, completions must be approved by an owner before points/rewards are finalized",
   "task_modal.assigned_to": "Assigned To",

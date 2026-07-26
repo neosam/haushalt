@@ -242,6 +242,8 @@
   "task_modal.target_count_hint": "Wie oft pro Zeitraum (1 für normale Aufgaben, mehr für Gewohnheiten)",
   "task_modal.allow_exceed": "Überschreiten des Ziels erlauben",
   "task_modal.allow_exceed_hint": "Wenn deaktiviert, wird der Erledigt-Button deaktiviert, sobald das Ziel erreicht ist",
+  "task_modal.anyone_can_complete": "Jeder darf abhaken",
+  "task_modal.anyone_can_complete_hint": "Wenn aktiviert, kann jedes Haushaltsmitglied diese Aufgabe abhaken - nicht nur die zugewiesene Person. Die Punkte gehen an die Person, die abhakt.",
   "task_modal.require_review": "Überprüfung erforderlich",
   "task_modal.require_review_hint": "Wenn aktiviert, müssen Erledigungen vom Eigentümer genehmigt werden, bevor Punkte/Belohnungen vergeben werden",
   "task_modal.assigned_to": "Zugewiesen an",

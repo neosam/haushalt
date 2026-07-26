@@ -68,6 +68,8 @@ pub fn TaskCard(
     let is_target_met = task.is_target_met();
     let can_complete = task.can_complete();
     let is_user_assigned = task.is_user_assigned;
+    // Whether to show the +/- controls at all: the assignee, or anyone when the task allows it
+    let is_completable_by_user = task.is_completable_by_user();
     let task_id = task.task.id.to_string();
     let task_id_for_minus = task_id.clone();
     let task_id_for_dashboard = task_id.clone();
@@ -256,8 +258,8 @@ pub fn TaskCard(
                 } else {
                     ().into_view()
                 }}
-                // Only show +/- buttons if user is assigned to the task
-                {if is_user_assigned {
+                // Only show +/- buttons if the user may check this task off
+                {if is_completable_by_user {
                     view! {
                         <button
                             class="btn btn-outline"
@@ -703,6 +705,7 @@ mod tests {
                 target_count: target,
                 time_period: None,
                 allow_exceed_target: allow_exceed,
+                anyone_can_complete: false,
                 requires_review: false,
                 points_reward: None,
                 points_penalty: None,
@@ -816,6 +819,7 @@ mod tests {
                 target_count: 1,
                 time_period: None,
                 allow_exceed_target: true,
+                anyone_can_complete: false,
                 requires_review: false,
                 points_reward: None,
                 points_penalty: None,
@@ -890,6 +894,30 @@ mod tests {
     fn test_can_complete_over_target_no_exceed() {
         // Cannot complete when already over target with allow_exceed_target false
         let task = create_test_task_with_exceed(5, 3, false);
+        assert!(!task.can_complete());
+    }
+
+    // Tests for anyone_can_complete: the +/- controls are gated on is_completable_by_user()
+
+    fn create_test_task_for_other_user(anyone_can_complete: bool) -> TaskWithStatus {
+        let mut task = create_test_task_with_exceed(0, 3, true);
+        task.task.assigned_user_id = Some(Uuid::new_v4());
+        task.task.anyone_can_complete = anyone_can_complete;
+        task.is_user_assigned = false;
+        task
+    }
+
+    #[wasm_bindgen_test]
+    fn test_non_assignee_can_complete_when_anyone_can_complete() {
+        let task = create_test_task_for_other_user(true);
+        assert!(task.is_completable_by_user());
+        assert!(task.can_complete());
+    }
+
+    #[wasm_bindgen_test]
+    fn test_non_assignee_cannot_complete_by_default() {
+        let task = create_test_task_for_other_user(false);
+        assert!(!task.is_completable_by_user());
         assert!(!task.can_complete());
     }
 

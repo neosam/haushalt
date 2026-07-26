@@ -828,6 +828,7 @@ mod tests {
                 target_count INTEGER NOT NULL DEFAULT 1,
                 time_period TEXT NOT NULL DEFAULT 'day',
                 allow_exceed_target BOOLEAN NOT NULL DEFAULT 0,
+                anyone_can_complete BOOLEAN NOT NULL DEFAULT 0,
                 requires_review BOOLEAN NOT NULL DEFAULT 0,
                 points_reward INTEGER NOT NULL DEFAULT 0,
                 points_penalty INTEGER NOT NULL DEFAULT 0,

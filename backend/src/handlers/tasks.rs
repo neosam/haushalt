@@ -53,6 +53,7 @@ fn is_solo_mode_set_date_request(request: &UpdateTaskRequest, task: &Task) -> bo
         && request.target_count.is_none()
         && request.time_period.is_none()
         && request.allow_exceed_target.is_none()
+        && request.anyone_can_complete.is_none()
         && request.requires_review.is_none()
         && request.points_reward.is_none()
         && request.points_penalty.is_none()
@@ -2354,6 +2355,7 @@ mod tests {
             target_count: 1,
             time_period: Some(TimePeriod::Day),
             allow_exceed_target: false,
+            anyone_can_complete: false,
             requires_review: false,
             points_reward: None,
             points_penalty: None,
@@ -2380,6 +2382,7 @@ mod tests {
             target_count: None,
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2443,6 +2446,7 @@ mod tests {
             target_count: None,
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2472,6 +2476,7 @@ mod tests {
             target_count: None,
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,
@@ -2501,6 +2506,7 @@ mod tests {
             target_count: None,
             time_period: None,
             allow_exceed_target: None,
+            anyone_can_complete: None,
             requires_review: None,
             points_reward: None,
             points_penalty: None,

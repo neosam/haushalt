@@ -817,6 +817,7 @@ mod tests {
             target_count: 1,
             time_period: None,
             allow_exceed_target: true,
+            anyone_can_complete: false,
             requires_review: false,
             points_reward: None,
             points_penalty: None,

@@ -107,6 +107,11 @@ pub fn TaskModal(
             .map(|t| t.allow_exceed_target)
             .unwrap_or(true)  // Default to true for new tasks
     );
+    let anyone_can_complete = create_rw_signal(
+        source_task
+            .map(|t| t.anyone_can_complete)
+            .unwrap_or(false)  // Default to false for new tasks
+    );
     let requires_review = create_rw_signal(
         source_task
             .map(|t| t.requires_review)
@@ -231,6 +236,7 @@ pub fn TaskModal(
     let apply_assigned_user = create_rw_signal(false);
     let apply_target_count = create_rw_signal(false);
     let apply_allow_exceed = create_rw_signal(false);
+    let apply_anyone_can_complete = create_rw_signal(false);
     let apply_requires_review = create_rw_signal(false);
     let apply_on_dashboard = create_rw_signal(false);
     let apply_habit_type = create_rw_signal(false);
@@ -343,6 +349,7 @@ pub fn TaskModal(
                         target_count: Some(target),
                         time_period: None,
                         allow_exceed_target: Some(allow_exceed_target.get()),
+                        anyone_can_complete: Some(anyone_can_complete.get()),
                         requires_review: Some(requires_review.get()),
                         points_reward: pts_reward,
                         points_penalty: pts_penalty,
@@ -433,6 +440,7 @@ pub fn TaskModal(
                         target_count: Some(target),
                         time_period: None,
                         allow_exceed_target: Some(allow_exceed_target.get()),
+                        anyone_can_complete: Some(anyone_can_complete.get()),
                         requires_review: Some(requires_review.get()),
                         points_reward: pts_reward,
                         points_penalty: pts_penalty,
@@ -558,6 +566,11 @@ pub fn TaskModal(
                         time_period: None,
                         allow_exceed_target: if apply_allow_exceed.get() {
                             Some(allow_exceed_target.get())
+                        } else {
+                            None
+                        },
+                        anyone_can_complete: if apply_anyone_can_complete.get() {
+                            Some(anyone_can_complete.get())
                         } else {
                             None
                         },
@@ -1023,6 +1036,8 @@ pub fn TaskModal(
                             <small class="form-hint">{i18n_stored.get_value().t("task_modal.allow_exceed_hint")}</small>
                         </div>
 
+                        <TaskAnyoneCanCompleteField value=anyone_can_complete />
+
                         <div class="form-group">
                             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                                 <input
@@ -1443,6 +1458,11 @@ pub fn TaskModal(
                                         <TaskAllowExceedField value=allow_exceed_target hide_label=true />
                                     </BulkEditField>
 
+                                    // Anyone Can Complete
+                                    <BulkEditField label=i18n_stored.get_value().t("task_modal.anyone_can_complete") apply=apply_anyone_can_complete>
+                                        <TaskAnyoneCanCompleteField value=anyone_can_complete hide_label=true />
+                                    </BulkEditField>
+
                                     // Requires Review
                                     <BulkEditField label=i18n_stored.get_value().t("task_modal.require_review") apply=apply_requires_review>
                                         <TaskRequiresReviewField value=requires_review hide_label=true />
@@ -1767,6 +1787,7 @@ mod tests {
             target_count: 3,
             time_period: None,
             allow_exceed_target: true,
+            anyone_can_complete: false,
             requires_review: false,
             points_reward: Some(10),
             points_penalty: None,
@@ -1804,6 +1825,7 @@ mod tests {
             target_count: 1,
             time_period: None,
             allow_exceed_target: false,
+            anyone_can_complete: false,
             requires_review: true,
             points_reward: None,
             points_penalty: None,
@@ -1830,6 +1852,7 @@ mod tests {
             target_count: 5,
             time_period: None,
             allow_exceed_target: true,
+            anyone_can_complete: false,
             requires_review: false,
             points_reward: None,
             points_penalty: None,
@@ -1866,6 +1889,7 @@ mod tests {
             target_count: 1,
             time_period: None,
             allow_exceed_target: true,
+            anyone_can_complete: false,
             requires_review: false,
             points_reward: None,
             points_penalty: None,
