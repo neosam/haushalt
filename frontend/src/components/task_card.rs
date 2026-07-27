@@ -1,6 +1,6 @@
 use chrono::{Datelike, NaiveDate, Weekday};
 use leptos::*;
-use shared::{RecurrenceType, TaskWithStatus};
+use shared::{Archetype, RecurrenceType, TaskWithStatus};
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
@@ -116,8 +116,14 @@ pub fn TaskCard(
         "task-item"
     };
 
-    // Progress display as fraction (e.g., "2/3")
-    let progress_display = format!("{}/{}", completions, target);
+    // A task without a target is a bonus task: it is counted, not measured. Showing "3/0"
+    // would invent a goal it does not have, so the count stands on its own.
+    let is_bonus = task.task.archetype() == Archetype::Bonus;
+    let progress_display = if target > 0 {
+        format!("{}/{}", completions, target)
+    } else {
+        format!("{} ×", completions)
+    };
 
     // Format next due date using household timezone
     let today = today_in_tz(&timezone);
@@ -221,7 +227,7 @@ pub fn TaskCard(
                 </div>
                 {if has_recent_periods {
                     view! {
-                        <PeriodTrackerCompact periods=recent_periods.clone() show_in_progress=true is_bad_habit=is_bad_habit />
+                        <PeriodTrackerCompact periods=recent_periods.clone() show_in_progress=true is_bad_habit=is_bad_habit is_bonus=is_bonus />
                     }.into_view()
                 } else {
                     ().into_view()

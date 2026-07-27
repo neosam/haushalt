@@ -16,9 +16,13 @@ use shared::{Archetype, HabitType, RecurrenceType};
 const DATE_INPUT_FORMAT: &str = "%Y-%m-%d";
 
 /// Order of the type cards in create mode.
-pub const ALL_ARCHETYPES: [Archetype; 5] = [
+///
+/// `Bonus` sits right after `Routine`: both are recurring chores for one person, they differ
+/// only in whether the chore is owed.
+pub const ALL_ARCHETYPES: [Archetype; 6] = [
     Archetype::OneOff,
     Archetype::Routine,
+    Archetype::Bonus,
     Archetype::Shared,
     Archetype::BadHabit,
     Archetype::Maintenance,
@@ -114,7 +118,40 @@ pub fn preset(archetype: Archetype) -> ArchetypePreset {
             assign_hint_key: "task_modal.archetype.maintenance.assign_hint",
             base_is_date: false,
         },
+        Archetype::Bonus => ArchetypePreset {
+            icon: "🎁",
+            name_key: "task_modal.archetype.bonus.name",
+            desc_key: "task_modal.archetype.bonus.desc",
+            form_title_key: "task_modal.archetype.bonus.form_title",
+            note: Some((NoteKind::Info, "task_modal.archetype.bonus.note")),
+            assign_label_key: "task_modal.archetype.bonus.assign_label",
+            assign_hint_key: "task_modal.archetype.bonus.assign_hint",
+            base_is_date: false,
+        },
     }
+}
+
+/// Which fields an archetype has no use for.
+///
+/// This is the one place where an archetype hides something rather than only prefilling it — and
+/// only where the field would be actively misleading: a bonus task has no target to enter and no
+/// way to be missed, so a penalty could never trigger. Its *reward* stays reachable; doing a
+/// bonus task is still worth points.
+pub fn shows_target_count(archetype: Archetype) -> bool {
+    archetype != Archetype::Bonus
+}
+
+/// See [`shows_target_count`] — a task that cannot be missed cannot carry a penalty.
+pub fn shows_points_penalty(archetype: Archetype) -> bool {
+    archetype != Archetype::Bonus
+}
+
+/// Reads the target-count input the way the form's save path does.
+///
+/// An unparseable or empty field means "the user has not typed a number", which must not read as
+/// a bonus task — hence the fallback to 1 rather than 0.
+pub fn parse_target_count(raw: &str) -> i32 {
+    raw.parse::<i32>().unwrap_or(1).max(0)
 }
 
 /// Snapshot of the switches that decide which archetype the form currently *is*.
@@ -124,6 +161,9 @@ pub struct FormFlags {
     pub anyone_can_complete: bool,
     pub assignee_cannot_uncomplete: bool,
     pub recurrence: String,
+    /// Raw input value, read through [`parse_target_count`] — a half-typed field must not make
+    /// the chip flicker to "Bonus".
+    pub target_count: String,
 }
 
 /// Mirrors `Task::archetype()` and breaks the `OneOff`/`Routine` tie via the user's pick.
@@ -138,6 +178,8 @@ pub fn derive_archetype(flags: &FormFlags, selected: Archetype) -> Archetype {
         Archetype::Maintenance
     } else if flags.habit_bad {
         Archetype::BadHabit
+    } else if parse_target_count(&flags.target_count) <= 0 {
+        Archetype::Bonus
     } else if flags.anyone_can_complete {
         Archetype::Shared
     } else if flags.recurrence == RecurrenceType::OneTime.as_str()
@@ -216,6 +258,10 @@ fn recurrence_matches_preset(recurrence: &str, custom_dates_len: usize, selected
 pub fn initial_open_groups(mode: FormMode, s: &FormSnapshot, selected: Archetype) -> OpenGroups {
     let preset_habit_bad = selected.defaults().habit_type == HabitType::Bad;
     let habit_deviates = s.habit_bad != preset_habit_bad;
+    // Compared against the preset rather than a hardcoded "1" — otherwise the goal group would
+    // start expanded for every bonus task, whose preset target is 0.
+    let target_deviates =
+        parse_target_count(&s.target_count) != selected.defaults().target_count;
     let recurrence_deviates =
         !recurrence_matches_preset(&s.recurrence, s.custom_dates_len, selected);
 
@@ -234,7 +280,7 @@ pub fn initial_open_groups(mode: FormMode, s: &FormSnapshot, selected: Archetype
                 || !s.description_empty
                 || s.category_set
                 || s.due_time_set,
-            goal: habit_deviates || s.target_count.trim() != "1" || !s.allow_exceed,
+            goal: habit_deviates || target_deviates || !s.allow_exceed,
             points: s.points_reward_set
                 || s.points_penalty_set
                 || s.linked_rewards > 0
@@ -261,6 +307,15 @@ pub fn recurrence_after_preset(current: &str, selected: Archetype) -> String {
         }
         None => current.to_string(),
     }
+}
+
+/// Target count after switching type: every archetype pins this down, so the preset always wins.
+///
+/// Unlike the rhythm there is no "user's choice" here. Carrying the old value over would either
+/// strand a `0` on a routine — flipping the derivation straight back to `Bonus` — or leave a
+/// bonus task with a target it can never meet.
+pub fn target_count_after_preset(selected: Archetype) -> String {
+    selected.defaults().target_count.to_string()
 }
 
 /// A bad habit is tracked by the person having it, so it is prefilled with the current user —
@@ -320,7 +375,20 @@ mod tests {
             anyone_can_complete: anyone,
             assignee_cannot_uncomplete: no_uncomplete,
             recurrence: recurrence.to_string(),
+            target_count: "1".to_string(),
         }
+    }
+
+    /// Same as [`flags`] but with a target of 0 — the switch that makes a task a bonus task.
+    fn flags_without_target(
+        habit_bad: bool,
+        anyone: bool,
+        no_uncomplete: bool,
+        recurrence: &str,
+    ) -> FormFlags {
+        let mut f = flags(habit_bad, anyone, no_uncomplete, recurrence);
+        f.target_count = "0".to_string();
+        f
     }
 
     /// A snapshot that deviates from nothing — every test only flips what it is about.
@@ -355,6 +423,7 @@ mod tests {
         snapshot.habit_bad = defaults.habit_type == HabitType::Bad;
         snapshot.anyone_can_complete = defaults.anyone_can_complete;
         snapshot.assignee_cannot_uncomplete = defaults.assignee_cannot_uncomplete;
+        snapshot.target_count = defaults.target_count.to_string();
         snapshot
     }
 
@@ -437,24 +506,103 @@ mod tests {
     }
 
     #[test]
-    fn derives_the_same_archetype_as_task_archetype_for_all_five() {
+    fn zero_target_derives_bonus() {
+        let f = flags_without_target(false, false, false, "daily");
+        assert_eq!(derive_archetype(&f, Archetype::Routine), Archetype::Bonus);
+    }
+
+    #[test]
+    fn zero_target_wins_over_anyone_can_complete() {
+        let f = flags_without_target(false, true, false, "daily");
+        assert_eq!(derive_archetype(&f, Archetype::Shared), Archetype::Bonus);
+    }
+
+    #[test]
+    fn bad_habit_wins_over_zero_target() {
+        let f = flags_without_target(true, false, false, "daily");
+        assert_eq!(derive_archetype(&f, Archetype::Bonus), Archetype::BadHabit);
+    }
+
+    /// A cleared input field is "nothing typed yet", not "no target" — the chip must not jump to
+    /// Bonus while the user is still editing the number.
+    #[test]
+    fn empty_target_input_does_not_derive_bonus() {
+        let mut f = flags(false, false, false, "daily");
+        f.target_count = String::new();
+        assert_eq!(derive_archetype(&f, Archetype::Routine), Archetype::Routine);
+    }
+
+    // ---- target_count_after_preset ----------------------------------------
+
+    #[test]
+    fn switching_to_bonus_clears_the_target() {
+        assert_eq!(target_count_after_preset(Archetype::Bonus), "0");
+    }
+
+    /// The round-trip that makes the explicit presets necessary: leaving Bonus has to restore a
+    /// real target, otherwise the derivation flips straight back to Bonus.
+    #[test]
+    fn switching_away_from_bonus_restores_a_target() {
+        for archetype in ALL_ARCHETYPES {
+            if archetype == Archetype::Bonus {
+                continue;
+            }
+            let restored = target_count_after_preset(archetype);
+            assert_eq!(restored, "1", "target not restored for {archetype:?}");
+
+            let mut f = flags(false, false, false, "daily");
+            f.target_count = restored;
+            assert_ne!(
+                derive_archetype(&f, archetype),
+                Archetype::Bonus,
+                "{archetype:?} fell back to Bonus after the switch"
+            );
+        }
+    }
+
+    // ---- field visibility --------------------------------------------------
+
+    #[test]
+    fn bonus_hides_target_and_penalty_but_keeps_the_reward() {
+        assert!(!shows_target_count(Archetype::Bonus));
+        assert!(!shows_points_penalty(Archetype::Bonus));
+    }
+
+    #[test]
+    fn every_other_archetype_shows_target_and_penalty() {
+        for archetype in ALL_ARCHETYPES {
+            if archetype == Archetype::Bonus {
+                continue;
+            }
+            assert!(shows_target_count(archetype), "target hidden for {archetype:?}");
+            assert!(
+                shows_points_penalty(archetype),
+                "penalty hidden for {archetype:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn derives_the_same_archetype_as_task_archetype_for_all_six() {
         for archetype in ALL_ARCHETYPES {
             let defaults = archetype.defaults();
             let recurrence = defaults.recurrence_type.unwrap_or(RecurrenceType::Daily);
             let recurrence_str = recurrence.as_str();
             let habit_bad = defaults.habit_type == HabitType::Bad;
-            let task = task_with(
+            let mut task = task_with(
                 defaults.habit_type,
                 defaults.anyone_can_complete,
                 defaults.assignee_cannot_uncomplete,
                 recurrence,
             );
-            let f = flags(
+            task.target_count = defaults.target_count;
+            let mut f = flags(
                 habit_bad,
                 defaults.anyone_can_complete,
                 defaults.assignee_cannot_uncomplete,
                 recurrence_str,
             );
+            f.target_count = defaults.target_count.to_string();
             assert_eq!(task.archetype(), archetype, "Task::archetype for {archetype:?}");
             assert_eq!(
                 derive_archetype(&f, archetype),
@@ -517,6 +665,38 @@ mod tests {
             groups,
             OpenGroups { details: false, goal: false, points: false, rules: true }
         );
+    }
+
+    /// The target of 0 IS the bonus preset, so it is no deviation — before the preset-aware
+    /// comparison the hardcoded "1" would have opened the goal group on every bonus task.
+    #[test]
+    fn create_bonus_opens_no_group() {
+        let groups = initial_open_groups(
+            FormMode::Create,
+            &preset_snapshot(Archetype::Bonus),
+            Archetype::Bonus,
+        );
+        assert_eq!(
+            groups,
+            OpenGroups { details: false, goal: false, points: false, rules: false }
+        );
+    }
+
+    /// Editing an existing bonus task must not flag its own preset as a deviation either.
+    #[test]
+    fn edit_bonus_with_its_preset_target_keeps_goal_closed() {
+        let snapshot = preset_snapshot(Archetype::Bonus);
+        let groups = initial_open_groups(FormMode::Edit, &snapshot, Archetype::Bonus);
+        assert!(!groups.goal, "the bonus preset target must not open the goal group");
+    }
+
+    /// The inverse: a bonus task that somehow carries a real target is worth showing.
+    #[test]
+    fn edit_bonus_with_a_target_opens_goal() {
+        let mut snapshot = preset_snapshot(Archetype::Bonus);
+        snapshot.target_count = "3".to_string();
+        let groups = initial_open_groups(FormMode::Edit, &snapshot, Archetype::Bonus);
+        assert!(groups.goal);
     }
 
     #[test]
@@ -839,6 +1019,6 @@ mod tests {
                 seen.push(key);
             }
         }
-        assert_eq!(seen.len(), 25);
+        assert_eq!(seen.len(), 30);
     }
 }

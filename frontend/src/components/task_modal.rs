@@ -10,7 +10,8 @@ use crate::components::task_fields::*;
 use crate::components::task_form_model::{
     apply_onetime_date, assignment_after_preset, assignment_missing, derive_archetype,
     initial_open_groups, links_section_visible, onetime_date_value, preset,
-    recurrence_after_preset, FormFlags, FormMode, FormSnapshot, ALL_ARCHETYPES,
+    recurrence_after_preset, shows_points_penalty, shows_target_count, target_count_after_preset,
+    FormFlags, FormMode, FormSnapshot, ALL_ARCHETYPES,
 };
 use crate::i18n::use_i18n;
 
@@ -270,6 +271,12 @@ pub fn TaskModal(
         anyone_can_complete.set(defaults.anyone_can_complete);
         assignee_cannot_uncomplete.set(defaults.assignee_cannot_uncomplete);
         recurrence_type.set(recurrence_after_preset(&recurrence_type.get(), archetype));
+        target_count.set(target_count_after_preset(archetype));
+        // A bonus task cannot be missed, so a penalty could never trigger. Leaving a value
+        // behind in a hidden field would silently save a rule that never applies.
+        if !shows_points_penalty(archetype) {
+            points_penalty.set(String::new());
+        }
         assigned_user.set(assignment_after_preset(
             archetype,
             &assigned_user.get(),
@@ -656,6 +663,7 @@ pub fn TaskModal(
                 anyone_can_complete: anyone_can_complete.get(),
                 assignee_cannot_uncomplete: assignee_cannot_uncomplete.get(),
                 recurrence: recurrence_type.get(),
+                target_count: target_count.get(),
             },
             selected_archetype.get(),
         )
@@ -874,7 +882,14 @@ pub fn TaskModal(
                             summary=i18n_stored.get_value().t("task_modal.group.goal")
                             open=initial_groups.goal
                         >
-                            <TaskTargetCountField value=target_count />
+                            // A bonus task has no target to enter — the field would only invite
+                            // a value that turns it back into an ordinary chore.
+                            <Show
+                                when=move || shows_target_count(selected_archetype.get())
+                                fallback=|| ()
+                            >
+                                <TaskTargetCountField value=target_count />
+                            </Show>
                             <TaskAllowExceedField value=allow_exceed_target />
                             <TaskHabitTypeField value=habit_type />
                         </Accordion>
@@ -884,8 +899,15 @@ pub fn TaskModal(
                             summary=i18n_stored.get_value().t("task_modal.group.points")
                             open=initial_groups.points
                         >
+                            // The reward stays for every type — doing a bonus task is worth
+                            // points. Only the penalty goes, because there is nothing to miss.
                             <TaskPointsRewardField value=points_reward />
-                            <TaskPointsPenaltyField value=points_penalty />
+                            <Show
+                                when=move || shows_points_penalty(selected_archetype.get())
+                                fallback=|| ()
+                            >
+                                <TaskPointsPenaltyField value=points_penalty />
+                            </Show>
 
                             <Show when=move || rewards_section_visible fallback=|| ()>
                                 <div class="form-group">

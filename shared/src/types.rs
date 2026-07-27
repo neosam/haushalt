@@ -665,12 +665,18 @@ impl Task {
     /// off), so the first match wins in a fixed order. That order sorts by the most striking,
     /// most operation-shaping property: whoever may not undo their own completion experiences
     /// exactly that first; a bad habit shapes the interaction more strongly than "who may check
-    /// it off"; and "who may check it off" in turn more strongly than the rhythm.
+    /// it off"; having no target at all outweighs the question of who may check it off; and that
+    /// question in turn outweighs the rhythm.
+    ///
+    /// "No target" sits behind the two inverted archetypes on purpose: those carry their own
+    /// points semantics, so a bad habit without a target stays a bad habit.
     pub fn archetype(&self) -> Archetype {
         if self.assignee_cannot_uncomplete {
             Archetype::Maintenance
         } else if self.habit_type.is_inverted() {
             Archetype::BadHabit
+        } else if self.target_count <= 0 {
+            Archetype::Bonus
         } else if self.anyone_can_complete {
             Archetype::Shared
         } else if self.recurrence_type == RecurrenceType::OneTime {
@@ -698,6 +704,9 @@ pub enum Archetype {
     BadHabit,
     /// Pinned on one person who may check it off but not undo it themselves.
     Maintenance,
+    /// Nice to have, never owed: it has no target, so it can never be missed - but every time
+    /// somebody does it, it counts.
+    Bonus,
 }
 
 /// The flag preset behind an [`Archetype`] - the inverse direction of [`Task::archetype`].
@@ -708,6 +717,11 @@ pub struct ArchetypeDefaults {
     pub assignee_cannot_uncomplete: bool,
     /// `Some(OneTime)` only for `OneOff`; `None` means "the user picks the rhythm".
     pub recurrence_type: Option<RecurrenceType>,
+    /// Every archetype states this explicitly rather than leaving it open: `Bonus` is derived
+    /// from `target_count <= 0`, so switching away from it has to write a positive target back.
+    /// Were this an `Option` meaning "user's choice", the `0` would survive the switch and the
+    /// derivation would immediately flip back to `Bonus`.
+    pub target_count: i32,
 }
 
 impl Archetype {
@@ -724,30 +738,42 @@ impl Archetype {
                 anyone_can_complete: false,
                 assignee_cannot_uncomplete: false,
                 recurrence_type: Some(RecurrenceType::OneTime),
+                target_count: 1,
             },
             Archetype::Routine => ArchetypeDefaults {
                 habit_type: HabitType::Good,
                 anyone_can_complete: false,
                 assignee_cannot_uncomplete: false,
                 recurrence_type: None,
+                target_count: 1,
             },
             Archetype::Shared => ArchetypeDefaults {
                 habit_type: HabitType::Good,
                 anyone_can_complete: true,
                 assignee_cannot_uncomplete: false,
                 recurrence_type: None,
+                target_count: 1,
             },
             Archetype::BadHabit => ArchetypeDefaults {
                 habit_type: HabitType::Bad,
                 anyone_can_complete: false,
                 assignee_cannot_uncomplete: false,
                 recurrence_type: None,
+                target_count: 1,
             },
             Archetype::Maintenance => ArchetypeDefaults {
                 habit_type: HabitType::Bad,
                 anyone_can_complete: false,
                 assignee_cannot_uncomplete: true,
                 recurrence_type: None,
+                target_count: 1,
+            },
+            Archetype::Bonus => ArchetypeDefaults {
+                habit_type: HabitType::Good,
+                anyone_can_complete: false,
+                assignee_cannot_uncomplete: false,
+                recurrence_type: None,
+                target_count: 0,
             },
         }
     }
@@ -2484,13 +2510,56 @@ mod tests {
         assert_eq!(task.archetype(), Archetype::Maintenance);
     }
 
+    #[test]
+    fn test_archetype_bonus_derived_from_zero_target() {
+        let mut task = create_base_task();
+        task.target_count = 0;
+        assert_eq!(task.archetype(), Archetype::Bonus);
+    }
+
+    #[test]
+    fn test_archetype_bonus_wins_over_shared() {
+        // Having no target at all shapes the card more than who may check it off.
+        let mut task = create_base_task();
+        task.target_count = 0;
+        task.anyone_can_complete = true;
+        assert_eq!(task.archetype(), Archetype::Bonus);
+    }
+
+    #[test]
+    fn test_archetype_bad_habit_wins_over_bonus() {
+        // A bad habit carries its own points semantics, so a missing target must not relabel it.
+        let mut task = create_base_task();
+        task.habit_type = HabitType::Bad;
+        task.target_count = 0;
+        assert_eq!(task.archetype(), Archetype::BadHabit);
+    }
+
+    #[test]
+    fn test_archetype_maintenance_wins_over_bonus() {
+        let mut task = create_base_task();
+        task.assignee_cannot_uncomplete = true;
+        task.target_count = 0;
+        assert_eq!(task.archetype(), Archetype::Maintenance);
+    }
+
+    /// A negative target is as targetless as zero - the derivation must not fall through to
+    /// Routine for it (`background_jobs.rs` treats `<= 0` the same way).
+    #[test]
+    fn test_archetype_bonus_derived_from_negative_target() {
+        let mut task = create_base_task();
+        task.target_count = -1;
+        assert_eq!(task.archetype(), Archetype::Bonus);
+    }
+
     /// Single place the archetype variants are enumerated - both tests below iterate over it.
-    const ALL_ARCHETYPES: [Archetype; 5] = [
+    const ALL_ARCHETYPES: [Archetype; 6] = [
         Archetype::OneOff,
         Archetype::Routine,
         Archetype::Shared,
         Archetype::BadHabit,
         Archetype::Maintenance,
+        Archetype::Bonus,
     ];
 
     /// Writes a preset back onto a task. `recurrence_type` is only overwritten when the preset
@@ -2499,6 +2568,7 @@ mod tests {
         task.habit_type = defaults.habit_type;
         task.anyone_can_complete = defaults.anyone_can_complete;
         task.assignee_cannot_uncomplete = defaults.assignee_cannot_uncomplete;
+        task.target_count = defaults.target_count;
         if let Some(recurrence_type) = &defaults.recurrence_type {
             task.recurrence_type = recurrence_type.clone();
         }
@@ -2535,10 +2605,30 @@ mod tests {
 
     #[test]
     fn test_archetype_defaults_keep_points_upright_for_chores() {
-        for archetype in [Archetype::OneOff, Archetype::Routine, Archetype::Shared] {
+        for archetype in [
+            Archetype::OneOff,
+            Archetype::Routine,
+            Archetype::Shared,
+            Archetype::Bonus,
+        ] {
             assert!(
                 !archetype.defaults().habit_type.is_inverted(),
                 "{archetype:?} must default to a normal habit_type"
+            );
+        }
+    }
+
+    /// Every preset has to pin the target down. If one left it open, switching away from Bonus
+    /// would keep the 0 and `archetype()` would flip straight back to Bonus.
+    #[test]
+    fn test_archetype_defaults_pin_the_target_count() {
+        for archetype in ALL_ARCHETYPES {
+            let expected = if archetype == Archetype::Bonus { 0 } else { 1 };
+
+            assert_eq!(
+                archetype.defaults().target_count,
+                expected,
+                "target_count preset wrong for {archetype:?}"
             );
         }
     }

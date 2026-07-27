@@ -8,6 +8,39 @@ fn today_has_entry(periods: &[PeriodDisplay]) -> bool {
     periods.iter().any(|p| p.period_start == today)
 }
 
+/// How one period is rendered: its icon and the CSS class carrying the colour.
+///
+/// Bad habits invert the verdict — indulging is the failure, resisting is the success. Bonus
+/// tasks have no verdict to invert: doing them counts, not doing them is simply nothing. They
+/// are never marked red, because there is nothing they could have failed at. New periods no
+/// longer arrive as `Failed` at all (see `background_jobs.rs`), but rows finalized before that
+/// fix still exist and must not turn a bonus task's history red retroactively.
+fn period_appearance(
+    status: PeriodStatus,
+    is_bad_habit: bool,
+    is_bonus: bool,
+) -> (&'static str, &'static str) {
+    match status {
+        PeriodStatus::Completed => {
+            if is_bad_habit {
+                ("✓", "period-failed") // Bad: completed bad habit = red
+            } else {
+                ("✓", "period-completed")
+            }
+        }
+        PeriodStatus::Failed => {
+            if is_bad_habit {
+                ("✗", "period-completed") // Good: resisted bad habit = green
+            } else if is_bonus {
+                ("-", "period-skipped") // Nothing was owed, so nothing was missed
+            } else {
+                ("✗", "period-failed")
+            }
+        }
+        PeriodStatus::Skipped => ("-", "period-skipped"),
+    }
+}
+
 /// Displays recent period results as a habit tracker row
 /// Shows icons: ✓ completed, ✗ failed, - skipped
 /// Hover tooltip shows the date
@@ -22,6 +55,9 @@ pub fn PeriodTracker(
     /// Whether this is a bad habit (inverts completed/failed colors)
     #[prop(default = false)]
     is_bad_habit: bool,
+    /// Whether this is a bonus task (never marked as failed)
+    #[prop(default = false)]
+    is_bonus: bool,
 ) -> impl IntoView {
     // Don't show in-progress if today already has an entry
     let effective_show_in_progress = show_in_progress && !today_has_entry(&periods);
@@ -34,23 +70,7 @@ pub fn PeriodTracker(
         <div class="period-tracker">
             {periods.into_iter().map(|p| {
                 let date_str = p.period_start.format("%d.%m.%Y").to_string();
-                let (icon, class) = match p.status {
-                    PeriodStatus::Completed => {
-                        if is_bad_habit {
-                            ("✓", "period-failed") // Bad: completed bad habit = red
-                        } else {
-                            ("✓", "period-completed")
-                        }
-                    }
-                    PeriodStatus::Failed => {
-                        if is_bad_habit {
-                            ("✗", "period-completed") // Good: resisted bad habit = green
-                        } else {
-                            ("✗", "period-failed")
-                        }
-                    }
-                    PeriodStatus::Skipped => ("-", "period-skipped"),
-                };
+                let (icon, class) = period_appearance(p.status, is_bad_habit, is_bonus);
                 view! {
                     <span class=format!("period-icon {}", class) title=date_str>
                         {icon}
@@ -75,6 +95,9 @@ pub fn PeriodTrackerCompact(
     /// Whether this is a bad habit (inverts completed/failed colors)
     #[prop(default = false)]
     is_bad_habit: bool,
+    /// Whether this is a bonus task (never marked as failed)
+    #[prop(default = false)]
+    is_bonus: bool,
 ) -> impl IntoView {
     // Don't show in-progress if today already has an entry
     let effective_show_in_progress = show_in_progress && !today_has_entry(&periods);
@@ -87,23 +110,7 @@ pub fn PeriodTrackerCompact(
         <div class="period-tracker period-tracker-compact">
             {periods.into_iter().map(|p| {
                 let date_str = p.period_start.format("%d.%m.%Y").to_string();
-                let (icon, class) = match p.status {
-                    PeriodStatus::Completed => {
-                        if is_bad_habit {
-                            ("✓", "period-failed") // Bad: completed bad habit = red
-                        } else {
-                            ("✓", "period-completed")
-                        }
-                    }
-                    PeriodStatus::Failed => {
-                        if is_bad_habit {
-                            ("✗", "period-completed") // Good: resisted bad habit = green
-                        } else {
-                            ("✗", "period-failed")
-                        }
-                    }
-                    PeriodStatus::Skipped => ("-", "period-skipped"),
-                };
+                let (icon, class) = period_appearance(p.status, is_bad_habit, is_bonus);
                 view! {
                     <span class=format!("period-icon {}", class) title=date_str>
                         {icon}
@@ -147,6 +154,37 @@ mod tests {
     fn test_today_has_entry_returns_false_for_empty_periods() {
         let periods: Vec<PeriodDisplay> = vec![];
         assert!(!today_has_entry(&periods));
+    }
+
+    /// The whole point of the bonus archetype: it can never have failed at anything, so its
+    /// history must never contain a red mark.
+    #[test]
+    fn test_bonus_failed_period_renders_neutral_not_red() {
+        let (icon, class) = period_appearance(PeriodStatus::Failed, false, true);
+        assert_eq!(class, "period-skipped");
+        assert_eq!(icon, "-");
+    }
+
+    #[test]
+    fn test_bonus_completed_period_stays_green() {
+        let (icon, class) = period_appearance(PeriodStatus::Completed, false, true);
+        assert_eq!(class, "period-completed");
+        assert_eq!(icon, "✓");
+    }
+
+    #[test]
+    fn test_ordinary_failed_period_stays_red() {
+        let (_, class) = period_appearance(PeriodStatus::Failed, false, false);
+        assert_eq!(class, "period-failed");
+    }
+
+    /// A bad habit keeps its inverted reading even if it somehow carries no target.
+    #[test]
+    fn test_bad_habit_inversion_wins_over_bonus() {
+        let (_, completed) = period_appearance(PeriodStatus::Completed, true, true);
+        let (_, failed) = period_appearance(PeriodStatus::Failed, true, true);
+        assert_eq!(completed, "period-failed");
+        assert_eq!(failed, "period-completed");
     }
 
     #[test]
