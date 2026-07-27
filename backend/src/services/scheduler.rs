@@ -124,8 +124,18 @@ pub fn get_previous_due_date(task: &Task, current_date: NaiveDate) -> NaiveDate 
     }
 }
 
-/// Get the next due date for a task on or after the given date
-/// Returns None for OneTime tasks (they have no schedule)
+/// Get the next due date for a task on or after the given date.
+///
+/// "On or after" is meant literally: if `from_date` is itself a scheduled occurrence,
+/// `from_date` comes back. Only a `from_date` that is NOT scheduled makes the search move
+/// forward — and that forward move is exactly what carries early completion, where a task
+/// ticked off ahead of time is booked onto its next real occurrence.
+///
+/// The invariant across all recurrence types is:
+/// `is_task_due_on_date(task, d) == true` implies `get_next_due_date(task, d) == Some(d)`.
+///
+/// Returns `None` for OneTime tasks (they have no schedule at all) and for Custom tasks whose
+/// scheduled dates all lie before `from_date`.
 pub fn get_next_due_date(task: &Task, from_date: NaiveDate) -> Option<NaiveDate> {
     match task.recurrence_type {
         RecurrenceType::OneTime => {
@@ -190,33 +200,24 @@ pub fn get_next_due_date(task: &Task, from_date: NaiveDate) -> Option<NaiveDate>
                 _ => vec![1, 2, 3, 4, 5], // Mon-Fri by default
             };
 
-            let current_weekday = weekday_to_u8(from_date.weekday());
-            let is_today_scheduled = weekdays.contains(&current_weekday);
-
-            if is_today_scheduled {
-                // If from_date is a scheduled day, return next occurrence of SAME weekday
-                Some(from_date + chrono::Duration::days(7))
-            } else {
-                // If from_date is NOT scheduled, find next scheduled weekday
-                for i in 1..=7 {
-                    let check_date = from_date + chrono::Duration::days(i);
-                    let weekday = weekday_to_u8(check_date.weekday());
-                    if weekdays.contains(&weekday) {
-                        return Some(check_date);
-                    }
+            // Offset 0 included: `from_date` itself counts as "on or after".
+            for offset in 0..7 {
+                let check_date = from_date + chrono::Duration::days(offset);
+                if weekdays.contains(&weekday_to_u8(check_date.weekday())) {
+                    return Some(check_date);
                 }
-                // Shouldn't happen with valid weekdays, but fallback to from_date
-                Some(from_date)
             }
+            // Only reachable when `weekdays` is empty.
+            Some(from_date)
         }
 
         RecurrenceType::Custom => {
             match &task.recurrence_value {
                 Some(RecurrenceValue::CustomDates(dates)) => {
-                    // Find the first date > from_date (strict inequality for early completion)
+                    // First date on or after from_date: a scheduled from_date is its own answer.
                     dates
                         .iter()
-                        .filter(|d| **d > from_date)
+                        .filter(|d| **d >= from_date)
                         .min()
                         .copied()
                 }
