@@ -1,7 +1,13 @@
 ---
-created: 2026-07-27T07:27:33.047Z
+created: 2026-07-27
+completed: 2026-07-27
+resolved_by: quick 260727-fcg (commits ac0d590a, f43c0238)
 title: Bonusaufgabe als sechster Task-Archetyp
 area: general
+note: >
+  Die Annahme "Backend: keine weitere Arbeit nötig" war falsch — die Perioden-Finalisierung
+  wertete bei Soll 0 jeden Tag als Completed. Details im SUMMARY des Quick-Tasks.
+  Offene Entscheidungen 1 und 2 wurden vom Nutzer am 2026-07-27 beantwortet.
 files:
   - shared/src/types.rs:669-763 (Archetype, ArchetypeDefaults)
   - frontend/src/components/task_form_model.rs

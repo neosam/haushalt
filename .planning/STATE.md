@@ -32,7 +32,7 @@ Milestone: v1.1 Hardening & Connectivity
 Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-27 - Completed quick task 260727-dct: Freiform-Tasks werden nicht mehr fälschlich bestraft
+Last activity: 2026-07-27 - Completed quick task 260727-fcg: Bonusaufgabe als sechster Archetyp
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
@@ -74,11 +74,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-1 pending — siehe `.planning/todos/pending/`
-
-| Todo | Area | Kurz |
-|------|------|------|
-| [Bonusaufgabe als sechster Archetyp](./todos/pending/2026-07-27-bonusaufgabe-als-sechster-archetyp.md) | general | Muss nicht gemacht werden (Soll 0), wird aber getrackt. Ableitungsregel, Presets, Karte, i18n. Zwei offene Entscheidungen darin. Backend-Blocker ist mit 260727-dct behoben. |
+Keine — siehe `.planning/todos/completed/`.
 
 ### Blockers/Concerns
 
@@ -101,6 +97,7 @@ Recent decisions affecting current work:
 | 260727-apd | Welle 1a: Bulk-Edit aus task_modal.rs in eigene Komponente herausgelöst | 2026-07-27 | 7ea7397a | [260727-apd-welle-1a-bulk-edit-aus-task-modal-rs-in-](./quick/260727-apd-welle-1a-bulk-edit-aus-task-modal-rs-in-/) |
 | 260727-b9u | Welle 1b: Task-Formular nach Archetypen umgebaut (Typauswahl, Basisfelder, Accordions) | 2026-07-27 | 5274d0ee | [260727-b9u-welle-1b-task-formular-nach-archetypen-u](./quick/260727-b9u-welle-1b-task-formular-nach-archetypen-u/) |
 | 260727-dct | Freiform-Tasks (target_count 0) werden nicht mehr fälschlich bestraft | 2026-07-27 | 3f8ea3db | [260727-dct-freiform-tasks-target-count-0-werden-nic](./quick/260727-dct-freiform-tasks-target-count-0-werden-nic/) |
+| 260727-fcg | Bonusaufgabe als sechster Task-Archetyp | 2026-07-27 | f43c0238 | [260727-fcg-bonusaufgabe-als-sechster-task-archetyp](./quick/260727-fcg-bonusaufgabe-als-sechster-task-archetyp/) |
 
 ## Session Continuity
 
