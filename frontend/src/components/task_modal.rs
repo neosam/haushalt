@@ -1,10 +1,17 @@
+use chrono::NaiveDate;
 use leptos::*;
-use shared::{CreateTaskRequest, HabitType, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
+use shared::{Archetype, CreateTaskRequest, HabitType, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
+use crate::components::accordion::Accordion;
 use crate::components::calendar_picker::CalendarPicker;
 use crate::components::task_fields::*;
+use crate::components::task_form_model::{
+    apply_onetime_date, assignment_after_preset, assignment_missing, derive_archetype,
+    initial_open_groups, links_section_visible, onetime_date_value, preset,
+    recurrence_after_preset, FormFlags, FormMode, FormSnapshot, ALL_ARCHETYPES,
+};
 use crate::i18n::use_i18n;
 
 /// Whether the edit modal should offer the delete action.
@@ -14,6 +21,46 @@ use crate::i18n::use_i18n;
 /// expressed — no callback means no delete.
 fn delete_action_available(has_task: bool, has_callback: bool) -> bool {
     has_task && has_callback
+}
+
+/// The recurrence selector plus whichever detail field the chosen rhythm needs.
+///
+/// Lives in its own component because it appears in two places: as a base field for every
+/// recurring archetype, and inside the "details" group for one-offs, whose base field is a
+/// single date instead. Same fields, same signals, one definition.
+#[component]
+fn RecurrenceFields(
+    recurrence_type: RwSignal<String>,
+    selected_weekday: RwSignal<u8>,
+    selected_month_day: RwSignal<u8>,
+    selected_weekdays: RwSignal<Vec<u8>>,
+    selected_custom_dates: RwSignal<Vec<NaiveDate>>,
+) -> impl IntoView {
+    let i18n_stored = store_value(use_i18n());
+
+    view! {
+        <TaskRecurrenceTypeField value=recurrence_type />
+
+        <Show when=move || recurrence_type.get() == "weekly" fallback=|| ()>
+            <TaskWeekdayField value=selected_weekday />
+        </Show>
+
+        <Show when=move || recurrence_type.get() == "monthly" fallback=|| ()>
+            <TaskMonthDayField value=selected_month_day />
+        </Show>
+
+        <Show when=move || recurrence_type.get() == "weekdays" fallback=|| ()>
+            <TaskWeekdaysField value=selected_weekdays />
+        </Show>
+
+        <Show when=move || recurrence_type.get() == "custom" fallback=|| ()>
+            <div class="form-group">
+                <label class="form-label">{i18n_stored.get_value().t("task_modal.custom_dates")}</label>
+                <CalendarPicker selected_dates=selected_custom_dates />
+                <small class="form-hint">{i18n_stored.get_value().t("task_modal.custom_dates_hint")}</small>
+            </div>
+        </Show>
+    }
 }
 
 #[component]
@@ -41,6 +88,13 @@ pub fn TaskModal(
     #[prop(default = vec![])] default_rewards: Vec<(String, i32)>,
     /// Default punishments from household settings (for create mode) - Vec of (punishment_id, amount)
     #[prop(default = vec![])] default_punishments: Vec<(String, i32)>,
+    /// Whether the household uses rewards at all. Defaults to `true` so a caller that could
+    /// not load the settings keeps today's behaviour instead of silently hiding the section.
+    #[prop(default = true)] rewards_enabled: bool,
+    /// Whether the household uses punishments at all. See `rewards_enabled`.
+    #[prop(default = true)] punishments_enabled: bool,
+    /// The signed-in user, used to prefill the tracker of a bad habit.
+    #[prop(default = None)] current_user_id: Option<Uuid>,
     /// Enables the delete action in edit mode. Receives the deleted task id after the
     /// task was removed on the server, so the caller can update its list.
     /// Omit to hide the action (e.g. for users without delete permission).
@@ -89,7 +143,7 @@ pub fn TaskModal(
                 None
             }
         });
-    let assigned_user = create_rw_signal(initial_assigned_user_id.clone().unwrap_or_default());
+    let assigned_user = create_rw_signal(initial_assigned_user_id.unwrap_or_default());
     let target_count = create_rw_signal(
         source_task
             .map(|t| t.target_count.to_string())
@@ -194,6 +248,42 @@ pub fn TaskModal(
             .unwrap_or_default()
     );
 
+    // An existing task already carries its archetype in its flags. A fresh form starts from
+    // the rhythm the caller asked for - "onetime" means the user wants a single errand.
+    let source_archetype = source_task.map(|t| t.archetype());
+    let selected_archetype = create_rw_signal(source_archetype.unwrap_or_else(|| {
+        if recurrence_type.get_untracked() == RecurrenceType::OneTime.as_str() {
+            Archetype::OneOff
+        } else {
+            Archetype::Routine
+        }
+    }));
+    let assignment_error = create_rw_signal(false);
+    let current_user_id_stored = store_value(current_user_id.map(|id| id.to_string()));
+
+    // Picking a type writes its preset into the flag signals. Nothing is locked or greyed
+    // out afterwards: the type is an entry point, not a cage.
+    let apply_archetype = move |archetype: Archetype| {
+        selected_archetype.set(archetype);
+        let defaults = archetype.defaults();
+        habit_type.set(defaults.habit_type.as_str().to_string());
+        anyone_can_complete.set(defaults.anyone_can_complete);
+        assignee_cannot_uncomplete.set(defaults.assignee_cannot_uncomplete);
+        recurrence_type.set(recurrence_after_preset(&recurrence_type.get(), archetype));
+        assigned_user.set(assignment_after_preset(
+            archetype,
+            &assigned_user.get(),
+            current_user_id_stored.get_value().as_deref(),
+        ));
+        assignment_error.set(false);
+    };
+
+    // Only a blank form starts from a preset. When duplicating, the values come from the
+    // task being copied and must survive untouched.
+    if is_create_mode {
+        apply_archetype(selected_archetype.get_untracked());
+    }
+
     // Track linked rewards/punishments with amounts: Vec<(id, amount)>
     // In create mode, pre-select default rewards/punishments from household settings
     let initial_rewards: Vec<(String, i32)> = if !linked_rewards.is_empty() {
@@ -216,6 +306,12 @@ pub fn TaskModal(
     let original_rewards: Vec<(String, i32)> = linked_rewards.iter().map(|r| (r.reward.id.to_string(), r.amount)).collect();
     let original_punishments: Vec<(String, i32)> = linked_punishments.iter().map(|p| (p.punishment.id.to_string(), p.amount)).collect();
 
+    // A task may still carry links from before the household switched the feature off -
+    // hiding them would silently drop them on the next save.
+    let rewards_section_visible = links_section_visible(rewards_enabled, linked_rewards.len());
+    let punishments_section_visible =
+        links_section_visible(punishments_enabled, linked_punishments.len());
+
     // Signals for the "add new" dropdown selections
     let selected_new_reward = create_rw_signal(String::new());
     let new_reward_amount = create_rw_signal(1i32);
@@ -225,6 +321,30 @@ pub fn TaskModal(
     // Dashboard visibility signal
     let on_dashboard = create_rw_signal(false);
     let initial_on_dashboard = create_rw_signal(false);
+
+    // A group starts expanded when it holds something that deviates from the archetype's
+    // preset. `on_dashboard` is not part of it: it arrives asynchronously after mount.
+    let initial_groups = initial_open_groups(
+        if is_edit { FormMode::Edit } else { FormMode::Create },
+        &FormSnapshot {
+            description_empty: description.get_untracked().trim().is_empty(),
+            category_set: !selected_category_id.get_untracked().is_empty(),
+            due_time_set: !due_time.get_untracked().is_empty(),
+            recurrence: recurrence_type.get_untracked(),
+            custom_dates_len: selected_custom_dates.get_untracked().len(),
+            target_count: target_count.get_untracked(),
+            allow_exceed: allow_exceed_target.get_untracked(),
+            habit_bad: habit_type.get_untracked() == HabitType::Bad.as_str(),
+            points_reward_set: !points_reward.get_untracked().is_empty(),
+            points_penalty_set: !points_penalty.get_untracked().is_empty(),
+            linked_rewards: selected_rewards.get_untracked().len(),
+            linked_punishments: selected_punishments.get_untracked().len(),
+            anyone_can_complete: anyone_can_complete.get_untracked(),
+            assignee_cannot_uncomplete: assignee_cannot_uncomplete.get_untracked(),
+            requires_review: requires_review.get_untracked(),
+        },
+        selected_archetype.get_untracked(),
+    );
 
     let task_id = task.as_ref().map(|t| t.id.to_string());
 
@@ -252,6 +372,15 @@ pub fn TaskModal(
 
         move |ev: web_sys::SubmitEvent| {
             ev.prevent_default();
+
+            // A maintenance task without a responsible person never locks anything, so it
+            // must not be saved silently ineffective.
+            if assignment_missing(selected_archetype.get(), &assigned_user.get()) {
+                assignment_error.set(true);
+                return;
+            }
+            assignment_error.set(false);
+
             saving.set(true);
             error.set(None);
 
@@ -491,12 +620,17 @@ pub fn TaskModal(
         });
     };
 
-    let modal_title = if is_edit {
-        i18n.t("task_modal.edit_title")
-    } else if is_suggestion {
-        i18n.t("task_modal.suggest_title")
-    } else {
-        i18n.t("task_modal.create_title")
+    // In create mode the heading names the chosen type, so the form says what it produces.
+    let modal_title = move || {
+        if is_edit {
+            i18n_stored.get_value().t("task_modal.edit_title")
+        } else if is_suggestion {
+            i18n_stored.get_value().t("task_modal.suggest_title")
+        } else {
+            i18n_stored
+                .get_value()
+                .t(preset(selected_archetype.get()).form_title_key)
+        }
     };
     let submit_button_text = if is_edit {
         i18n.t("task_modal.save_changes")
@@ -513,26 +647,22 @@ pub fn TaskModal(
         i18n.t("task_modal.creating")
     };
 
-    // Weekday labels - short forms for checkbox display
-    let weekday_mon = i18n.t("weekday.monday").chars().take(3).collect::<String>();
-    let weekday_tue = i18n.t("weekday.tuesday").chars().take(3).collect::<String>();
-    let weekday_wed = i18n.t("weekday.wednesday").chars().take(3).collect::<String>();
-    let weekday_thu = i18n.t("weekday.thursday").chars().take(3).collect::<String>();
-    let weekday_fri = i18n.t("weekday.friday").chars().take(3).collect::<String>();
-    let weekday_sat = i18n.t("weekday.saturday").chars().take(3).collect::<String>();
-    let weekday_sun = i18n.t("weekday.sunday").chars().take(3).collect::<String>();
+    // The type the switches currently add up to. Follows every toggle, so flipping a
+    // permission by hand is visible immediately instead of silently contradicting the cards.
+    let derived_archetype = move || {
+        derive_archetype(
+            &FormFlags {
+                habit_bad: habit_type.get() == HabitType::Bad.as_str(),
+                anyone_can_complete: anyone_can_complete.get(),
+                assignee_cannot_uncomplete: assignee_cannot_uncomplete.get(),
+                recurrence: recurrence_type.get(),
+            },
+            selected_archetype.get(),
+        )
+    };
 
-    // Weekday labels and values (0 = Sunday, 1 = Monday, etc.)
-    let weekdays: [(u8, String); 7] = [
-        (1, weekday_mon),
-        (2, weekday_tue),
-        (3, weekday_wed),
-        (4, weekday_thu),
-        (5, weekday_fri),
-        (6, weekday_sat),
-        (0, weekday_sun),
-    ];
-    let weekdays_stored = store_value(weekdays);
+    // One-offs carry a date as their base field; every other type carries a rhythm.
+    let base_field_is_date = move || preset(selected_archetype.get()).base_is_date;
 
     view! {
         <div class="modal-backdrop" on:click=close>
@@ -548,6 +678,66 @@ pub fn TaskModal(
 
                 <form on:submit=on_submit>
                     <div style="padding: 1rem; max-height: 60vh; overflow-y: auto;">
+
+                        // Step 1: what is being created. Edit mode shows the chip instead.
+                        <Show when=move || !is_edit fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label">{i18n_stored.get_value().t("task_modal.archetype.step_label")}</label>
+                                <div class="task-type-grid">
+                                    {ALL_ARCHETYPES.into_iter().map(|archetype| {
+                                        let p = preset(archetype);
+                                        let name = i18n_stored.get_value().t(p.name_key);
+                                        let desc = i18n_stored.get_value().t(p.desc_key);
+                                        view! {
+                                            <button
+                                                type="button"
+                                                class="task-type-card"
+                                                aria-pressed=move || (selected_archetype.get() == archetype).to_string()
+                                                on:click=move |_| apply_archetype(archetype)
+                                            >
+                                                <span class="task-type-icon">{p.icon}</span>
+                                                <span class="task-type-text">
+                                                    <span class="task-type-name">{name}</span>
+                                                    <span class="task-type-desc">{desc}</span>
+                                                </span>
+                                            </button>
+                                        }
+                                    }).collect_view()}
+                                </div>
+                            </div>
+                        </Show>
+
+                        // The type the flags currently add up to - marked when it drifted away
+                        // from what was picked.
+                        <div class="task-archetype-chip-row">
+                            {move || {
+                                let derived = derived_archetype();
+                                let p = preset(derived);
+                                let drifted = derived != selected_archetype.get();
+                                let chip_class = if drifted {
+                                    "task-archetype-chip changed"
+                                } else {
+                                    "task-archetype-chip"
+                                };
+                                let name = i18n_stored.get_value().t(p.name_key);
+                                let changed_label = i18n_stored.get_value().t("task_modal.archetype.changed");
+                                view! {
+                                    <span class=chip_class>
+                                        <span class="task-type-icon">{p.icon}</span>
+                                        <span>{name}</span>
+                                        {drifted.then(|| view! {
+                                            <span class="task-archetype-chip-note">{changed_label}</span>
+                                        })}
+                                    </span>
+                                }
+                            }}
+                        </div>
+
+                        {move || preset(selected_archetype.get()).note.map(|(kind, note_key)| {
+                            let text = i18n_stored.get_value().t(note_key);
+                            view! { <div class=kind.css_class()>{text}</div> }
+                        })}
+
                         <div class="form-group">
                             <label class="form-label" for="task-title">{i18n_stored.get_value().t("task_modal.title_label")}</label>
                             <input
@@ -561,593 +751,404 @@ pub fn TaskModal(
                             />
                         </div>
 
-                        <div class="form-group">
-                            <label class="form-label" for="task-description">{i18n_stored.get_value().t("task_modal.description_label")}</label>
-                            <textarea
-                                id="task-description"
-                                class="form-input description-textarea"
-                                rows="4"
-                                placeholder=i18n_stored.get_value().t("task_modal.description_placeholder")
-                                prop:value=move || description.get()
-                                on:input=move |ev| description.set(event_target_value(&ev))
-                            />
-                        </div>
-
-                        // Category selection
-                        <Show when=move || !categories_stored.get_value().is_empty() fallback=|| ()>
-                            {
-                                let category_label = i18n_stored.get_value().t("task_modal.category");
-                                let no_category_label = i18n_stored.get_value().t("task_modal.no_category");
-                                let category_hint = i18n_stored.get_value().t("task_modal.category_hint");
-                                view! {
-                                    <div class="form-group">
-                                        <label class="form-label" for="task-category">{category_label}</label>
-                                        <select
-                                            id="task-category"
-                                            class="form-select"
-                                            on:change=move |ev| selected_category_id.set(event_target_value(&ev))
-                                        >
-                                            <option value="" selected=move || selected_category_id.get().is_empty()>{no_category_label.clone()}</option>
-                                            {
-                                                categories_stored.get_value().into_iter().map(|cat| {
-                                                    let cat_id = cat.id.to_string();
-                                                    let cat_id_for_selected = cat_id.clone();
-                                                    view! {
-                                                        <option value=cat_id selected=move || selected_category_id.get() == cat_id_for_selected>
-                                                            {cat.name}
-                                                        </option>
-                                                    }
-                                                }).collect_view()
-                                            }
-                                        </select>
-                                        <small class="form-hint">{category_hint}</small>
-                                    </div>
-                                }
-                            }
-                        </Show>
-
-                        <div class="form-group">
-                            <label class="form-label" for="task-recurrence">{i18n_stored.get_value().t("task_modal.recurrence_label")}</label>
-                            {
-                                let initial_recurrence = recurrence_type.get_untracked();
-                                let onetime_label = i18n_stored.get_value().t("recurrence.onetime_freeform");
-                                let daily_label = i18n_stored.get_value().t("recurrence.daily");
-                                let weekly_label = i18n_stored.get_value().t("recurrence.weekly");
-                                let monthly_label = i18n_stored.get_value().t("recurrence.monthly");
-                                let specific_days_label = i18n_stored.get_value().t("recurrence.specific_days");
-                                let custom_dates_label = i18n_stored.get_value().t("recurrence.custom_dates");
-                                view! {
-                                    <select
-                                        id="task-recurrence"
-                                        class="form-select"
-                                        on:change=move |ev| recurrence_type.set(event_target_value(&ev))
-                                    >
-                                        <option value="onetime" selected=initial_recurrence == "onetime">{onetime_label}</option>
-                                        <option value="daily" selected=initial_recurrence == "daily">{daily_label}</option>
-                                        <option value="weekly" selected=initial_recurrence == "weekly">{weekly_label}</option>
-                                        <option value="monthly" selected=initial_recurrence == "monthly">{monthly_label}</option>
-                                        <option value="weekdays" selected=initial_recurrence == "weekdays">{specific_days_label}</option>
-                                        <option value="custom" selected=initial_recurrence == "custom">{custom_dates_label}</option>
-                                    </select>
-                                }
-                            }
-                        </div>
-
-                        // Single weekday selection (shown when recurrence_type == "weekly")
-                        <Show when=move || recurrence_type.get() == "weekly" fallback=|| ()>
-                            {
-                                let day_of_week_label = i18n_stored.get_value().t("task_modal.day_of_week");
-                                let weekly_hint = i18n_stored.get_value().t("task_modal.weekly_hint");
-                                let sunday = i18n_stored.get_value().t("weekday.sunday");
-                                let monday = i18n_stored.get_value().t("weekday.monday");
-                                let tuesday = i18n_stored.get_value().t("weekday.tuesday");
-                                let wednesday = i18n_stored.get_value().t("weekday.wednesday");
-                                let thursday = i18n_stored.get_value().t("weekday.thursday");
-                                let friday = i18n_stored.get_value().t("weekday.friday");
-                                let saturday = i18n_stored.get_value().t("weekday.saturday");
-                                view! {
-                                    <div class="form-group">
-                                        <label class="form-label" for="task-weekday">{day_of_week_label}</label>
-                                        <select
-                                            id="task-weekday"
-                                            class="form-select"
-                                            on:change=move |ev| {
-                                                if let Ok(day) = event_target_value(&ev).parse::<u8>() {
-                                                    selected_weekday.set(day);
-                                                }
-                                            }
-                                        >
-                                            <option value="0" selected=move || selected_weekday.get() == 0>{sunday.clone()}</option>
-                                            <option value="1" selected=move || selected_weekday.get() == 1>{monday.clone()}</option>
-                                            <option value="2" selected=move || selected_weekday.get() == 2>{tuesday.clone()}</option>
-                                            <option value="3" selected=move || selected_weekday.get() == 3>{wednesday.clone()}</option>
-                                            <option value="4" selected=move || selected_weekday.get() == 4>{thursday.clone()}</option>
-                                            <option value="5" selected=move || selected_weekday.get() == 5>{friday.clone()}</option>
-                                            <option value="6" selected=move || selected_weekday.get() == 6>{saturday.clone()}</option>
-                                        </select>
-                                        <small class="form-hint">{weekly_hint}</small>
-                                    </div>
-                                }
-                            }
-                        </Show>
-
-                        // Day of month selection (shown when recurrence_type == "monthly")
-                        <Show when=move || recurrence_type.get() == "monthly" fallback=|| ()>
-                            {
-                                let day_of_month_label = i18n_stored.get_value().t("task_modal.day_of_month");
-                                let monthly_hint = i18n_stored.get_value().t("task_modal.monthly_hint");
-                                view! {
-                                    <div class="form-group">
-                                        <label class="form-label" for="task-monthday">{day_of_month_label}</label>
-                                        <input
-                                            type="number"
-                                            id="task-monthday"
-                                            class="form-input"
-                                            min="1"
-                                            max="31"
-                                            prop:value=move || selected_month_day.get().to_string()
-                                            on:input=move |ev| {
-                                                if let Ok(day) = event_target_value(&ev).parse::<u8>() {
-                                                    let clamped = day.clamp(1, 31);
-                                                    selected_month_day.set(clamped);
-                                                }
-                                            }
-                                        />
-                                        <small class="form-hint">{monthly_hint}</small>
-                                    </div>
-                                }
-                            }
-                        </Show>
-
-                        // Multiple weekday selection (shown when recurrence_type == "weekdays")
-                        <Show when=move || recurrence_type.get() == "weekdays" fallback=|| ()>
-                            {
-                                let select_days_label = i18n_stored.get_value().t("task_modal.select_days");
-                                let weekdays_hint = i18n_stored.get_value().t("task_modal.weekdays_hint");
-                                let weekdays_cloned = weekdays_stored.get_value();
-                                view! {
-                                    <div class="form-group">
-                                        <label class="form-label">{select_days_label}</label>
-                                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                                            {weekdays_cloned.into_iter().map(|(day_num, day_name)| {
-                                                view! {
-                                                    <label style="display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; border: 1px solid var(--card-border); border-radius: var(--border-radius); cursor: pointer; user-select: none;">
-                                                        <input
-                                                            type="checkbox"
-                                                            prop:checked=move || selected_weekdays.get().contains(&day_num)
-                                                            on:change=move |ev| {
-                                                                let checked = event_target_checked(&ev);
-                                                                selected_weekdays.update(|days| {
-                                                                    if checked {
-                                                                        if !days.contains(&day_num) {
-                                                                            days.push(day_num);
-                                                                            days.sort();
-                                                                        }
-                                                                    } else {
-                                                                        days.retain(|d| *d != day_num);
-                                                                    }
-                                                                });
-                                                            }
-                                                        />
-                                                        <span>{day_name}</span>
-                                                    </label>
-                                                }
-                                            }).collect_view()}
-                                        </div>
-                                        <small class="form-hint">{weekdays_hint}</small>
-                                    </div>
-                                }
-                            }
-                        </Show>
-
-                        // Custom dates picker (shown when recurrence_type == "custom")
-                        <Show when=move || recurrence_type.get() == "custom" fallback=|| ()>
-                            {
-                                let custom_dates_label = i18n_stored.get_value().t("task_modal.custom_dates");
-                                let custom_dates_hint = i18n_stored.get_value().t("task_modal.custom_dates_hint");
-                                view! {
-                                    <div class="form-group">
-                                        <label class="form-label">{custom_dates_label}</label>
-                                        <CalendarPicker selected_dates=selected_custom_dates />
-                                        <small class="form-hint">{custom_dates_hint}</small>
-                                    </div>
-                                }
-                            }
-                        </Show>
-
-                        <div class="form-group">
-                            <label class="form-label" for="task-target-count">{i18n_stored.get_value().t("task_modal.target_count")}</label>
-                            <input
-                                type="number"
-                                id="task-target-count"
-                                class="form-input"
-                                min="0"
-                                prop:value=move || target_count.get()
-                                on:input=move |ev| target_count.set(event_target_value(&ev))
-                            />
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.target_count_hint")}</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        // A date on a task is a custom recurrence holding exactly that day -
+                        // the very shape SetDateModal writes, so nothing about saving changes.
+                        <Show when=base_field_is_date fallback=|| ()>
+                            <div class="form-group">
+                                <label class="form-label" for="task-onetime-date">{i18n_stored.get_value().t("task_modal.onetime_date")}</label>
                                 <input
-                                    type="checkbox"
-                                    prop:checked=move || allow_exceed_target.get()
-                                    on:change=move |ev| allow_exceed_target.set(event_target_checked(&ev))
+                                    type="date"
+                                    id="task-onetime-date"
+                                    class="form-input"
+                                    prop:value=move || onetime_date_value(&recurrence_type.get(), &selected_custom_dates.get())
+                                    on:input=move |ev| {
+                                        let picked = NaiveDate::parse_from_str(&event_target_value(&ev), "%Y-%m-%d").ok();
+                                        let (rec, dates) = apply_onetime_date(picked);
+                                        recurrence_type.set(rec.to_string());
+                                        selected_custom_dates.set(dates);
+                                    }
                                 />
-                                <span>{i18n_stored.get_value().t("task_modal.allow_exceed")}</span>
-                            </label>
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.allow_exceed_hint")}</small>
-                        </div>
+                                <small class="form-hint">{i18n_stored.get_value().t("task_modal.onetime_date_hint")}</small>
+                            </div>
+                        </Show>
 
-                        <TaskAnyoneCanCompleteField value=anyone_can_complete />
-
-                        <TaskAssigneeCannotUncompleteField value=assignee_cannot_uncomplete />
-
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                <input
-                                    type="checkbox"
-                                    prop:checked=move || requires_review.get()
-                                    on:change=move |ev| requires_review.set(event_target_checked(&ev))
-                                />
-                                <span>{i18n_stored.get_value().t("task_modal.require_review")}</span>
-                            </label>
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.require_review_hint")}</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                <input
-                                    type="checkbox"
-                                    prop:checked=move || on_dashboard.get()
-                                    on:change=move |ev| on_dashboard.set(event_target_checked(&ev))
-                                />
-                                <span>{i18n_stored.get_value().t("task_modal.show_on_dashboard")}</span>
-                            </label>
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.show_on_dashboard_hint")}</small>
-                        </div>
-
-                        // Habit Type Section
-                        <div class="form-group">
-                            <label class="form-label" for="task-habit-type">{i18n_stored.get_value().t("task_modal.habit_type_label")}</label>
-                            {
-                                let initial_habit_type = habit_type.get_untracked();
-                                let good_label = i18n_stored.get_value().t("habit_type.good");
-                                let bad_label = i18n_stored.get_value().t("habit_type.bad");
-                                view! {
-                                    <select
-                                        id="task-habit-type"
-                                        class="form-select"
-                                        on:change=move |ev| habit_type.set(event_target_value(&ev))
-                                    >
-                                        <option value="good" selected=initial_habit_type == "good">{good_label}</option>
-                                        <option value="bad" selected=initial_habit_type == "bad">{bad_label}</option>
-                                    </select>
-                                }
-                            }
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.habit_type_hint")}</small>
-                        </div>
-
-                        // Direct Points Section
-                        <div class="form-group">
-                            <label class="form-label" for="task-points-reward">{i18n_stored.get_value().t("task_modal.points_reward")}</label>
-                            <input
-                                type="number"
-                                id="task-points-reward"
-                                class="form-input"
-                                min="0"
-                                placeholder="0"
-                                prop:value=move || points_reward.get()
-                                on:input=move |ev| points_reward.set(event_target_value(&ev))
+                        <Show when=move || !base_field_is_date() fallback=|| ()>
+                            <RecurrenceFields
+                                recurrence_type=recurrence_type
+                                selected_weekday=selected_weekday
+                                selected_month_day=selected_month_day
+                                selected_weekdays=selected_weekdays
+                                selected_custom_dates=selected_custom_dates
                             />
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.points_reward_hint")}</small>
-                        </div>
+                        </Show>
 
+                        // The assignment is the last base field for every type - only label,
+                        // requirement and prefill differ. A field that is sometimes there and
+                        // sometimes not is a field nobody finds.
                         <div class="form-group">
-                            <label class="form-label" for="task-points-penalty">{i18n_stored.get_value().t("task_modal.points_penalty")}</label>
-                            <input
-                                type="number"
-                                id="task-points-penalty"
-                                class="form-input"
-                                min="0"
-                                placeholder="0"
-                                prop:value=move || points_penalty.get()
-                                on:input=move |ev| points_penalty.set(event_target_value(&ev))
-                            />
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.points_penalty_hint")}</small>
-                        </div>
-
-                        // Due Time Section
-                        <div class="form-group">
-                            <label class="form-label" for="task-due-time">{i18n_stored.get_value().t("task_modal.due_time")}</label>
-                            <input
-                                type="time"
-                                id="task-due-time"
-                                class="form-input"
-                                prop:value=move || due_time.get()
-                                on:input=move |ev| due_time.set(event_target_value(&ev))
-                            />
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.due_time_hint")}</small>
-                        </div>
-
-                        // Assignment Section
-                        <div class="form-group">
-                            <label class="form-label" for="task-assigned">{i18n_stored.get_value().t("task_modal.assigned_to")}</label>
-                            {
+                            {move || {
+                                let archetype = selected_archetype.get();
+                                let p = preset(archetype);
+                                let label = i18n_stored.get_value().t(p.assign_label_key);
+                                let hint = i18n_stored.get_value().t(p.assign_hint_key);
                                 let not_assigned_label = i18n_stored.get_value().t("task_modal.not_assigned");
-                                let assigned_hint = i18n_stored.get_value().t("task_modal.assigned_hint");
+                                let required = archetype.assignment_required();
                                 view! {
+                                    <label class="form-label" for="task-assigned">
+                                        {label}
+                                        {required.then(|| view! { <span class="required">"*"</span> })}
+                                    </label>
                                     <select
                                         id="task-assigned"
                                         class="form-select"
                                         prop:value=move || assigned_user.get()
-                                        on:change=move |ev| assigned_user.set(event_target_value(&ev))
+                                        on:change=move |ev| {
+                                            assigned_user.set(event_target_value(&ev));
+                                            assignment_error.set(false);
+                                        }
                                     >
-                                        <option value="" selected=initial_assigned_user_id.is_none()>{not_assigned_label}</option>
+                                        <option value="" selected=move || assigned_user.get().is_empty()>{not_assigned_label}</option>
                                         {members_stored.get_value().into_iter().map(|m| {
                                             let user_id = m.user.id.to_string();
-                                            let is_selected = initial_assigned_user_id.as_ref() == Some(&user_id);
+                                            let user_id_for_selected = user_id.clone();
                                             let name = m.user.username.clone();
                                             view! {
-                                                <option value=user_id selected=is_selected>{name}</option>
+                                                <option value=user_id selected=move || assigned_user.get() == user_id_for_selected>
+                                                    {name}
+                                                </option>
                                             }
                                         }).collect_view()}
                                     </select>
-                                    <small class="form-hint">{assigned_hint}</small>
+                                    <small class="form-hint">{hint}</small>
                                 }
-                            }
+                            }}
+                            <Show when=move || assignment_error.get() fallback=|| ()>
+                                <small class="form-field-error">
+                                    {i18n_stored.get_value().t("task_modal.assignment_required_error")}
+                                </small>
+                            </Show>
                         </div>
 
-                        // Rewards Section
-                        <div class="form-group">
-                            <label class="form-label">{i18n_stored.get_value().t("task_modal.rewards_on_completion")}</label>
-                            <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
-                                // Add new reward row
-                                {
-                                    let household_rewards_for_dropdown = household_rewards.clone();
-                                    let select_reward_label = i18n_stored.get_value().t("task_modal.select_reward");
-                                    let add_label = i18n_stored.get_value().t("task_modal.add");
-                                    view! {
-                                        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
-                                            <select
-                                                class="form-select"
-                                                style="flex: 1;"
-                                                prop:value=move || selected_new_reward.get()
-                                                on:change=move |ev| selected_new_reward.set(event_target_value(&ev))
-                                            >
-                                                <option value="">{select_reward_label.clone()}</option>
-                                                {move || {
-                                                    let current_reward_ids: Vec<String> = selected_rewards.get().iter().map(|(id, _)| id.clone()).collect();
-                                                    household_rewards_for_dropdown.iter()
-                                                        .filter(|r| !current_reward_ids.contains(&r.id.to_string()))
-                                                        .map(|reward| {
-                                                            let reward_id = reward.id.to_string();
-                                                            let name = reward.name.clone();
-                                                            view! {
-                                                                <option value=reward_id>{name}</option>
-                                                            }
-                                                        })
-                                                        .collect_view()
-                                                }}
-                                            </select>
-                                            <input
-                                                type="number"
-                                                class="form-input"
-                                                style="width: 70px;"
-                                                min="1"
-                                                prop:value=move || new_reward_amount.get().to_string()
-                                                on:input=move |ev| {
-                                                    if let Ok(val) = event_target_value(&ev).parse::<i32>() {
-                                                        new_reward_amount.set(val.max(1));
-                                                    }
-                                                }
-                                            />
-                                            <button
-                                                type="button"
-                                                class="btn btn-outline"
-                                                style="padding: 0.5rem 1rem;"
-                                                disabled=move || selected_new_reward.get().is_empty()
-                                                on:click=move |_| {
-                                                    let reward_id = selected_new_reward.get();
-                                                    let amount = new_reward_amount.get();
-                                                    if !reward_id.is_empty() {
-                                                        selected_rewards.update(|r| {
-                                                            if !r.iter().any(|(id, _)| id == &reward_id) {
-                                                                r.push((reward_id.clone(), amount));
-                                                            }
-                                                        });
-                                                        selected_new_reward.set(String::new());
-                                                        new_reward_amount.set(1);
-                                                    }
-                                                }
-                                            >
-                                                {add_label}
-                                            </button>
-                                        </div>
-                                    }
-                                }
+                        <Accordion
+                            class="task-form-group"
+                            summary=i18n_stored.get_value().t("task_modal.group.details")
+                            open=initial_groups.details
+                        >
+                            // For one-offs the rhythm lives here: reachable, never locked.
+                            <Show when=base_field_is_date fallback=|| ()>
+                                <RecurrenceFields
+                                    recurrence_type=recurrence_type
+                                    selected_weekday=selected_weekday
+                                    selected_month_day=selected_month_day
+                                    selected_weekdays=selected_weekdays
+                                    selected_custom_dates=selected_custom_dates
+                                />
+                            </Show>
 
-                                // List of linked rewards
-                                {
-                                    let household_rewards_for_list = household_rewards.clone();
-                                    let no_rewards_linked = i18n_stored.get_value().t("task_modal.no_rewards_linked");
-                                    let unknown_label = i18n_stored.get_value().t("task_modal.unknown");
-                                    let remove_label = i18n_stored.get_value().t("task_modal.remove");
-                                    view! {
-                                        <div>
-                                            {move || {
-                                                let rewards = selected_rewards.get();
-                                                if rewards.is_empty() {
-                                                    let no_rewards_linked = no_rewards_linked.clone();
-                                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">{no_rewards_linked}</p> }.into_view()
-                                                } else {
-                                                    rewards.iter().map(|(reward_id, amount)| {
-                                                        let reward_name = household_rewards_for_list.iter()
-                                                            .find(|r| r.id.to_string() == *reward_id)
-                                                            .map(|r| r.name.clone())
-                                                            .unwrap_or_else(|| unknown_label.clone());
-                                                        let reward_id_for_remove = reward_id.clone();
-                                                        let amount_display = *amount;
-                                                        let remove_label = remove_label.clone();
-                                                        view! {
-                                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
-                                                                <span>
-                                                                    {reward_name}
-                                                                    {if amount_display > 1 {
-                                                                        view! { <span style="color: var(--text-muted); margin-left: 0.5rem;">" ×"{amount_display}</span> }.into_view()
-                                                                    } else {
-                                                                        ().into_view()
-                                                                    }}
-                                                                </span>
-                                                                <button
-                                                                    type="button"
-                                                                    class="btn btn-outline"
-                                                                    style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                                                                    on:click=move |_| {
-                                                                        selected_rewards.update(|r| {
-                                                                            r.retain(|(id, _)| id != &reward_id_for_remove);
-                                                                        });
-                                                                    }
-                                                                >
-                                                                    {remove_label}
-                                                                </button>
-                                                            </div>
-                                                        }
-                                                    }).collect_view().into_view()
-                                                }
-                                            }}
-                                        </div>
-                                    }
-                                }
+                            <div class="form-group">
+                                <label class="form-label" for="task-description">{i18n_stored.get_value().t("task_modal.description_label")}</label>
+                                <textarea
+                                    id="task-description"
+                                    class="form-input description-textarea"
+                                    rows="4"
+                                    placeholder=i18n_stored.get_value().t("task_modal.description_placeholder")
+                                    prop:value=move || description.get()
+                                    on:input=move |ev| description.set(event_target_value(&ev))
+                                />
                             </div>
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.rewards_hint")}</small>
-                        </div>
 
-                        // Punishments Section
-                        <div class="form-group">
-                            <label class="form-label">{i18n_stored.get_value().t("task_modal.punishments_on_miss")}</label>
-                            <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
-                                // Add new punishment row
-                                {
-                                    let household_punishments_for_dropdown = household_punishments.clone();
-                                    let select_punishment_label = i18n_stored.get_value().t("task_modal.select_punishment");
-                                    let add_label = i18n_stored.get_value().t("task_modal.add");
-                                    view! {
-                                        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
-                                            <select
-                                                class="form-select"
-                                                style="flex: 1;"
-                                                prop:value=move || selected_new_punishment.get()
-                                                on:change=move |ev| selected_new_punishment.set(event_target_value(&ev))
-                                            >
-                                                <option value="">{select_punishment_label.clone()}</option>
-                                                {move || {
-                                                    let current_punishment_ids: Vec<String> = selected_punishments.get().iter().map(|(id, _)| id.clone()).collect();
-                                                    household_punishments_for_dropdown.iter()
-                                                        .filter(|p| !current_punishment_ids.contains(&p.id.to_string()))
-                                                        .map(|punishment| {
-                                                            let punishment_id = punishment.id.to_string();
-                                                            let name = punishment.name.clone();
-                                                            view! {
-                                                                <option value=punishment_id>{name}</option>
-                                                            }
-                                                        })
-                                                        .collect_view()
-                                                }}
-                                            </select>
-                                            <input
-                                                type="number"
-                                                class="form-input"
-                                                style="width: 70px;"
-                                                min="1"
-                                                prop:value=move || new_punishment_amount.get().to_string()
-                                                on:input=move |ev| {
-                                                    if let Ok(val) = event_target_value(&ev).parse::<i32>() {
-                                                        new_punishment_amount.set(val.max(1));
-                                                    }
-                                                }
-                                            />
-                                            <button
-                                                type="button"
-                                                class="btn btn-outline"
-                                                style="padding: 0.5rem 1rem;"
-                                                disabled=move || selected_new_punishment.get().is_empty()
-                                                on:click=move |_| {
-                                                    let punishment_id = selected_new_punishment.get();
-                                                    let amount = new_punishment_amount.get();
-                                                    if !punishment_id.is_empty() {
-                                                        selected_punishments.update(|p| {
-                                                            if !p.iter().any(|(id, _)| id == &punishment_id) {
-                                                                p.push((punishment_id.clone(), amount));
-                                                            }
-                                                        });
-                                                        selected_new_punishment.set(String::new());
-                                                        new_punishment_amount.set(1);
-                                                    }
-                                                }
-                                            >
-                                                {add_label}
-                                            </button>
-                                        </div>
-                                    }
-                                }
+                            <Show when=move || !categories_stored.get_value().is_empty() fallback=|| ()>
+                                <TaskCategoryField
+                                    value=selected_category_id
+                                    categories=categories_stored.get_value()
+                                />
+                            </Show>
 
-                                // List of linked punishments
-                                {
-                                    let household_punishments_for_list = household_punishments.clone();
-                                    let no_punishments_linked = i18n_stored.get_value().t("task_modal.no_punishments_linked");
-                                    let unknown_label = i18n_stored.get_value().t("task_modal.unknown");
-                                    let remove_label = i18n_stored.get_value().t("task_modal.remove");
-                                    view! {
-                                        <div>
-                                            {move || {
-                                                let punishments = selected_punishments.get();
-                                                if punishments.is_empty() {
-                                                    let no_punishments_linked = no_punishments_linked.clone();
-                                                    view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">{no_punishments_linked}</p> }.into_view()
-                                                } else {
-                                                    punishments.iter().map(|(punishment_id, amount)| {
-                                                        let punishment_name = household_punishments_for_list.iter()
-                                                            .find(|p| p.id.to_string() == *punishment_id)
-                                                            .map(|p| p.name.clone())
-                                                            .unwrap_or_else(|| unknown_label.clone());
-                                                        let punishment_id_for_remove = punishment_id.clone();
-                                                        let amount_display = *amount;
-                                                        let remove_label = remove_label.clone();
-                                                        view! {
-                                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
-                                                                <span>
-                                                                    {punishment_name}
-                                                                    {if amount_display > 1 {
-                                                                        view! { <span style="color: var(--text-muted); margin-left: 0.5rem;">" ×"{amount_display}</span> }.into_view()
-                                                                    } else {
-                                                                        ().into_view()
-                                                                    }}
-                                                                </span>
-                                                                <button
-                                                                    type="button"
-                                                                    class="btn btn-outline"
-                                                                    style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                                                                    on:click=move |_| {
-                                                                        selected_punishments.update(|p| {
-                                                                            p.retain(|(id, _)| id != &punishment_id_for_remove);
-                                                                        });
+                            <TaskDueTimeField value=due_time />
+
+                            <TaskOnDashboardField value=on_dashboard />
+                        </Accordion>
+
+                        <Accordion
+                            class="task-form-group"
+                            summary=i18n_stored.get_value().t("task_modal.group.goal")
+                            open=initial_groups.goal
+                        >
+                            <TaskTargetCountField value=target_count />
+                            <TaskAllowExceedField value=allow_exceed_target />
+                            <TaskHabitTypeField value=habit_type />
+                        </Accordion>
+
+                        <Accordion
+                            class="task-form-group"
+                            summary=i18n_stored.get_value().t("task_modal.group.points")
+                            open=initial_groups.points
+                        >
+                            <TaskPointsRewardField value=points_reward />
+                            <TaskPointsPenaltyField value=points_penalty />
+
+                            <Show when=move || rewards_section_visible fallback=|| ()>
+                                <div class="form-group">
+                                    <label class="form-label">{i18n_stored.get_value().t("task_modal.rewards_on_completion")}</label>
+                                    <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
+                                        // Add new reward row
+                                        {
+                                            let household_rewards_for_dropdown = household_rewards.clone();
+                                            let select_reward_label = i18n_stored.get_value().t("task_modal.select_reward");
+                                            let add_label = i18n_stored.get_value().t("task_modal.add");
+                                            view! {
+                                                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+                                                    <select
+                                                        class="form-select"
+                                                        style="flex: 1;"
+                                                        prop:value=move || selected_new_reward.get()
+                                                        on:change=move |ev| selected_new_reward.set(event_target_value(&ev))
+                                                    >
+                                                        <option value="">{select_reward_label.clone()}</option>
+                                                        {move || {
+                                                            let current_reward_ids: Vec<String> = selected_rewards.get().iter().map(|(id, _)| id.clone()).collect();
+                                                            household_rewards_for_dropdown.iter()
+                                                                .filter(|r| !current_reward_ids.contains(&r.id.to_string()))
+                                                                .map(|reward| {
+                                                                    let reward_id = reward.id.to_string();
+                                                                    let name = reward.name.clone();
+                                                                    view! {
+                                                                        <option value=reward_id>{name}</option>
                                                                     }
-                                                                >
-                                                                    {remove_label}
-                                                                </button>
-                                                            </div>
+                                                                })
+                                                                .collect_view()
+                                                        }}
+                                                    </select>
+                                                    <input
+                                                        type="number"
+                                                        class="form-input"
+                                                        style="width: 70px;"
+                                                        min="1"
+                                                        prop:value=move || new_reward_amount.get().to_string()
+                                                        on:input=move |ev| {
+                                                            if let Ok(val) = event_target_value(&ev).parse::<i32>() {
+                                                                new_reward_amount.set(val.max(1));
+                                                            }
                                                         }
-                                                    }).collect_view().into_view()
-                                                }
-                                            }}
-                                        </div>
-                                    }
-                                }
-                            </div>
-                            <small class="form-hint">{i18n_stored.get_value().t("task_modal.punishments_hint")}</small>
-                        </div>
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline"
+                                                        style="padding: 0.5rem 1rem;"
+                                                        disabled=move || selected_new_reward.get().is_empty()
+                                                        on:click=move |_| {
+                                                            let reward_id = selected_new_reward.get();
+                                                            let amount = new_reward_amount.get();
+                                                            if !reward_id.is_empty() {
+                                                                selected_rewards.update(|r| {
+                                                                    if !r.iter().any(|(id, _)| id == &reward_id) {
+                                                                        r.push((reward_id.clone(), amount));
+                                                                    }
+                                                                });
+                                                                selected_new_reward.set(String::new());
+                                                                new_reward_amount.set(1);
+                                                            }
+                                                        }
+                                                    >
+                                                        {add_label}
+                                                    </button>
+                                                </div>
+                                            }
+                                        }
+
+                                        // List of linked rewards
+                                        {
+                                            let household_rewards_for_list = household_rewards.clone();
+                                            let no_rewards_linked = i18n_stored.get_value().t("task_modal.no_rewards_linked");
+                                            let unknown_label = i18n_stored.get_value().t("task_modal.unknown");
+                                            let remove_label = i18n_stored.get_value().t("task_modal.remove");
+                                            view! {
+                                                <div>
+                                                    {move || {
+                                                        let rewards = selected_rewards.get();
+                                                        if rewards.is_empty() {
+                                                            let no_rewards_linked = no_rewards_linked.clone();
+                                                            view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">{no_rewards_linked}</p> }.into_view()
+                                                        } else {
+                                                            rewards.iter().map(|(reward_id, amount)| {
+                                                                let reward_name = household_rewards_for_list.iter()
+                                                                    .find(|r| r.id.to_string() == *reward_id)
+                                                                    .map(|r| r.name.clone())
+                                                                    .unwrap_or_else(|| unknown_label.clone());
+                                                                let reward_id_for_remove = reward_id.clone();
+                                                                let amount_display = *amount;
+                                                                let remove_label = remove_label.clone();
+                                                                view! {
+                                                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
+                                                                        <span>
+                                                                            {reward_name}
+                                                                            {if amount_display > 1 {
+                                                                                view! { <span style="color: var(--text-muted); margin-left: 0.5rem;">" ×"{amount_display}</span> }.into_view()
+                                                                            } else {
+                                                                                ().into_view()
+                                                                            }}
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            class="btn btn-outline"
+                                                                            style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                                            on:click=move |_| {
+                                                                                selected_rewards.update(|r| {
+                                                                                    r.retain(|(id, _)| id != &reward_id_for_remove);
+                                                                                });
+                                                                            }
+                                                                        >
+                                                                            {remove_label}
+                                                                        </button>
+                                                                    </div>
+                                                                }
+                                                            }).collect_view().into_view()
+                                                        }
+                                                    }}
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                    <small class="form-hint">{i18n_stored.get_value().t("task_modal.rewards_hint")}</small>
+                                </div>
+                            </Show>
+
+                            <Show when=move || punishments_section_visible fallback=|| ()>
+                                <div class="form-group">
+                                    <label class="form-label">{i18n_stored.get_value().t("task_modal.punishments_on_miss")}</label>
+                                    <div style="border: 1px solid var(--card-border); border-radius: var(--border-radius); padding: 0.75rem;">
+                                        // Add new punishment row
+                                        {
+                                            let household_punishments_for_dropdown = household_punishments.clone();
+                                            let select_punishment_label = i18n_stored.get_value().t("task_modal.select_punishment");
+                                            let add_label = i18n_stored.get_value().t("task_modal.add");
+                                            view! {
+                                                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+                                                    <select
+                                                        class="form-select"
+                                                        style="flex: 1;"
+                                                        prop:value=move || selected_new_punishment.get()
+                                                        on:change=move |ev| selected_new_punishment.set(event_target_value(&ev))
+                                                    >
+                                                        <option value="">{select_punishment_label.clone()}</option>
+                                                        {move || {
+                                                            let current_punishment_ids: Vec<String> = selected_punishments.get().iter().map(|(id, _)| id.clone()).collect();
+                                                            household_punishments_for_dropdown.iter()
+                                                                .filter(|p| !current_punishment_ids.contains(&p.id.to_string()))
+                                                                .map(|punishment| {
+                                                                    let punishment_id = punishment.id.to_string();
+                                                                    let name = punishment.name.clone();
+                                                                    view! {
+                                                                        <option value=punishment_id>{name}</option>
+                                                                    }
+                                                                })
+                                                                .collect_view()
+                                                        }}
+                                                    </select>
+                                                    <input
+                                                        type="number"
+                                                        class="form-input"
+                                                        style="width: 70px;"
+                                                        min="1"
+                                                        prop:value=move || new_punishment_amount.get().to_string()
+                                                        on:input=move |ev| {
+                                                            if let Ok(val) = event_target_value(&ev).parse::<i32>() {
+                                                                new_punishment_amount.set(val.max(1));
+                                                            }
+                                                        }
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline"
+                                                        style="padding: 0.5rem 1rem;"
+                                                        disabled=move || selected_new_punishment.get().is_empty()
+                                                        on:click=move |_| {
+                                                            let punishment_id = selected_new_punishment.get();
+                                                            let amount = new_punishment_amount.get();
+                                                            if !punishment_id.is_empty() {
+                                                                selected_punishments.update(|p| {
+                                                                    if !p.iter().any(|(id, _)| id == &punishment_id) {
+                                                                        p.push((punishment_id.clone(), amount));
+                                                                    }
+                                                                });
+                                                                selected_new_punishment.set(String::new());
+                                                                new_punishment_amount.set(1);
+                                                            }
+                                                        }
+                                                    >
+                                                        {add_label}
+                                                    </button>
+                                                </div>
+                                            }
+                                        }
+
+                                        // List of linked punishments
+                                        {
+                                            let household_punishments_for_list = household_punishments.clone();
+                                            let no_punishments_linked = i18n_stored.get_value().t("task_modal.no_punishments_linked");
+                                            let unknown_label = i18n_stored.get_value().t("task_modal.unknown");
+                                            let remove_label = i18n_stored.get_value().t("task_modal.remove");
+                                            view! {
+                                                <div>
+                                                    {move || {
+                                                        let punishments = selected_punishments.get();
+                                                        if punishments.is_empty() {
+                                                            let no_punishments_linked = no_punishments_linked.clone();
+                                                            view! { <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">{no_punishments_linked}</p> }.into_view()
+                                                        } else {
+                                                            punishments.iter().map(|(punishment_id, amount)| {
+                                                                let punishment_name = household_punishments_for_list.iter()
+                                                                    .find(|p| p.id.to_string() == *punishment_id)
+                                                                    .map(|p| p.name.clone())
+                                                                    .unwrap_or_else(|| unknown_label.clone());
+                                                                let punishment_id_for_remove = punishment_id.clone();
+                                                                let amount_display = *amount;
+                                                                let remove_label = remove_label.clone();
+                                                                view! {
+                                                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 0.25rem;">
+                                                                        <span>
+                                                                            {punishment_name}
+                                                                            {if amount_display > 1 {
+                                                                                view! { <span style="color: var(--text-muted); margin-left: 0.5rem;">" ×"{amount_display}</span> }.into_view()
+                                                                            } else {
+                                                                                ().into_view()
+                                                                            }}
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            class="btn btn-outline"
+                                                                            style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                                                                            on:click=move |_| {
+                                                                                selected_punishments.update(|p| {
+                                                                                    p.retain(|(id, _)| id != &punishment_id_for_remove);
+                                                                                });
+                                                                            }
+                                                                        >
+                                                                            {remove_label}
+                                                                        </button>
+                                                                    </div>
+                                                                }
+                                                            }).collect_view().into_view()
+                                                        }
+                                                    }}
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                    <small class="form-hint">{i18n_stored.get_value().t("task_modal.punishments_hint")}</small>
+                                </div>
+                            </Show>
+                        </Accordion>
+
+                        <Accordion
+                            class="task-form-group"
+                            summary=i18n_stored.get_value().t("task_modal.group.rules")
+                            open=initial_groups.rules
+                        >
+                            <TaskAnyoneCanCompleteField value=anyone_can_complete />
+                            <TaskAssigneeCannotUncompleteField value=assignee_cannot_uncomplete />
+                            <TaskRequiresReviewField value=requires_review />
+                        </Accordion>
                     </div>
 
                     <Show when=move || can_delete && confirming_delete.get() fallback=|| ()>

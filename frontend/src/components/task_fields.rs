@@ -296,10 +296,14 @@ pub fn TaskHabitTypeField(
             <Show when=move || !hide_label fallback=|| ()>
                 <label class="form-label" for="task-habit-type">{i18n_stored.get_value().t("task_modal.habit_type_label")}</label>
             </Show>
+            // `prop:value` keeps the shown option in sync when the signal is written from
+            // outside (picking a task type applies a preset), which the `selected` attribute
+            // alone no longer does once the user has touched the select.
             <select
                 id="task-habit-type"
                 class="form-select"
                 disabled=disabled
+                prop:value=move || value.get()
                 on:change=move |ev| value.set(event_target_value(&ev))
             >
                 <option value="good" selected=move || value.get() == "good">
@@ -455,10 +459,12 @@ pub fn TaskRecurrenceTypeField(
             <Show when=move || !hide_label fallback=|| ()>
                 <label class="form-label" for="task-recurrence">{i18n_stored.get_value().t("task_modal.recurrence_label")}</label>
             </Show>
+            // See `TaskHabitTypeField`: presets write this signal from outside.
             <select
                 id="task-recurrence"
                 class="form-select"
                 disabled=disabled
+                prop:value=move || value.get()
                 on:change=move |ev| value.set(event_target_value(&ev))
             >
                 <option value="onetime" selected=move || value.get() == "onetime">

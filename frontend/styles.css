@@ -2436,3 +2436,123 @@ body.dark-mode .task-item.selected {
         font-size: 0.9375rem;
     }
 }
+
+/* ==========================================================================
+   Task form — archetypes
+   The form asks what is being created and derives the flags from that. These
+   styles only use CSS variables so body.dark-mode keeps working.
+   Mobile first: single column base, wider layouts via min-width queries.
+   ========================================================================== */
+
+.task-type-grid {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.task-type-card {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    text-align: left;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.85rem;
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius, 0.5rem);
+    background-color: var(--card-color);
+    color: var(--text-color);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+.task-type-card:hover {
+    border-color: var(--primary-hover);
+}
+
+.task-type-card[aria-pressed="true"] {
+    border-color: var(--primary-color);
+}
+
+.task-type-icon {
+    font-size: 1.4rem;
+    line-height: 1.2;
+    flex-shrink: 0;
+}
+
+.task-type-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.task-type-name {
+    font-weight: 600;
+}
+
+.task-type-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.task-archetype-chip-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+}
+
+.task-archetype-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.7rem;
+    border: 1px solid var(--primary-color);
+    border-radius: 999px;
+    color: var(--primary-color);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.task-archetype-chip.changed {
+    border-color: var(--warning-color);
+    color: var(--warning-color);
+}
+
+.task-archetype-chip-note {
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+.task-form-note {
+    padding: 0.7rem 0.85rem;
+    margin-bottom: 1rem;
+    border-left: 3px solid var(--primary-color);
+    border-radius: 0.25rem;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-size: 0.84rem;
+}
+
+.task-form-note.danger {
+    border-left-color: var(--danger-color);
+}
+
+.task-form-group {
+    border-top: 1px solid var(--border-color);
+}
+
+.form-field-error {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--danger-color);
+    font-size: 0.78rem;
+}
+
+.form-label .required {
+    color: var(--danger-color);
+}
+
+@media (min-width: 600px) {
+    .task-type-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
