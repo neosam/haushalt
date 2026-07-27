@@ -32,7 +32,7 @@ Milestone: v1.1 Hardening & Connectivity
 Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-27 - Completed quick task 260727-apd: Bulk-Edit aus task_modal.rs herausgelöst
+Last activity: 2026-07-27 - Completed quick task 260727-b9u: Task-Formular nach Archetypen umgebaut
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
@@ -95,6 +95,7 @@ None yet. Use `/gsd-add-todo` to capture ideas during sessions.
 | 260726-vdz | Optionales Task-Setting: zugewiesene Person darf eine Erledigung nicht selbst zurücknehmen | 2026-07-26 | a7e0260a | [260726-vdz-assignee-cannot-uncomplete](./quick/260726-vdz-assignee-cannot-uncomplete/) |
 | 260727-a1u | Task-Archetypen Welle 0: Archetype-Enum und Ableitung in shared | 2026-07-27 | 6b9e5bb6 | [260727-a1u-task-archetypen-welle-0-archetype-enum-u](./quick/260727-a1u-task-archetypen-welle-0-archetype-enum-u/) |
 | 260727-apd | Welle 1a: Bulk-Edit aus task_modal.rs in eigene Komponente herausgelöst | 2026-07-27 | 7ea7397a | [260727-apd-welle-1a-bulk-edit-aus-task-modal-rs-in-](./quick/260727-apd-welle-1a-bulk-edit-aus-task-modal-rs-in-/) |
+| 260727-b9u | Welle 1b: Task-Formular nach Archetypen umgebaut (Typauswahl, Basisfelder, Accordions) | 2026-07-27 | 5274d0ee | [260727-b9u-welle-1b-task-formular-nach-archetypen-u](./quick/260727-b9u-welle-1b-task-formular-nach-archetypen-u/) |
 
 ## Session Continuity
 
