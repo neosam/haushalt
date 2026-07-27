@@ -203,7 +203,7 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
     for task_row in tasks {
         let task = task_row.to_shared();
 
-        // Skip free-form and one-time tasks (they can't be "missed")
+        // Skip one-time tasks (they can't be "missed")
         if task.recurrence_type == shared::RecurrenceType::OneTime {
             continue;
         }
@@ -253,6 +253,13 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
 
         tasks_checked += 1;
 
+        // target_count = 0 is free-form: there is no target to reach, so the task cannot be
+        // missed no matter how often it was (not) completed. This does NOT apply to inverted
+        // habits — for those the "not completed" path below is the REWARD path, not a penalty.
+        if task.target_count <= 0 && !task.habit_type.is_inverted() {
+            continue;
+        }
+
         // Check if task was completed yesterday (in local timezone)
         let completion_count = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM task_completions WHERE task_id = ? AND due_date = ?",
@@ -266,9 +273,8 @@ pub async fn process_missed_tasks(pool: &SqlitePool) -> Result<MissedTaskReport,
         // target_count = 3 and a single completion is still outstanding and must be
         // penalized. For an inverted (bad) habit the target has no such meaning: a
         // single completion already means the habit was indulged, so any completion
-        // ends the check. target_count = 0 is free-form and has no target to reach,
-        // so any completion counts as done rather than penalizing it forever.
-        let counts_as_done = if task.habit_type.is_inverted() || task.target_count <= 0 {
+        // ends the check.
+        let counts_as_done = if task.habit_type.is_inverted() {
             completion_count > 0
         } else {
             completion_count >= i64::from(task.target_count)
@@ -1058,6 +1064,51 @@ mod tests {
         let report = process_missed_tasks(&pool).await.unwrap();
 
         assert_eq!(report.missed_tasks, 0);
+    }
+
+    /// The actual free-form guarantee: a task without a target cannot be missed, so leaving it
+    /// untouched for a whole day must not produce a penalty either.
+    #[tokio::test]
+    async fn test_missed_tasks_free_form_task_never_completed_is_not_missed() {
+        let (pool, household_id, user_id, _yesterday) = setup_missed_task_env().await;
+        let task = crate::test_utils::create_test_task(&pool, &household_id)
+            .with_title("Tidy up")
+            .with_target_count(0)
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+        backdate_task(&pool, &task.id).await;
+
+        // No completion at all.
+        let report = process_missed_tasks(&pool).await.unwrap();
+
+        assert_eq!(
+            report.missed_tasks, 0,
+            "a task without a target has nothing to miss"
+        );
+    }
+
+    /// The free-form exemption must not swallow inverted habits: for those, "not completed" is
+    /// the REWARD path (bad habit successfully avoided), so they still have to be processed.
+    #[tokio::test]
+    async fn test_missed_tasks_bad_habit_with_zero_target_still_processed() {
+        let (pool, household_id, user_id, _yesterday) = setup_missed_task_env().await;
+        let task = crate::test_utils::create_test_task(&pool, &household_id)
+            .with_title("Smoke")
+            .with_habit_type(shared::HabitType::Bad)
+            .with_target_count(0)
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+        backdate_task(&pool, &task.id).await;
+
+        // Not indulged yesterday.
+        let report = process_missed_tasks(&pool).await.unwrap();
+
+        assert_eq!(
+            report.missed_tasks, 1,
+            "an avoided bad habit must still reach the reward path, target_count 0 or not"
+        );
     }
 
     #[tokio::test]
