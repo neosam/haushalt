@@ -700,6 +700,68 @@ pub enum Archetype {
     Maintenance,
 }
 
+/// The flag preset behind an [`Archetype`] - the inverse direction of [`Task::archetype`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchetypeDefaults {
+    pub habit_type: HabitType,
+    pub anyone_can_complete: bool,
+    pub assignee_cannot_uncomplete: bool,
+    /// `Some(OneTime)` only for `OneOff`; `None` means "the user picks the rhythm".
+    pub recurrence_type: Option<RecurrenceType>,
+}
+
+impl Archetype {
+    /// The flags a task starts from once this archetype is picked. Applying them to a task makes
+    /// [`Task::archetype`] derive this very archetype again.
+    ///
+    /// `Maintenance` deliberately does *not* also set `anyone_can_complete`:
+    /// [`Task::is_household_wide`] already returns `true` from `assignee_cannot_uncomplete`
+    /// alone, so setting both flags would be redundant.
+    pub fn defaults(&self) -> ArchetypeDefaults {
+        match self {
+            Archetype::OneOff => ArchetypeDefaults {
+                habit_type: HabitType::Good,
+                anyone_can_complete: false,
+                assignee_cannot_uncomplete: false,
+                recurrence_type: Some(RecurrenceType::OneTime),
+            },
+            Archetype::Routine => ArchetypeDefaults {
+                habit_type: HabitType::Good,
+                anyone_can_complete: false,
+                assignee_cannot_uncomplete: false,
+                recurrence_type: None,
+            },
+            Archetype::Shared => ArchetypeDefaults {
+                habit_type: HabitType::Good,
+                anyone_can_complete: true,
+                assignee_cannot_uncomplete: false,
+                recurrence_type: None,
+            },
+            Archetype::BadHabit => ArchetypeDefaults {
+                habit_type: HabitType::Bad,
+                anyone_can_complete: false,
+                assignee_cannot_uncomplete: false,
+                recurrence_type: None,
+            },
+            Archetype::Maintenance => ArchetypeDefaults {
+                habit_type: HabitType::Good,
+                anyone_can_complete: false,
+                assignee_cannot_uncomplete: true,
+                recurrence_type: None,
+            },
+        }
+    }
+
+    /// Whether this archetype only works with a person assigned to the task.
+    ///
+    /// `true` only for `Maintenance`: `TaskWithStatus::is_assignee` requires
+    /// `assigned_user_id.is_some()`, so without an assigned person the `can_uncomplete` lock
+    /// never engages - a maintenance task without an assignee would be silently ineffective.
+    pub fn assignment_required(&self) -> bool {
+        matches!(self, Archetype::Maintenance)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTaskRequest {
     pub title: String,
@@ -2420,6 +2482,54 @@ mod tests {
         task.habit_type = HabitType::Bad;
         task.assignee_cannot_uncomplete = true;
         assert_eq!(task.archetype(), Archetype::Maintenance);
+    }
+
+    /// Single place the archetype variants are enumerated - both tests below iterate over it.
+    const ALL_ARCHETYPES: [Archetype; 5] = [
+        Archetype::OneOff,
+        Archetype::Routine,
+        Archetype::Shared,
+        Archetype::BadHabit,
+        Archetype::Maintenance,
+    ];
+
+    /// Writes a preset back onto a task. `recurrence_type` is only overwritten when the preset
+    /// pins it down - `None` means the task keeps whatever rhythm it had.
+    fn apply_defaults(task: &mut Task, defaults: &ArchetypeDefaults) {
+        task.habit_type = defaults.habit_type;
+        task.anyone_can_complete = defaults.anyone_can_complete;
+        task.assignee_cannot_uncomplete = defaults.assignee_cannot_uncomplete;
+        if let Some(recurrence_type) = &defaults.recurrence_type {
+            task.recurrence_type = recurrence_type.clone();
+        }
+    }
+
+    #[test]
+    fn test_archetype_defaults_round_trip() {
+        // defaults() is the inverse of archetype(): applying a preset must derive back to itself
+        for archetype in ALL_ARCHETYPES {
+            let mut task = create_base_task();
+            apply_defaults(&mut task, &archetype.defaults());
+
+            assert_eq!(
+                task.archetype(),
+                archetype,
+                "round-trip failed for {archetype:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_archetype_assignment_required() {
+        for archetype in ALL_ARCHETYPES {
+            let expected = archetype == Archetype::Maintenance;
+
+            assert_eq!(
+                archetype.assignment_required(),
+                expected,
+                "assignment_required wrong for {archetype:?}"
+            );
+        }
     }
 
     #[test]
