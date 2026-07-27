@@ -64,16 +64,18 @@ erzwingt die Vollständigkeit über den Compiler. Abgesichert durch
 
 ## Tests
 
-19 neue Tests:
+23 neue Tests:
 
-- **shared (7):** Ableitung aus Soll 0 und aus negativem Soll; Bonus schlägt Shared; BadHabit und
-  Maintenance schlagen Bonus; alle Presets pinnen `target_count`; Round-Trip über sechs Archetypen
+- **shared (6):** Ableitung aus Soll 0 und aus negativem Soll; Bonus schlägt Shared; BadHabit und
+  Maintenance schlagen Bonus; alle Presets pinnen `target_count`. Der bestehende Round-Trip-Test
+  deckt jetzt sechs Archetypen ab.
 - **backend (2):** unberührter Tag → `Skipped` und nie `Failed`; erledigter Tag → `Completed`
-- **frontend (10):** Ableitung inkl. leerem Eingabefeld (darf nicht auf Bonus springen);
-  Typwechsel-Round-Trip; Feld-Sichtbarkeit; Gruppen-Aufklappen; vier Tests für
+- **frontend (15):** 11 in `task_form_model` (Ableitung inkl. leerem Eingabefeld, das nicht auf
+  Bonus springen darf; Typwechsel-Round-Trip; Feld-Sichtbarkeit; Gruppen-Aufklappen) und 4 für
   `period_appearance` inkl. „Bad Habit schlägt Bonus"
 
-`nix develop -c cargo test --workspace` → 486 Tests grün, 0 failed.
+`nix develop -c cargo test --workspace` → 487 Tests grün, 0 failed (backend 292, frontend 127,
+shared 67, 1 Doc-Test).
 
 ## Qualitätsgates
 
