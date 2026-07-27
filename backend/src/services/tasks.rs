@@ -3898,7 +3898,7 @@ mod tests {
         let today = chrono::Utc::now().date_naive();
         let mut monday = today;
         while monday.weekday().num_days_from_monday() != 0 {
-            monday = monday + Duration::days(1);
+            monday += Duration::days(1);
         }
         let next_monday = monday + Duration::days(7);
 
@@ -3971,7 +3971,7 @@ mod tests {
         let today = chrono::Utc::now().date_naive();
         let mut monday = today;
         while monday.weekday().num_days_from_monday() != 0 {
-            monday = monday + Duration::days(1);
+            monday += Duration::days(1);
         }
         let next_monday = monday + Duration::days(7);
         let wednesday = monday + Duration::days(2);
@@ -4093,8 +4093,8 @@ mod tests {
         assert_eq!(task.title, "Simple Task");
         assert_eq!(task.description, "");
         assert_eq!(task.target_count, 1); // Default
-        assert_eq!(task.allow_exceed_target, true); // Default
-        assert_eq!(task.requires_review, false); // Default
+        assert!(task.allow_exceed_target); // Default
+        assert!(!task.requires_review); // Default
         assert_eq!(task.habit_type, shared::HabitType::Good); // Default
     }
 
