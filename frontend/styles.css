@@ -10,6 +10,9 @@
     --success-color: #22c55e;
     --danger-color: #ef4444;
     --warning-color: #f59e0b;
+    /* Two archetypes need an accent the theme does not already provide. */
+    --archetype-shared: #0ea5e9;
+    --archetype-bonus: #a855f7;
     --background-color: #f8fafc;
     --card-color: #ffffff;
     --text-color: #1e293b;
@@ -273,6 +276,16 @@ body {
     color: white;
 }
 
+/* Logging one's own lapse: not a success, not a catastrophe either. */
+.btn-warn {
+    background-color: var(--warning-color);
+    color: white;
+}
+
+.btn-warn:hover:not(:disabled) {
+    filter: brightness(0.93);
+}
+
 .btn-outline {
     background-color: transparent;
     border: 1px solid var(--border-color);
@@ -349,6 +362,56 @@ body {
 
 .task-item:last-child {
     border-bottom: none;
+}
+
+/* Archetype accent: a colour strip on the leading edge, so the type of a task is readable
+   before a single word is. Colours mirror the design mockup (260727-b9u-MOCKUP.html).
+   OneOff and Routine use the existing theme variables, which already carry their own
+   dark-mode values; the two types without a theme colour get their own variables below. */
+.task-item--oneoff {
+    border-left: 4px solid var(--primary-color);
+}
+
+.task-item--routine {
+    border-left: 4px solid var(--success-color);
+}
+
+.task-item--shared {
+    border-left: 4px solid var(--archetype-shared);
+}
+
+.task-item--bad-habit {
+    border-left: 4px solid var(--warning-color);
+}
+
+.task-item--maintenance {
+    border-left: 4px solid var(--danger-color);
+}
+
+.task-item--bonus {
+    border-left: 4px solid var(--archetype-bonus);
+}
+
+/* The card's primary action now carries a word instead of a "+", so it needs room to breathe
+   and a proper touch target. Scoped to the card so the rest of the app keeps its metrics. */
+.task-action-btn {
+    min-height: 44px;
+}
+
+/* Replaces a permanently disabled button: the state in plain words, full width so it stays
+   readable on a phone, where the old `title` tooltip never appeared at all. */
+.task-card-locked {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--border-radius);
+    background-color: rgba(239, 68, 68, 0.08);
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+body.dark-mode .task-card-locked {
+    background-color: rgba(248, 113, 113, 0.14);
 }
 
 .task-checkbox {
@@ -979,6 +1042,9 @@ body.dark-mode {
     --success-color: #34d399;
     --danger-color: #f87171;
     --warning-color: #fbbf24;
+    /* Lightened like every other accent above, so the strip stays visible on the dark card. */
+    --archetype-shared: #38bdf8;
+    --archetype-bonus: #c084fc;
     --background-color: #0f172a;
     --card-color: #1e293b;
     --text-color: #f1f5f9;

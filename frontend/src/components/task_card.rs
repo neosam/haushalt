@@ -1,4 +1,4 @@
-use chrono::{Datelike, NaiveDate, Weekday};
+use chrono::{Datelike, NaiveDate, Utc, Weekday};
 use leptos::*;
 use shared::{Archetype, RecurrenceType, TaskWithStatus};
 use std::collections::{BTreeMap, HashSet};
@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::components::context_menu::{ContextMenu, ContextMenuAction};
 use crate::components::period_tracker::PeriodTrackerCompact;
+use crate::components::task_card_model::{accent_class, card_action, type_badge, CardAction};
 use crate::i18n::{use_i18n, I18nContext};
 use crate::utils::timezone::today_in_tz;
 
@@ -110,15 +111,16 @@ pub fn TaskCard(
         }
     };
 
+    let archetype = task.task.archetype();
     let card_class = if is_target_met {
-        "task-item task-completed"
+        format!("task-item task-completed {}", accent_class(archetype))
     } else {
-        "task-item"
+        format!("task-item {}", accent_class(archetype))
     };
 
     // A task without a target is a bonus task: it is counted, not measured. Showing "3/0"
     // would invent a goal it does not have, so the count stands on its own.
-    let is_bonus = task.task.archetype() == Archetype::Bonus;
+    let is_bonus = archetype == Archetype::Bonus;
     let progress_display = if target > 0 {
         format!("{}/{}", completions, target)
     } else {
@@ -149,9 +151,18 @@ pub fn TaskCard(
     // Translate recurrence type
     let recurrence_display = i18n_stored.get_value().t(recurrence_type_translation_key(&task.task.recurrence_type));
 
-    // Bad habit indicator
+    // Bad habit indicator (drives the inverted colours of the period tracker)
     let is_bad_habit = task.task.habit_type.is_inverted();
-    let bad_habit_label = i18n_stored.get_value().t("habit_type.bad_short");
+
+    // Type badge: icon, translated label and the badge's colour class. OneOff and Routine carry
+    // none - they are the default shape of a task, so labelling them would be noise.
+    let type_badge_parts = type_badge(archetype).map(|(icon, label_key)| {
+        let class = match archetype {
+            Archetype::BadHabit | Archetype::Maintenance => "badge badge-sm badge-danger",
+            _ => "badge badge-sm badge-assigned",
+        };
+        (icon, i18n_stored.get_value().t(label_key), class)
+    });
 
     // Recent periods for habit tracker display
     let recent_periods = task.recent_periods.clone();
@@ -190,6 +201,38 @@ pub fn TaskCard(
     } else {
         i18n_stored.get_value().t("task_card.cannot_uncomplete")
     };
+
+    let action = card_action(
+        archetype,
+        target,
+        completions,
+        can_uncomplete,
+        is_completable_by_user,
+    );
+
+    // The mockup's central point: instead of a permanently disabled button whose explanation
+    // hides in a `title` attribute, the card states in plain words what was logged and why this
+    // user cannot clear it. `last_completion` carries the when; the API does not expose who, so
+    // the text names the count and the date.
+    let locked_notice = (action == CardAction::Locked).then(|| {
+        let date = task
+            .last_completion
+            .map(|ts| ts.with_timezone(&Utc).date_naive())
+            .map(|d| d.format("%d.%m.%Y").to_string());
+        let key = if date.is_some() {
+            "task_card.locked_with_date"
+        } else {
+            "task_card.locked"
+        };
+        let mut text = i18n_stored
+            .get_value()
+            .t(key)
+            .replace("{count}", &completions.to_string());
+        if let Some(date) = date {
+            text = text.replace("{date}", &date);
+        }
+        text
+    });
 
     view! {
         <div class=card_class>
@@ -232,17 +275,15 @@ pub fn TaskCard(
                 } else {
                     ().into_view()
                 }}
-                {if is_bad_habit || is_user_assigned {
+                {if type_badge_parts.is_some() || is_user_assigned {
                     let assigned_label = i18n_stored.get_value().t("tasks.assigned_to_you");
                     view! {
                         <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;">
-                            {if is_bad_habit {
-                                view! {
-                                    <span class="badge badge-sm badge-danger">{bad_habit_label}</span>
-                                }.into_view()
-                            } else {
-                                ().into_view()
-                            }}
+                            // One badge per archetype instead of the old bad-habit-only one,
+                            // which knew exactly one of the six types.
+                            {type_badge_parts.map(|(icon, label, class)| view! {
+                                <span class=class>{format!("{} {}", icon, label)}</span>
+                            })}
                             {if is_user_assigned {
                                 view! {
                                     <span class="badge badge-sm badge-assigned">{assigned_label}</span>
@@ -255,6 +296,9 @@ pub fn TaskCard(
                 } else {
                     ().into_view()
                 }}
+                {locked_notice.map(|text| view! {
+                    <div class="task-card-locked">{text}</div>
+                })}
             </div>
             <div class="task-actions">
                 // Dashboard toggle button (star icon)
@@ -274,14 +318,15 @@ pub fn TaskCard(
                 } else {
                     ().into_view()
                 }}
-                // Only show +/- buttons if the user may check this task off
-                {if is_completable_by_user {
-                    view! {
+                // What the card offers depends on the archetype (wording, colour) and on the
+                // target (counter vs. single button) - see task_card_model::card_action.
+                {match action {
+                    CardAction::Counter => view! {
                         <button
                             class="btn btn-outline"
                             style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
                             disabled=!has_completions || !can_uncomplete
-                            title=cannot_uncomplete_title
+                            title=cannot_uncomplete_title.clone()
                             on:click=on_minus
                         >
                             "-"
@@ -297,14 +342,52 @@ pub fn TaskCard(
                         >
                             {move || if is_debouncing.get() { "..." } else { "+" }}
                         </button>
-                    }.into_view()
-                } else {
-                    // Just show progress without buttons
-                    view! {
+                    }.into_view(),
+                    CardAction::Single { label_key, style } => {
+                        let action_label = i18n_stored.get_value().t(label_key);
+                        let busy_class = format!("{} btn-debouncing", style.css_class());
+                        let idle_class = style.css_class().to_string();
+                        // The undo only appears once there is something to undo - a button that
+                        // can never do anything is exactly what this rework removes.
+                        let show_undo = has_completions && can_uncomplete;
+                        view! {
+                            {show_undo.then(|| view! {
+                                <button
+                                    class="btn btn-outline"
+                                    style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
+                                    on:click=on_minus
+                                >
+                                    "-"
+                                </button>
+                            })}
+                            {has_completions.then(|| view! {
+                                <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
+                                    {progress_display.clone()}
+                                </span>
+                            })}
+                            <button
+                                class=move || if is_debouncing.get() { busy_class.clone() } else { idle_class.clone() }
+                                disabled=move || !can_complete || is_debouncing.get()
+                                on:click=on_plus
+                            >
+                                {move || if is_debouncing.get() {
+                                    "...".to_string()
+                                } else {
+                                    action_label.clone()
+                                }}
+                            </button>
+                        }.into_view()
+                    }
+                    CardAction::Locked => view! {
                         <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
                             {progress_display.clone()}
                         </span>
-                    }.into_view()
+                    }.into_view(),
+                    CardAction::ReadOnly => view! {
+                        <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
+                            {progress_display.clone()}
+                        </span>
+                    }.into_view(),
                 }}
                 // Context menu (optional)
                 {if !context_actions.is_empty() {
