@@ -1,5 +1,7 @@
 ---
 created: 2026-07-27T07:27:33.047Z
+completed: 2026-07-27
+resolved_by: quick 260727-dct (commit 3f8ea3db)
 title: Freiform-Tasks (target_count 0) werden fälschlich bestraft
 area: backend
 files:

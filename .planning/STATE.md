@@ -32,7 +32,7 @@ Milestone: v1.1 Hardening & Connectivity
 Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-27 - Completed quick task 260727-b9u: Task-Formular nach Archetypen umgebaut
+Last activity: 2026-07-27 - Completed quick task 260727-dct: Freiform-Tasks werden nicht mehr fälschlich bestraft
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
@@ -74,12 +74,11 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-2 pending — siehe `.planning/todos/pending/`
+1 pending — siehe `.planning/todos/pending/`
 
 | Todo | Area | Kurz |
 |------|------|------|
-| [Freiform-Tasks werden fälschlich bestraft](./todos/pending/2026-07-27-freiform-tasks-werden-faelschlich-bestraft.md) | backend | `process_missed_tasks` bestraft `target_count = 0`, wenn nicht erledigt — ein Task ohne Soll kann nicht verfehlt werden. Blockiert die Bonusaufgabe. |
-| [Bonusaufgabe als sechster Archetyp](./todos/pending/2026-07-27-bonusaufgabe-als-sechster-archetyp.md) | general | Muss nicht gemacht werden (Soll 0), wird aber getrackt. Ableitungsregel, Presets, Karte, i18n. Zwei offene Entscheidungen darin. |
+| [Bonusaufgabe als sechster Archetyp](./todos/pending/2026-07-27-bonusaufgabe-als-sechster-archetyp.md) | general | Muss nicht gemacht werden (Soll 0), wird aber getrackt. Ableitungsregel, Presets, Karte, i18n. Zwei offene Entscheidungen darin. Backend-Blocker ist mit 260727-dct behoben. |
 
 ### Blockers/Concerns
 
@@ -101,6 +100,7 @@ Recent decisions affecting current work:
 | 260727-a1u | Task-Archetypen Welle 0: Archetype-Enum und Ableitung in shared | 2026-07-27 | 6b9e5bb6 | [260727-a1u-task-archetypen-welle-0-archetype-enum-u](./quick/260727-a1u-task-archetypen-welle-0-archetype-enum-u/) |
 | 260727-apd | Welle 1a: Bulk-Edit aus task_modal.rs in eigene Komponente herausgelöst | 2026-07-27 | 7ea7397a | [260727-apd-welle-1a-bulk-edit-aus-task-modal-rs-in-](./quick/260727-apd-welle-1a-bulk-edit-aus-task-modal-rs-in-/) |
 | 260727-b9u | Welle 1b: Task-Formular nach Archetypen umgebaut (Typauswahl, Basisfelder, Accordions) | 2026-07-27 | 5274d0ee | [260727-b9u-welle-1b-task-formular-nach-archetypen-u](./quick/260727-b9u-welle-1b-task-formular-nach-archetypen-u/) |
+| 260727-dct | Freiform-Tasks (target_count 0) werden nicht mehr fälschlich bestraft | 2026-07-27 | 3f8ea3db | [260727-dct-freiform-tasks-target-count-0-werden-nic](./quick/260727-dct-freiform-tasks-target-count-0-werden-nic/) |
 
 ## Session Continuity
 
