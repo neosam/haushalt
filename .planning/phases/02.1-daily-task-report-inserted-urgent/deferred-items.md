@@ -3,7 +3,17 @@
 Out-of-scope discoveries found during plan execution. Not fixed as part of this phase per the
 executor's scope-boundary rule (pre-existing, unrelated to the current task's changes).
 
-## 1. Pre-existing backend clippy failures in `backend/src/services/tasks.rs`
+## 1. ~~Pre-existing backend clippy failures in `backend/src/services/tasks.rs`~~ — RESOLVED
+
+**Resolved:** 2026-07-27 in quick task `260727-t5x` (commit `4d5324f9`). That task modified
+`tasks.rs` itself, so the scope-boundary argument below no longer applied. All 6 findings are gone —
+2 disappeared with the tautological Weekdays/Custom tests that were replaced, the remaining 4 were
+fixed mechanically. `nix develop -c cargo clippy -p backend --all-targets` now exits 0. Item 2
+(frontend) is still open.
+
+<details>
+<summary>Original entry</summary>
+
 
 **Found during:** 02.1-01, Task 1 verification (`nix develop -c cargo clippy -p backend --all-targets`)
 
@@ -30,6 +40,8 @@ satisfied for reasons unrelated to this plan's changes.
 **Recommended follow-up:** A `/gsd-quick` task to fix the 6 lints in `tasks.rs` (mechanical,
 low-risk `+=` and `assert!`/`assert!(!...)` rewrites), analogous to how `solo_mode_banner.rs` should
 eventually be addressed outside this phase.
+
+</details>
 
 ## 2. `nix develop -c cargo clippy -p frontend --all-targets` reports 61 pre-existing errors, not the documented 1
 
