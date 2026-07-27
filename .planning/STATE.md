@@ -101,6 +101,7 @@ Keine — siehe `.planning/todos/completed/`.
 | 260727-fs5 | Welle 2: Task-Karte nach Archetypen (sprechende Knöpfe, Akzente, Klartext statt totem Knopf) | 2026-07-27 | fc0ac402 | [260727-fs5-welle-2-task-karte-nach-archetypen](./quick/260727-fs5-welle-2-task-karte-nach-archetypen/) |
 | 260727-hke | Zähler-Buttons reagieren sofort, Request wird gebündelt (echter Debounce) | 2026-07-27 | 4b88a78d | [260727-hke-zaehler-buttons-optimistisch-zaehlen-req](./quick/260727-hke-zaehler-buttons-optimistisch-zaehlen-req/) |
 | 260727-t5x | Weekdays und Custom: get_next_due_date überspringt den heutigen Termin nicht mehr | 2026-07-27 | 4d5324f9 | [260727-t5x-weekdays-und-custom-get-next-due-date-da](./quick/260727-t5x-weekdays-und-custom-get-next-due-date-da/) |
+| 260727-vst | Bad-Habit-Texte: "Rückfall" durch "Verstoß" ersetzt (de + en) | 2026-07-27 | 1008cd0a | — (via /gsd-fast) |
 
 ## Session Continuity
 
