@@ -744,7 +744,7 @@ impl Archetype {
                 recurrence_type: None,
             },
             Archetype::Maintenance => ArchetypeDefaults {
-                habit_type: HabitType::Good,
+                habit_type: HabitType::Bad,
                 anyone_can_complete: false,
                 assignee_cannot_uncomplete: true,
                 recurrence_type: None,
@@ -2515,6 +2515,30 @@ mod tests {
                 task.archetype(),
                 archetype,
                 "round-trip failed for {archetype:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_archetype_defaults_invert_points_where_completing_is_the_failure() {
+        // Maintenance and BadHabit share one trait: checking them off records something that went
+        // wrong, so points must run inverted. The round-trip test cannot catch a slip here -
+        // rule 1 derives Maintenance from assignee_cannot_uncomplete whatever the habit_type is.
+        for archetype in [Archetype::Maintenance, Archetype::BadHabit] {
+            assert!(
+                archetype.defaults().habit_type.is_inverted(),
+                "{archetype:?} must default to an inverted habit_type, otherwise reporting a \
+                 lapse would award points instead of deducting them"
+            );
+        }
+    }
+
+    #[test]
+    fn test_archetype_defaults_keep_points_upright_for_chores() {
+        for archetype in [Archetype::OneOff, Archetype::Routine, Archetype::Shared] {
+            assert!(
+                !archetype.defaults().habit_type.is_inverted(),
+                "{archetype:?} must default to a normal habit_type"
             );
         }
     }
