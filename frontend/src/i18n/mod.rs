@@ -194,6 +194,38 @@ mod tests {
         }
     }
 
+    /// Bad-Habit-Texte sprechen von "Verstoß", nicht von "Rückfall".
+    #[test]
+    fn test_bad_habit_uses_violation_wording() {
+        let en = load_translations("en");
+        let de = load_translations("de");
+
+        assert_eq!(
+            de.get("task_card.action.bad_habit").unwrap(),
+            "Verstoß eintragen"
+        );
+        assert_eq!(
+            en.get("task_card.action.bad_habit").unwrap(),
+            "Log a violation"
+        );
+
+        for key in [
+            "task_modal.archetype.bad_habit.desc",
+            "task_modal.archetype.bad_habit.note",
+        ] {
+            assert!(
+                de.get(key).unwrap().contains("Verstöße"),
+                "german key {} should use \"Verstöße\" wording",
+                key
+            );
+            assert!(
+                en.get(key).unwrap().to_lowercase().contains("violation"),
+                "english key {} should use \"violation\" wording",
+                key
+            );
+        }
+    }
+
     #[test]
     fn test_supported_languages() {
         let langs = supported_languages();
