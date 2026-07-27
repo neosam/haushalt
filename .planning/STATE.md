@@ -32,7 +32,7 @@ Milestone: v1.1 Hardening & Connectivity
 Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-26 - Completed quick task 260726-vdz: zugewiesene Person darf nicht selbst zurücknehmen
+Last activity: 2026-07-27 - Completed quick task 260727-a1u: Task-Archetypen Welle 0 (Archetype-Ableitung in shared)
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
@@ -93,6 +93,7 @@ None yet. Use `/gsd-add-todo` to capture ideas during sessions.
 | 260726-nxt | flake.nix: nodejs und gsd-flake in den devShell aufnehmen | 2026-07-26 | 55f9485c | [260726-nxt-flake-nix-nodejs-und-gsd-flake-in-den-de](./quick/260726-nxt-flake-nix-nodejs-und-gsd-flake-in-den-de/) |
 | 260726-th8 | Optionales Task-Setting: alle Mitglieder dürfen abhaken, auch nicht zugewiesene | 2026-07-26 | 1f3e965d | [260726-th8-anyone-can-complete-task](./quick/260726-th8-anyone-can-complete-task/) |
 | 260726-vdz | Optionales Task-Setting: zugewiesene Person darf eine Erledigung nicht selbst zurücknehmen | 2026-07-26 | a7e0260a | [260726-vdz-assignee-cannot-uncomplete](./quick/260726-vdz-assignee-cannot-uncomplete/) |
+| 260727-a1u | Task-Archetypen Welle 0: Archetype-Enum und Ableitung in shared | 2026-07-27 | 6b9e5bb6 | [260727-a1u-task-archetypen-welle-0-archetype-enum-u](./quick/260727-a1u-task-archetypen-welle-0-archetype-enum-u/) |
 
 ## Session Continuity
 
