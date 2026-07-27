@@ -613,6 +613,17 @@ pub async fn process_period_finalization(pool: &SqlitePool) -> Result<PeriodFina
             // Task was paused or household on vacation - skip
             periods_skipped += 1;
             PeriodStatus::Skipped
+        } else if task.target_count <= 0 && !task.habit_type.is_inverted() {
+            // No target: doing it is a success, not doing it is simply not a verdict. Without
+            // this branch `completions_count >= 0` would be trivially true and every single
+            // period - even an untouched one - would be recorded as Completed.
+            if completions_count > 0 {
+                periods_completed += 1;
+                PeriodStatus::Completed
+            } else {
+                periods_skipped += 1;
+                PeriodStatus::Skipped
+            }
         } else if completions_count >= task.target_count as i64 {
             // Target was met
             periods_completed += 1;
@@ -1109,6 +1120,56 @@ mod tests {
             report.missed_tasks, 1,
             "an avoided bad habit must still reach the reward path, target_count 0 or not"
         );
+    }
+
+    /// Period finalization for a task without a target: an untouched day is no verdict at all.
+    /// Without the free-form branch `completions_count >= 0` would be trivially true and the day
+    /// would be recorded as Completed — a bonus task would show nothing but green ticks.
+    #[tokio::test]
+    async fn test_period_finalization_free_form_untouched_day_is_skipped() {
+        let (pool, household_id, user_id, _yesterday) = setup_missed_task_env().await;
+        let task = crate::test_utils::create_test_task(&pool, &household_id)
+            .with_title("Water the plants")
+            .with_target_count(0)
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+        backdate_task(&pool, &task.id).await;
+
+        let report = process_period_finalization(&pool).await.unwrap();
+
+        assert_eq!(
+            report.periods_completed, 0,
+            "an untouched bonus task must not be recorded as completed"
+        );
+        assert_eq!(
+            report.periods_failed, 0,
+            "a task without a target can never fail"
+        );
+        assert_eq!(report.periods_skipped, 1, "the day carries no verdict");
+    }
+
+    /// The other half: actually doing a bonus task does count.
+    #[tokio::test]
+    async fn test_period_finalization_free_form_completed_day_is_completed() {
+        let (pool, household_id, user_id, yesterday) = setup_missed_task_env().await;
+        let task = crate::test_utils::create_test_task(&pool, &household_id)
+            .with_title("Water the plants")
+            .with_target_count(0)
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+        backdate_task(&pool, &task.id).await;
+
+        insert_completion_on(&pool, &task.id, &user_id, yesterday).await;
+
+        let report = process_period_finalization(&pool).await.unwrap();
+
+        assert_eq!(
+            report.periods_completed, 1,
+            "doing a bonus task must be recorded as a success"
+        );
+        assert_eq!(report.periods_failed, 0);
     }
 
     #[tokio::test]
