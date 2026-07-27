@@ -149,10 +149,14 @@ async fn build_due_today_section(
 /// definition of "done", including its treatment of `target_count = 0` as free-form
 /// (never "met").
 ///
-/// The period bounds matter as much as the count. A raw `due_date = today` check would be
-/// WRONG: `scheduler::get_next_due_date`'s Weekdays and Custom branches deliberately skip
-/// today when today is itself a scheduled occurrence, so those completions are stored with
-/// a FUTURE `due_date`.
+/// `get_next_due_date` returns `Some(today)` whenever `is_task_due_on_date(task, today)`
+/// holds — and the caller above has already checked exactly that. The call stays anyway: it
+/// also catches OneTime tasks (`None` falls back to `today`) and keeps the derivation of the
+/// period in one place.
+///
+/// The period bounds themselves remain indispensable for a different, still valid reason:
+/// Weekly and Monthly tasks count over a whole week or month, so a raw `due_date = today`
+/// check would lose their completions.
 async fn is_completed_for_today(
     pool: &SqlitePool,
     task: &Task,
@@ -253,13 +257,11 @@ async fn build_missed_yesterday_section(
     }
 
     // ---- D-10: inverted habits that WERE performed yesterday ----
-    // KNOWN LIMITATION: D-10 is worded as `task_completions.due_date = yesterday`, and is
-    // implemented exactly as worded. For RecurrenceType::Weekdays and Custom,
-    // `scheduler::get_next_due_date` skips today when today is itself a scheduled
-    // occurrence, so a bad habit indulged on those recurrence types can be stored with a
-    // due_date that is not the calendar day of the act. "Fixing" only this query would
-    // create an internal inconsistency with D-08, which trusts the background job's
-    // same-flavoured bookkeeping.
+    // D-10 is worded as `task_completions.due_date = yesterday` and implemented exactly as
+    // worded. Remaining edge: a Weekdays/Custom habit indulged on a day that is NOT a
+    // scheduled occurrence is still stored against its next scheduled date, so it only
+    // surfaces in the report after that date. That is the same deliberate shift early
+    // completion relies on — intended, not broken.
     let indulged = sqlx::query_as::<_, (String, Option<String>)>(
         r#"
         SELECT t.title, t.due_time
@@ -808,7 +810,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_due_today_marks_weekdays_task_done_via_period_bounds() {
+    async fn test_due_today_marks_weekdays_task_done_on_its_scheduled_day() {
         let pool = create_test_pool().await;
         let (household_id, user_id) = setup(&pool).await;
         let task = create_test_task(&pool, &household_id)
@@ -817,11 +819,10 @@ mod tests {
             .build()
             .await;
 
-        // `get_next_due_date` SKIPS today for Weekdays when today is scheduled, so a
-        // completion made today is stored with next Monday's due_date. A naive
-        // `due_date = today` check would miss it.
-        let next_occurrence = NaiveDate::from_ymd_opt(2027, 1, 11).unwrap();
-        insert_completion(&pool, &task.id, &user_id, next_occurrence).await;
+        // The pinned day is Monday 2027-01-04 and the default schedule is Mon-Fri, so today
+        // IS a scheduled occurrence: `get_next_due_date` returns today and `complete_task`
+        // stores the completion against today.
+        insert_completion(&pool, &task.id, &user_id, pinned_today()).await;
 
         let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
             .await
@@ -829,6 +830,33 @@ mod tests {
 
         assert!(
             report.contains("- Weekday workout (done)"),
+            "got: {report}"
+        );
+    }
+
+    /// Counterpart to the test above: before the "on or after" fix this was green, because a
+    /// completion made today landed on the following occurrence. It must now be red-turned-
+    /// green the other way round — a future due_date does NOT mark today as done.
+    #[tokio::test]
+    async fn test_due_today_weekdays_completion_on_later_occurrence_is_not_done() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Weekday workout")
+            .with_recurrence(RecurrenceType::Weekdays)
+            .build()
+            .await;
+
+        let later_occurrence = NaiveDate::from_ymd_opt(2027, 1, 11).unwrap();
+        insert_completion(&pool, &task.id, &user_id, later_occurrence).await;
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(report.contains("- Weekday workout"), "got: {report}");
+        assert!(
+            !report.contains("- Weekday workout (done)"),
             "got: {report}"
         );
     }

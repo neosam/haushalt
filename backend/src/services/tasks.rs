@@ -3738,203 +3738,127 @@ mod tests {
         assert_eq!(count, 0);
     }
 
-    #[tokio::test]
-    async fn test_complete_weekday_task_early() {
-        use chrono::{Datelike, Duration};
-        use shared::RecurrenceValue;
-
-        let pool = setup_test_db().await;
-        let user_id = create_test_user(&pool).await;
-        let household_id = create_test_household(&pool, &user_id).await;
-
-        // Create a Weekdays task (Mon/Wed/Fri)
-        let request = CreateTaskRequest {
-            title: "Weekdays Task Early".to_string(),
-            description: None,
-            recurrence_type: RecurrenceType::Weekdays,
-            recurrence_value: Some(RecurrenceValue::Weekdays(vec![1, 3, 5])), // Mon, Wed, Fri
-            assigned_user_id: Some(user_id),
-            target_count: Some(1),
-            time_period: None,
-            allow_exceed_target: Some(false),
-            anyone_can_complete: None,
-            assignee_cannot_uncomplete: None,
-            requires_review: None,
-            points_reward: None,
-            points_penalty: None,
-            due_time: None,
-            habit_type: None,
-            category_id: None,
-            is_suggestion: None,
-        };
-        let task = create_task(&pool, &household_id, &request, None)
-            .await
-            .unwrap();
-
-        // Find a Tuesday (not scheduled)
-        let today = chrono::Utc::now().date_naive();
-        let mut tuesday = today;
-        while tuesday.weekday().num_days_from_monday() != 1 {
-            tuesday = tuesday + Duration::days(1);
-        }
-
-        // Mock completing on Tuesday by directly inserting completion
-        let wednesday = tuesday + Duration::days(1); // Next scheduled day
-
-        // Complete the task - should use Wednesday as completion_due_date
-        let completion_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO task_completions (id, task_id, user_id, due_date, status) VALUES (?, ?, ?, ?, ?)"
-        )
-        .bind(completion_id.to_string())
-        .bind(task.id.to_string())
-        .bind(user_id.to_string())
-        .bind(wednesday.to_string()) // Should be Wednesday
-        .bind("approved")
-        .execute(&pool)
-        .await
-        .unwrap();
-
-        // Verify completion has correct due_date (Wednesday)
-        let due_date: String = sqlx::query_scalar(
-            "SELECT due_date FROM task_completions WHERE id = ?"
-        )
-        .bind(completion_id.to_string())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-
-        assert_eq!(due_date, wednesday.to_string());
+    /// `scheduler::weekday_to_u8` is private, but deckungsgleich with
+    /// `Weekday::num_days_from_sunday()` (Sun = 0 ... Sat = 6). Keeping the mapping in one
+    /// helper documents that equality so it cannot drift apart silently.
+    fn scheduler_weekday_of(date: chrono::NaiveDate) -> u8 {
+        use chrono::Datelike;
+        date.weekday().num_days_from_sunday() as u8
     }
 
-    #[tokio::test]
-    async fn test_complete_weekday_task_on_scheduled_day() {
-        use chrono::{Datelike, Duration};
-        use shared::RecurrenceValue;
-
-        let pool = setup_test_db().await;
-        let user_id = create_test_user(&pool).await;
-        let household_id = create_test_household(&pool, &user_id).await;
-
-        // Create a Weekdays task (Mon/Wed/Fri)
-        let request = CreateTaskRequest {
-            title: "Weekdays Task Scheduled".to_string(),
-            description: None,
-            recurrence_type: RecurrenceType::Weekdays,
-            recurrence_value: Some(RecurrenceValue::Weekdays(vec![1, 3, 5])), // Mon, Wed, Fri
-            assigned_user_id: Some(user_id),
-            target_count: Some(1),
-            time_period: None,
-            allow_exceed_target: Some(false),
-            anyone_can_complete: None,
-            assignee_cannot_uncomplete: None,
-            requires_review: None,
-            points_reward: None,
-            points_penalty: None,
-            due_time: None,
-            habit_type: None,
-            category_id: None,
-            is_suggestion: None,
-        };
-        let task = create_task(&pool, &household_id, &request, None)
-            .await
-            .unwrap();
-
-        // Find a Monday (scheduled day)
-        let today = chrono::Utc::now().date_naive();
-        let mut monday = today;
-        while monday.weekday().num_days_from_monday() != 0 {
-            monday = monday + Duration::days(1);
-        }
-        let next_monday = monday + Duration::days(7);
-
-        // Complete on Monday - should use next Monday as completion_due_date
-        let completion_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO task_completions (id, task_id, user_id, due_date, status) VALUES (?, ?, ?, ?, ?)"
+    async fn stored_completion_due_date(pool: &SqlitePool, task_id: &Uuid) -> chrono::NaiveDate {
+        sqlx::query_scalar::<_, chrono::NaiveDate>(
+            "SELECT due_date FROM task_completions WHERE task_id = ?",
         )
-        .bind(completion_id.to_string())
-        .bind(task.id.to_string())
-        .bind(user_id.to_string())
-        .bind(next_monday.to_string()) // Should be next Monday
-        .bind("approved")
-        .execute(&pool)
+        .bind(task_id.to_string())
+        .fetch_one(pool)
         .await
-        .unwrap();
-
-        // Verify completion has correct due_date (next Monday)
-        let due_date: String = sqlx::query_scalar(
-            "SELECT due_date FROM task_completions WHERE id = ?"
-        )
-        .bind(completion_id.to_string())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-
-        assert_eq!(due_date, next_monday.to_string());
+        .unwrap()
     }
 
+    /// `complete_task` reads `Utc::now().date_naive()` and the test day cannot be pinned, so
+    /// the task is built AROUND the test day instead of the other way round.
     #[tokio::test]
-    async fn test_complete_custom_task_early() {
-        use chrono::NaiveDate;
+    async fn test_complete_weekdays_task_on_scheduled_day_stores_today() {
         use shared::RecurrenceValue;
 
-        let pool = setup_test_db().await;
-        let user_id = create_test_user(&pool).await;
-        let household_id = create_test_household(&pool, &user_id).await;
+        let pool = test_utils::create_test_pool().await;
+        let household_id = test_utils::create_test_household(&pool).await;
+        let user_id =
+            test_utils::create_test_user(&pool, "member@test.com", shared::Role::Member).await;
+        test_utils::create_test_membership(&pool, &household_id, &user_id, shared::Role::Member)
+            .await;
 
-        // Create a Custom recurrence task with future dates
-        let feb25 = NaiveDate::from_ymd_opt(2025, 2, 25).unwrap();
-        let feb28 = NaiveDate::from_ymd_opt(2025, 2, 28).unwrap();
-        let mar5 = NaiveDate::from_ymd_opt(2025, 3, 5).unwrap();
+        let today = Utc::now().date_naive();
+        let task = test_utils::create_test_task(&pool, &household_id)
+            .with_title("Weekdays today")
+            .with_recurrence(RecurrenceType::Weekdays)
+            .with_recurrence_value(RecurrenceValue::Weekdays(vec![scheduler_weekday_of(today)]))
+            .with_assigned_user(user_id)
+            .build()
+            .await;
 
-        let request = CreateTaskRequest {
-            title: "Custom Task Early".to_string(),
-            description: None,
-            recurrence_type: RecurrenceType::Custom,
-            recurrence_value: Some(RecurrenceValue::CustomDates(vec![feb25, feb28, mar5])),
-            assigned_user_id: Some(user_id),
-            target_count: Some(1),
-            time_period: None,
-            allow_exceed_target: Some(false),
-            anyone_can_complete: None,
-            assignee_cannot_uncomplete: None,
-            requires_review: None,
-            points_reward: None,
-            points_penalty: None,
-            due_time: None,
-            habit_type: None,
-            category_id: None,
-            is_suggestion: None,
-        };
-        let task = create_task(&pool, &household_id, &request, None)
+        complete_task(&pool, &task.id, &user_id, &household_id)
             .await
-            .unwrap();
+            .expect("completing on a scheduled weekday must succeed");
 
-        // Complete before Feb 25 - should use Feb 25 as completion_due_date
-        let completion_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO task_completions (id, task_id, user_id, due_date, status) VALUES (?, ?, ?, ?, ?)"
-        )
-        .bind(completion_id.to_string())
-        .bind(task.id.to_string())
-        .bind(user_id.to_string())
-        .bind(feb25.to_string()) // Should be Feb 25
-        .bind("approved")
-        .execute(&pool)
-        .await
-        .unwrap();
+        assert_eq!(
+            stored_completion_due_date(&pool, &task.id).await,
+            today,
+            "a task ticked off on its scheduled weekday belongs to TODAY"
+        );
+    }
 
-        // Verify completion has correct due_date (Feb 25)
-        let due_date: String = sqlx::query_scalar(
-            "SELECT due_date FROM task_completions WHERE id = ?"
-        )
-        .bind(completion_id.to_string())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    /// Also covers the "last scheduled date" case, which used to raise `NotDueToday`
+    /// because `get_next_due_date` returned `None` there.
+    #[tokio::test]
+    async fn test_complete_custom_task_on_scheduled_date_stores_today() {
+        use shared::RecurrenceValue;
 
-        assert_eq!(due_date, feb25.to_string());
+        let pool = test_utils::create_test_pool().await;
+        let household_id = test_utils::create_test_household(&pool).await;
+        let user_id =
+            test_utils::create_test_user(&pool, "member@test.com", shared::Role::Member).await;
+        test_utils::create_test_membership(&pool, &household_id, &user_id, shared::Role::Member)
+            .await;
+
+        let today = Utc::now().date_naive();
+        let task = test_utils::create_test_task(&pool, &household_id)
+            .with_title("Custom today")
+            .with_recurrence(RecurrenceType::Custom)
+            .with_recurrence_value(RecurrenceValue::CustomDates(vec![today]))
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+
+        let result = complete_task(&pool, &task.id, &user_id, &household_id).await;
+        assert!(
+            result.is_ok(),
+            "a custom task on its (only, hence last) scheduled date must be completable: {:?}",
+            result.err()
+        );
+
+        assert_eq!(
+            stored_completion_due_date(&pool, &task.id).await,
+            today,
+            "a task ticked off on its scheduled date belongs to TODAY"
+        );
+    }
+
+    /// Early completion keeps working: on a day that is NOT scheduled, the completion is
+    /// booked onto the next real occurrence.
+    #[tokio::test]
+    async fn test_complete_weekdays_task_early_stores_next_occurrence() {
+        use shared::RecurrenceValue;
+
+        let pool = test_utils::create_test_pool().await;
+        let household_id = test_utils::create_test_household(&pool).await;
+        let user_id =
+            test_utils::create_test_user(&pool, "member@test.com", shared::Role::Member).await;
+        test_utils::create_test_membership(&pool, &household_id, &user_id, shared::Role::Member)
+            .await;
+
+        let today = Utc::now().date_naive();
+        let in_two_days = today + chrono::Duration::days(2);
+        let task = test_utils::create_test_task(&pool, &household_id)
+            .with_title("Weekdays in two days")
+            .with_recurrence(RecurrenceType::Weekdays)
+            .with_recurrence_value(RecurrenceValue::Weekdays(vec![scheduler_weekday_of(
+                in_two_days,
+            )]))
+            .with_assigned_user(user_id)
+            .build()
+            .await;
+
+        complete_task(&pool, &task.id, &user_id, &household_id)
+            .await
+            .expect("completing early must succeed");
+
+        assert_eq!(
+            stored_completion_due_date(&pool, &task.id).await,
+            in_two_days,
+            "an early tick belongs to the next scheduled occurrence"
+        );
     }
 
     #[tokio::test]
