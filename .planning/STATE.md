@@ -74,7 +74,12 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet. Use `/gsd-add-todo` to capture ideas during sessions.
+2 pending — siehe `.planning/todos/pending/`
+
+| Todo | Area | Kurz |
+|------|------|------|
+| [Freiform-Tasks werden fälschlich bestraft](./todos/pending/2026-07-27-freiform-tasks-werden-faelschlich-bestraft.md) | backend | `process_missed_tasks` bestraft `target_count = 0`, wenn nicht erledigt — ein Task ohne Soll kann nicht verfehlt werden. Blockiert die Bonusaufgabe. |
+| [Bonusaufgabe als sechster Archetyp](./todos/pending/2026-07-27-bonusaufgabe-als-sechster-archetyp.md) | general | Muss nicht gemacht werden (Soll 0), wird aber getrackt. Ableitungsregel, Presets, Karte, i18n. Zwei offene Entscheidungen darin. |
 
 ### Blockers/Concerns
 
