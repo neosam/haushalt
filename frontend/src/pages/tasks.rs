@@ -5,6 +5,7 @@ use leptos_router::*;
 use shared::{HouseholdSettings, MemberWithUser, Punishment, Reward, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
 
 use crate::api::ApiClient;
+use crate::components::bulk_edit_modal::BulkEditModal;
 use crate::components::category_modal::CategoryModal;
 use crate::utils::TaskModalData;
 use crate::components::context_menu::{ContextMenu, ContextMenuAction};
@@ -752,18 +753,12 @@ pub fn TasksPage() -> impl IntoView {
                     .map(|s| s.hierarchy_type.filter_assignable_members(members.get()))
                     .unwrap_or_else(|| members.get());
                 view! {
-                    <TaskModal
-                        task=None
+                    <BulkEditModal
+                        bulk_task_ids=selected_ids
                         household_id=hid
                         members=assignable_members
-                        household_rewards=rewards.get()
-                        household_punishments=punishments.get()
-                        linked_rewards=vec![]
-                        linked_punishments=vec![]
                         categories=categories.get()
-                        bulk_task_ids=selected_ids
                         on_close=move |_| show_bulk_edit_modal.set(false)
-                        on_save=move |_| {}
                         on_bulk_save=Callback::new(move |_count: usize| {
                             show_bulk_edit_modal.set(false);
                             multi_select_mode.set(false);

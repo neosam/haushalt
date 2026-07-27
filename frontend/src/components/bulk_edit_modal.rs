@@ -3,8 +3,16 @@
 //! Split out of `task_modal.rs`, which used to carry this mode as a second branch
 //! next to create/edit/duplicate/suggest.
 
-use shared::{HabitType, RecurrenceType, RecurrenceValue, UpdateTaskRequest};
+use leptos::*;
+use shared::{
+    HabitType, MemberWithUser, RecurrenceType, RecurrenceValue, TaskCategory, UpdateTaskRequest,
+};
 use uuid::Uuid;
+
+use crate::api::ApiClient;
+use crate::components::calendar_picker::CalendarPicker;
+use crate::components::task_fields::*;
+use crate::i18n::use_i18n;
 
 /// Snapshot of the bulk edit form: which fields are ticked and with which value.
 ///
@@ -152,6 +160,369 @@ pub fn build_bulk_update_request(form: &BulkEditForm) -> UpdateTaskRequest {
         category_id,
         archived: None,
         paused: form.apply_paused.then_some(form.paused),
+    }
+}
+
+/// Applies a selection of fields to many tasks at once.
+///
+/// Every field is opt-in via its own "apply" checkbox; unticked fields are left alone
+/// on every selected task. Title and description are not offered at all.
+#[component]
+pub fn BulkEditModal(
+    /// Ids of the selected tasks that get updated together
+    bulk_task_ids: Vec<String>,
+    household_id: String,
+    members: Vec<MemberWithUser>,
+    #[prop(default = vec![])] categories: Vec<TaskCategory>,
+    #[prop(into)] on_close: Callback<()>,
+    /// Receives the number of successfully updated tasks
+    #[prop(into)] on_bulk_save: Callback<usize>,
+) -> impl IntoView {
+    let bulk_task_count = bulk_task_ids.len();
+
+    let members_stored = store_value(members);
+    let categories_stored = store_value(categories);
+
+    let error = create_rw_signal(Option::<String>::None);
+    let saving = create_rw_signal(false);
+
+    // Form fields
+    let selected_category_id = create_rw_signal(String::new());
+    // Quirk carried over from the old TaskModal create path: with exactly one
+    // assignable member that member is preselected — which also happens here.
+    let initial_assigned_user = {
+        let members_val = members_stored.get_value();
+        if members_val.len() == 1 {
+            members_val[0].user.id.to_string()
+        } else {
+            String::new()
+        }
+    };
+    let assigned_user = create_rw_signal(initial_assigned_user);
+    let recurrence_type = create_rw_signal("daily".to_string());
+    let target_count = create_rw_signal("1".to_string());
+    let allow_exceed_target = create_rw_signal(true);
+    let anyone_can_complete = create_rw_signal(false);
+    let assignee_cannot_uncomplete = create_rw_signal(false);
+    let requires_review = create_rw_signal(false);
+    let on_dashboard = create_rw_signal(false);
+    let habit_type = create_rw_signal("good".to_string());
+    let points_reward = create_rw_signal(String::new());
+    let points_penalty = create_rw_signal(String::new());
+    let due_time = create_rw_signal(String::new());
+    let paused = create_rw_signal(false);
+
+    // Recurrence value signals
+    let bulk_selected_weekday = create_rw_signal(1u8); // Monday
+    let bulk_selected_month_day = create_rw_signal(1u8);
+    let bulk_selected_weekdays = create_rw_signal(Vec::<u8>::new());
+    let selected_custom_dates = create_rw_signal(Vec::<chrono::NaiveDate>::new());
+
+    // "Apply" signals - which fields to update
+    let apply_category = create_rw_signal(false);
+    let apply_assigned_user = create_rw_signal(false);
+    let apply_target_count = create_rw_signal(false);
+    let apply_allow_exceed = create_rw_signal(false);
+    let apply_anyone_can_complete = create_rw_signal(false);
+    let apply_assignee_cannot_uncomplete = create_rw_signal(false);
+    let apply_requires_review = create_rw_signal(false);
+    let apply_on_dashboard = create_rw_signal(false);
+    let apply_habit_type = create_rw_signal(false);
+    let apply_points_reward = create_rw_signal(false);
+    let apply_points_penalty = create_rw_signal(false);
+    let apply_due_time = create_rw_signal(false);
+    let apply_paused = create_rw_signal(false);
+    let apply_recurrence = create_rw_signal(false);
+
+    // Progress state
+    let bulk_progress = create_rw_signal((0usize, 0usize)); // (completed, total)
+    let bulk_errors = create_rw_signal(Vec::<String>::new());
+
+    let on_bulk_submit = {
+        let household_id = household_id.clone();
+        let bulk_task_ids = bulk_task_ids.clone();
+
+        move |ev: web_sys::SubmitEvent| {
+            ev.prevent_default();
+            saving.set(true);
+            error.set(None);
+            bulk_progress.set((0, bulk_task_ids.len()));
+            bulk_errors.set(vec![]);
+
+            let hid = household_id.clone();
+            let ids = bulk_task_ids.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                let mut success_count = 0;
+                let mut error_list = vec![];
+
+                for (idx, task_id) in ids.iter().enumerate() {
+                    // Read fresh per task, mirroring the previous inline code that
+                    // rebuilt the request on every iteration.
+                    let form = BulkEditForm {
+                        apply_category: apply_category.get(),
+                        category_id_raw: selected_category_id.get(),
+                        apply_assigned_user: apply_assigned_user.get(),
+                        assigned_user_raw: assigned_user.get(),
+                        apply_recurrence: apply_recurrence.get(),
+                        recurrence_type_raw: recurrence_type.get(),
+                        weekday: bulk_selected_weekday.get(),
+                        month_day: bulk_selected_month_day.get(),
+                        weekdays: bulk_selected_weekdays.get(),
+                        custom_dates: selected_custom_dates.get(),
+                        apply_target_count: apply_target_count.get(),
+                        target_count_raw: target_count.get(),
+                        apply_allow_exceed: apply_allow_exceed.get(),
+                        allow_exceed_target: allow_exceed_target.get(),
+                        apply_anyone_can_complete: apply_anyone_can_complete.get(),
+                        anyone_can_complete: anyone_can_complete.get(),
+                        apply_assignee_cannot_uncomplete: apply_assignee_cannot_uncomplete.get(),
+                        assignee_cannot_uncomplete: assignee_cannot_uncomplete.get(),
+                        apply_requires_review: apply_requires_review.get(),
+                        requires_review: requires_review.get(),
+                        apply_points_reward: apply_points_reward.get(),
+                        points_reward_raw: points_reward.get(),
+                        apply_points_penalty: apply_points_penalty.get(),
+                        points_penalty_raw: points_penalty.get(),
+                        apply_due_time: apply_due_time.get(),
+                        due_time_raw: due_time.get(),
+                        apply_habit_type: apply_habit_type.get(),
+                        habit_type_raw: habit_type.get(),
+                        apply_paused: apply_paused.get(),
+                        paused: paused.get(),
+                    };
+                    let request = build_bulk_update_request(&form);
+
+                    match ApiClient::update_task(&hid, task_id, request).await {
+                        Ok(_) => {
+                            // Dashboard visibility has its own endpoints, so it is not
+                            // part of the update request.
+                            if apply_on_dashboard.get() {
+                                let should_be_on_dashboard = on_dashboard.get();
+                                if should_be_on_dashboard {
+                                    let _ = ApiClient::add_task_to_dashboard(task_id).await;
+                                } else {
+                                    let _ = ApiClient::remove_task_from_dashboard(task_id).await;
+                                }
+                            }
+                            success_count += 1;
+                        }
+                        Err(e) => {
+                            error_list.push(format!("Task {}: {}", &task_id[..8], e));
+                        }
+                    }
+
+                    bulk_progress.set((idx + 1, ids.len()));
+                }
+
+                saving.set(false);
+                bulk_errors.set(error_list.clone());
+
+                if error_list.is_empty() {
+                    on_bulk_save.call(success_count);
+                }
+            });
+        }
+    };
+
+    let close = move |_| on_close.call(());
+
+    let i18n = use_i18n();
+    let i18n_stored = store_value(i18n.clone());
+
+    let modal_title = i18n
+        .t("tasks.bulk_edit_title")
+        .replace("{count}", &bulk_task_count.to_string());
+    let submit_button_text = i18n.t("tasks.edit_selected");
+    // Quirk carried over: the old title/button cascade treated bulk edit as neither
+    // edit nor suggestion, so it fell through to the create branch. The button
+    // therefore reads "Creating…" while a bulk save runs.
+    let saving_text = i18n.t("task_modal.creating");
+
+    let members_for_bulk = members_stored.get_value();
+    let categories_for_bulk = categories_stored.get_value();
+
+    view! {
+        <div class="modal-backdrop" on:click=close>
+            <div class="modal modal-task" on:click=|e| e.stop_propagation()>
+                <div class="modal-header">
+                    <h3 class="modal-title">{modal_title}</h3>
+                    <button class="modal-close" on:click=close>"×"</button>
+                </div>
+
+                {move || error.get().map(|e| view! {
+                    <div class="alert alert-error" style="margin: 1rem;">{e}</div>
+                })}
+
+                // Progress indicator
+                {move || {
+                    if saving.get() {
+                        let (completed, total) = bulk_progress.get();
+                        let percent = if total > 0 { (completed * 100) / total } else { 0 };
+                        Some(view! {
+                            <div class="bulk-edit-progress" style="margin: 1rem;">
+                                <div style="margin-bottom: 0.5rem;">
+                                    {i18n_stored.get_value().t("tasks.bulk_edit_progress")
+                                        .replace("{current}", &completed.to_string())
+                                        .replace("{total}", &total.to_string())}
+                                </div>
+                                <div class="bulk-edit-progress-bar">
+                                    <div class="bulk-edit-progress-fill" style=format!("width: {}%", percent)></div>
+                                </div>
+                            </div>
+                        })
+                    } else {
+                        None
+                    }
+                }}
+
+                // Per-task errors
+                {move || {
+                    let errors = bulk_errors.get();
+                    if !errors.is_empty() {
+                        Some(view! {
+                            <div class="alert alert-error" style="margin: 1rem;">
+                                <div style="font-weight: 500; margin-bottom: 0.5rem;">
+                                    {i18n_stored.get_value().t("tasks.bulk_edit_partial")
+                                        .replace("{success}", &(bulk_task_count - errors.len()).to_string())
+                                        .replace("{total}", &bulk_task_count.to_string())
+                                        .replace("{failed}", &errors.len().to_string())}
+                                </div>
+                                <ul style="margin: 0; padding-left: 1rem;">
+                                    {errors.iter().map(|e| view! { <li>{e}</li> }).collect_view()}
+                                </ul>
+                            </div>
+                        })
+                    } else {
+                        None
+                    }
+                }}
+
+                <form on:submit=on_bulk_submit>
+                    <div style="padding: 1rem; max-height: 60vh; overflow-y: auto;">
+                        <div class="alert alert-info" style="margin-bottom: 1rem;">
+                            {i18n_stored.get_value().t("tasks.bulk_edit_hint")}
+                        </div>
+
+                        // Field order matches the regular edit dialog
+                        // Category
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.category") apply=apply_category>
+                            <TaskCategoryField value=selected_category_id categories=categories_for_bulk hide_label=true />
+                        </BulkEditField>
+
+                        // Recurrence
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.recurrence_label") apply=apply_recurrence>
+                            <TaskRecurrenceTypeField value=recurrence_type hide_label=true />
+                        </BulkEditField>
+
+                        // Conditional recurrence value fields based on selected type
+                        <Show when=move || apply_recurrence.get() && recurrence_type.get() == "weekly" fallback=|| ()>
+                            <div class="form-group" style="margin-left: 1.5rem;">
+                                <TaskWeekdayField value=bulk_selected_weekday hide_label=false />
+                            </div>
+                        </Show>
+
+                        <Show when=move || apply_recurrence.get() && recurrence_type.get() == "monthly" fallback=|| ()>
+                            <div class="form-group" style="margin-left: 1.5rem;">
+                                <TaskMonthDayField value=bulk_selected_month_day hide_label=false />
+                            </div>
+                        </Show>
+
+                        <Show when=move || apply_recurrence.get() && recurrence_type.get() == "weekdays" fallback=|| ()>
+                            <div class="form-group" style="margin-left: 1.5rem;">
+                                <TaskWeekdaysField value=bulk_selected_weekdays hide_label=false />
+                            </div>
+                        </Show>
+
+                        <Show when=move || apply_recurrence.get() && recurrence_type.get() == "custom" fallback=|| ()>
+                            <div class="form-group" style="margin-left: 1.5rem;">
+                                <label class="form-label">{i18n_stored.get_value().t("task_modal.custom_dates")}</label>
+                                <CalendarPicker selected_dates=selected_custom_dates />
+                                <small class="form-hint">{i18n_stored.get_value().t("task_modal.custom_dates_hint")}</small>
+                            </div>
+                        </Show>
+
+                        // Target Count
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.target_count") apply=apply_target_count>
+                            <TaskTargetCountField value=target_count hide_label=true />
+                        </BulkEditField>
+
+                        // Allow Exceed Target
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.allow_exceed") apply=apply_allow_exceed>
+                            <TaskAllowExceedField value=allow_exceed_target hide_label=true />
+                        </BulkEditField>
+
+                        // Anyone Can Complete
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.anyone_can_complete") apply=apply_anyone_can_complete>
+                            <TaskAnyoneCanCompleteField value=anyone_can_complete hide_label=true />
+                        </BulkEditField>
+
+                        // Assignee Cannot Uncomplete
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.assignee_cannot_uncomplete") apply=apply_assignee_cannot_uncomplete>
+                            <TaskAssigneeCannotUncompleteField value=assignee_cannot_uncomplete hide_label=true />
+                        </BulkEditField>
+
+                        // Requires Review
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.require_review") apply=apply_requires_review>
+                            <TaskRequiresReviewField value=requires_review hide_label=true />
+                        </BulkEditField>
+
+                        // Show on Dashboard
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.show_on_dashboard") apply=apply_on_dashboard>
+                            <TaskOnDashboardField value=on_dashboard hide_label=true />
+                        </BulkEditField>
+
+                        // Habit Type
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.habit_type_label") apply=apply_habit_type>
+                            <TaskHabitTypeField value=habit_type hide_label=true />
+                        </BulkEditField>
+
+                        // Points Reward
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.points_reward") apply=apply_points_reward>
+                            <TaskPointsRewardField value=points_reward hide_label=true />
+                        </BulkEditField>
+
+                        // Points Penalty
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.points_penalty") apply=apply_points_penalty>
+                            <TaskPointsPenaltyField value=points_penalty hide_label=true />
+                        </BulkEditField>
+
+                        // Due Time
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.due_time") apply=apply_due_time>
+                            <TaskDueTimeField value=due_time hide_label=true />
+                        </BulkEditField>
+
+                        // Assigned User
+                        <BulkEditField label=i18n_stored.get_value().t("task_modal.assigned_to") apply=apply_assigned_user>
+                            <TaskAssignedUserField value=assigned_user members=members_for_bulk hide_label=true />
+                        </BulkEditField>
+
+                        // Paused (bulk-edit specific)
+                        <BulkEditField label=i18n_stored.get_value().t("tasks.paused") apply=apply_paused>
+                            <TaskPausedField value=paused hide_label=true />
+                        </BulkEditField>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button
+                            type="button"
+                            class="btn btn-outline"
+                            on:click=move |_| on_close.call(())
+                            disabled=move || saving.get()
+                        >
+                            {i18n_stored.get_value().t("common.cancel")}
+                        </button>
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                            disabled=move || saving.get()
+                        >
+                            {move || if saving.get() { saving_text.clone() } else { submit_button_text.clone() }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     }
 }
 
