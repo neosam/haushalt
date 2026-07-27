@@ -702,10 +702,10 @@ mod tests {
         let monday = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
         let tuesday = NaiveDate::from_ymd_opt(2024, 1, 16).unwrap();
         let wednesday = NaiveDate::from_ymd_opt(2024, 1, 17).unwrap();
-        let next_monday = NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
 
-        // When completing on Monday, should get NEXT Monday, not today
-        assert_eq!(get_next_due_date(&task, monday), Some(next_monday));
+        // Monday is a scheduled day, so "on or after Monday" is Monday itself
+        assert_eq!(get_next_due_date(&task, monday), Some(monday));
+        // Tuesday is not scheduled, so the search moves forward to Wednesday
         assert_eq!(get_next_due_date(&task, tuesday), Some(wednesday));
     }
 
@@ -723,9 +723,11 @@ mod tests {
         let jan20 = NaiveDate::from_ymd_opt(2024, 1, 20).unwrap();
         let feb20 = NaiveDate::from_ymd_opt(2024, 2, 20).unwrap();
 
+        // jan10 is not scheduled, so the search moves forward to jan15
         assert_eq!(get_next_due_date(&task, jan10), Some(jan15));
-        // When completing on jan15, should get NEXT custom date after jan15 (feb20), not jan15
-        assert_eq!(get_next_due_date(&task, jan15), Some(feb20));
+        // jan15 is a scheduled date, so "on or after jan15" is jan15 itself
+        assert_eq!(get_next_due_date(&task, jan15), Some(jan15));
+        // jan20 is not scheduled, so the search moves forward to feb20
         assert_eq!(get_next_due_date(&task, jan20), Some(feb20));
     }
 
@@ -762,10 +764,9 @@ mod tests {
             Some(RecurrenceValue::Weekdays(vec![1, 3, 5])),
         );
 
-        // Complete on Monday (scheduled day) - should return next Monday
+        // Complete on Monday (scheduled day) - the due date is that very Monday
         let monday = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-        let next_monday = NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
-        assert_eq!(get_next_due_date(&task, monday), Some(next_monday));
+        assert_eq!(get_next_due_date(&task, monday), Some(monday));
     }
 
     #[test]
@@ -794,10 +795,9 @@ mod tests {
         ];
         let task = create_test_task(RecurrenceType::Custom, Some(RecurrenceValue::CustomDates(dates)));
 
-        // Complete on Feb 25 (scheduled date) - should return next custom date after Feb 25 (Feb 28)
+        // Complete on Feb 25 (scheduled date) - the due date is that very date
         let feb25 = NaiveDate::from_ymd_opt(2024, 2, 25).unwrap();
-        let feb28 = NaiveDate::from_ymd_opt(2024, 2, 28).unwrap();
-        assert_eq!(get_next_due_date(&task, feb25), Some(feb28));
+        assert_eq!(get_next_due_date(&task, feb25), Some(feb25));
     }
 
     #[test]
@@ -826,6 +826,89 @@ mod tests {
         // All custom dates are in the past - should return None
         let feb1 = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
         assert_eq!(get_next_due_date(&task, feb1), None);
+    }
+
+    #[test]
+    fn test_get_next_due_date_weekdays_single_scheduled_day_returns_today() {
+        // Task scheduled only for Monday - guards against a leftover "+7" shortcut
+        let task = create_test_task(
+            RecurrenceType::Weekdays,
+            Some(RecurrenceValue::Weekdays(vec![1])),
+        );
+
+        let monday = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let tuesday = NaiveDate::from_ymd_opt(2024, 1, 16).unwrap();
+        let next_monday = NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
+
+        // On its only scheduled weekday the answer is that day itself
+        assert_eq!(get_next_due_date(&task, monday), Some(monday));
+        // One day later the search moves on to the next occurrence
+        assert_eq!(get_next_due_date(&task, tuesday), Some(next_monday));
+    }
+
+    #[test]
+    fn test_get_next_due_date_custom_on_last_scheduled_date_returns_that_date() {
+        // Regression: standing on the LAST scheduled date used to yield None,
+        // which made complete_task reject the task with NotDueToday.
+        let jan15 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let task = create_test_task(
+            RecurrenceType::Custom,
+            Some(RecurrenceValue::CustomDates(vec![jan15])),
+        );
+
+        assert_eq!(get_next_due_date(&task, jan15), Some(jan15));
+
+        // Past the last date there is still nothing left
+        let jan20 = NaiveDate::from_ymd_opt(2024, 1, 20).unwrap();
+        assert_eq!(get_next_due_date(&task, jan20), None);
+    }
+
+    #[test]
+    fn test_get_next_due_date_agrees_with_is_task_due_on_date_weekdays() {
+        // Invariant: is_task_due_on_date(t, d) => get_next_due_date(t, d) == Some(d)
+        let task = create_test_task(
+            RecurrenceType::Weekdays,
+            Some(RecurrenceValue::Weekdays(vec![1, 3, 5])),
+        );
+
+        let start = NaiveDate::from_ymd_opt(2024, 1, 14).unwrap(); // Sunday
+        for offset in 0..7 {
+            let date = start + chrono::Duration::days(offset);
+            let next = get_next_due_date(&task, date);
+            if is_task_due_on_date(&task, date) {
+                assert_eq!(next, Some(date), "due on {date} must map to itself");
+            } else {
+                assert_ne!(next, Some(date), "{date} is not due, must not map to itself");
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_next_due_date_agrees_with_is_task_due_on_date_custom() {
+        // Invariant: is_task_due_on_date(t, d) => get_next_due_date(t, d) == Some(d)
+        let dates = vec![
+            NaiveDate::from_ymd_opt(2024, 2, 25).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 2, 28).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 3, 5).unwrap(),
+        ];
+        let task = create_test_task(
+            RecurrenceType::Custom,
+            Some(RecurrenceValue::CustomDates(dates)),
+        );
+
+        // Walk the whole calendar span of the schedule, plus a margin on both sides
+        let start = NaiveDate::from_ymd_opt(2024, 2, 20).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 3, 10).unwrap();
+        let mut date = start;
+        while date <= end {
+            let next = get_next_due_date(&task, date);
+            if is_task_due_on_date(&task, date) {
+                assert_eq!(next, Some(date), "due on {date} must map to itself");
+            } else {
+                assert_ne!(next, Some(date), "{date} is not due, must not map to itself");
+            }
+            date += chrono::Duration::days(1);
+        }
     }
 
     #[test]
