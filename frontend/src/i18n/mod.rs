@@ -144,6 +144,56 @@ mod tests {
         }
     }
 
+    /// Every key an archetype preset points at must resolve, otherwise the form would show
+    /// the raw key to the user.
+    #[test]
+    fn test_archetype_preset_keys_present_in_both_languages() {
+        use crate::components::task_form_model::{preset, ALL_ARCHETYPES};
+
+        let en = load_translations("en");
+        let de = load_translations("de");
+
+        for archetype in ALL_ARCHETYPES {
+            let p = preset(archetype);
+            let mut keys = vec![
+                p.name_key,
+                p.desc_key,
+                p.form_title_key,
+                p.assign_label_key,
+                p.assign_hint_key,
+            ];
+            if let Some((_, note_key)) = p.note {
+                keys.push(note_key);
+            }
+            for key in keys {
+                assert!(en.contains_key(key), "missing english key: {}", key);
+                assert!(de.contains_key(key), "missing german key: {}", key);
+            }
+        }
+    }
+
+    #[test]
+    fn test_task_form_group_keys_present_in_both_languages() {
+        let en = load_translations("en");
+        let de = load_translations("de");
+
+        for key in [
+            "task_modal.archetype.step_label",
+            "task_modal.archetype.changed",
+            "task_modal.assignment_required_error",
+            "task_modal.onetime_date",
+            "task_modal.onetime_date_hint",
+            "task_modal.recurrence_hint",
+            "task_modal.group.details",
+            "task_modal.group.goal",
+            "task_modal.group.points",
+            "task_modal.group.rules",
+        ] {
+            assert!(en.contains_key(key), "missing english key: {}", key);
+            assert!(de.contains_key(key), "missing german key: {}", key);
+        }
+    }
+
     #[test]
     fn test_supported_languages() {
         let langs = supported_languages();

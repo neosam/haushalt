@@ -4,6 +4,7 @@ pub mod points_display;
 pub mod loading;
 pub mod modal;
 pub mod task_modal;
+pub mod task_form_model;
 pub mod bulk_edit_modal;
 pub mod task_fields;
 pub mod task_detail_modal;
