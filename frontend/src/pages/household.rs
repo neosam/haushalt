@@ -20,6 +20,7 @@ use crate::components::set_date_modal::SetDateModal;
 use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
+use crate::utils::task_modal::{settings_punishments_enabled, settings_rewards_enabled};
 use crate::components::text_filter_input::TextFilterInput;
 use crate::i18n::use_i18n;
 
@@ -1345,6 +1346,9 @@ pub fn HouseholdPage() -> impl IntoView {
                         linked_rewards=task_linked_rewards.get()
                         linked_punishments=task_linked_punishments.get()
                         categories=categories.get()
+                        rewards_enabled=settings_rewards_enabled(&settings.get())
+                        punishments_enabled=settings_punishments_enabled(&settings.get())
+                        current_user_id=current_user_id.get()
                         on_close=move |_| {
                             editing_task.set(None);
                             task_linked_rewards.set(vec![]);

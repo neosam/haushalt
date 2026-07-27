@@ -1,5 +1,6 @@
 use leptos::*;
 use shared::{MemberWithUser, Punishment, Reward, Task, TaskCategory};
+use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::household_picker_modal::{EligibleHousehold, HouseholdPickerModal, TaskAction};
@@ -29,6 +30,7 @@ pub fn QuickTaskFab() -> impl IntoView {
     let household_data = create_rw_signal(HouseholdData::default());
     let no_permission_message = create_rw_signal(false);
     let task_action = create_rw_signal(TaskAction::Create);
+    let current_user_id = create_rw_signal(Option::<Uuid>::None);
 
     // Handle FAB click
     let on_fab_click = move |_| {
@@ -51,6 +53,7 @@ pub fn QuickTaskFab() -> impl IntoView {
                     return;
                 }
             };
+            current_user_id.set(Some(user.id));
 
             // For each household, check if user has permission to create or suggest tasks
             let mut eligible = Vec::new();
@@ -210,6 +213,9 @@ pub fn QuickTaskFab() -> impl IntoView {
                             default_points_penalty=default_points_penalty
                             default_rewards=default_rewards
                             default_punishments=default_punishments
+                            rewards_enabled=eh.settings.rewards_enabled
+                            punishments_enabled=eh.settings.punishments_enabled
+                            current_user_id=current_user_id.get()
                             on_close=on_task_modal_close
                             on_save=on_task_save
                         />

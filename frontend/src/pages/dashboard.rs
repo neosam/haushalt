@@ -2,11 +2,12 @@ use std::collections::HashSet;
 
 use chrono::NaiveDate;
 use leptos::*;
-use shared::{CreateHouseholdRequest, Household, InvitationWithHousehold, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
+use shared::{CreateHouseholdRequest, Household, HouseholdSettings, InvitationWithHousehold, MemberWithUser, Punishment, RecurrenceType, RecurrenceValue, Reward, Role, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink, UpdateTaskRequest};
 use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
+use crate::utils::task_modal::{settings_punishments_enabled, settings_rewards_enabled};
 use crate::utils::{matches_text_filter, TaskModalData};
 use crate::components::modal::Modal;
 use crate::components::set_date_modal::SetDateModal;
@@ -50,6 +51,7 @@ pub fn Dashboard() -> impl IntoView {
     let edit_rewards = create_rw_signal(Vec::<Reward>::new());
     let edit_punishments = create_rw_signal(Vec::<Punishment>::new());
     let edit_categories = create_rw_signal(Vec::<TaskCategory>::new());
+    let edit_settings = create_rw_signal(Option::<HouseholdSettings>::None);
 
     // Set date modal state
     let set_date_task_id = create_rw_signal(Option::<String>::None);
@@ -297,6 +299,7 @@ pub fn Dashboard() -> impl IntoView {
                 edit_rewards.set(modal_data.rewards);
                 edit_punishments.set(modal_data.punishments);
                 edit_categories.set(modal_data.categories);
+            edit_settings.set(modal_data.settings);
 
                 // Load task-specific linked rewards/punishments
                 if let Ok(tr) = ApiClient::get_task_rewards(&hid, &tid).await {
@@ -396,6 +399,7 @@ pub fn Dashboard() -> impl IntoView {
         edit_rewards.set(vec![]);
         edit_punishments.set(vec![]);
         edit_categories.set(vec![]);
+        edit_settings.set(None);
         task_linked_rewards.set(vec![]);
         task_linked_punishments.set(vec![]);
     };
@@ -417,6 +421,7 @@ pub fn Dashboard() -> impl IntoView {
             edit_rewards.set(modal_data.rewards);
             edit_punishments.set(modal_data.punishments);
             edit_categories.set(modal_data.categories);
+            edit_settings.set(modal_data.settings);
 
             if let Ok(tr) = ApiClient::get_task_rewards(&hid, &tid).await {
                 task_linked_rewards.set(tr);
@@ -700,6 +705,9 @@ pub fn Dashboard() -> impl IntoView {
                         linked_rewards=task_linked_rewards.get()
                         linked_punishments=task_linked_punishments.get()
                         categories=edit_categories.get()
+                        rewards_enabled=settings_rewards_enabled(&edit_settings.get())
+                        punishments_enabled=settings_punishments_enabled(&edit_settings.get())
+                        current_user_id=current_user_id.get()
                         on_close=move |_| clear_edit_state()
                         on_save=on_task_save
                     />

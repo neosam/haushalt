@@ -3,10 +3,12 @@ use std::collections::HashSet;
 use leptos::*;
 use leptos_router::*;
 use shared::{HouseholdSettings, MemberWithUser, Punishment, Reward, Task, TaskCategory, TaskPunishmentLink, TaskRewardLink};
+use uuid::Uuid;
 
 use crate::api::ApiClient;
 use crate::components::bulk_edit_modal::BulkEditModal;
 use crate::components::category_modal::CategoryModal;
+use crate::utils::task_modal::{settings_punishments_enabled, settings_rewards_enabled};
 use crate::utils::TaskModalData;
 use crate::components::context_menu::{ContextMenu, ContextMenuAction};
 use crate::components::loading::Loading;
@@ -32,6 +34,7 @@ pub fn TasksPage() -> impl IntoView {
     let rewards = create_rw_signal(Vec::<Reward>::new());
     let punishments = create_rw_signal(Vec::<Punishment>::new());
     let settings = create_rw_signal(Option::<HouseholdSettings>::None);
+    let current_user_id = create_rw_signal(Option::<Uuid>::None);
     let loading = create_rw_signal(true);
     let error = create_rw_signal(Option::<String>::None);
     let show_create_modal = create_rw_signal(false);
@@ -117,6 +120,7 @@ pub fn TasksPage() -> impl IntoView {
         let id_for_role = id.clone();
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(user) = ApiClient::get_current_user().await {
+                current_user_id.set(Some(user.id));
                 if let Ok(members_list) = ApiClient::list_members(&id_for_role).await {
                     if let Some(member) = members_list.iter().find(|m| m.user.id == user.id) {
                         let user_can_manage = member.membership.role.can_manage_tasks();
@@ -639,6 +643,9 @@ pub fn TasksPage() -> impl IntoView {
                         default_points_penalty=default_points_penalty
                         default_rewards=default_rewards
                         default_punishments=default_punishments
+                        rewards_enabled=settings_rewards_enabled(&current_settings)
+                        punishments_enabled=settings_punishments_enabled(&current_settings)
+                        current_user_id=current_user_id.get()
                         on_close=move |_| show_create_modal.set(false)
                         on_save=on_save
                     />
@@ -663,6 +670,9 @@ pub fn TasksPage() -> impl IntoView {
                     linked_rewards=task_linked_rewards.get()
                     linked_punishments=task_linked_punishments.get()
                     categories=categories.get()
+                    rewards_enabled=settings_rewards_enabled(&settings.get())
+                    punishments_enabled=settings_punishments_enabled(&settings.get())
+                    current_user_id=current_user_id.get()
                     on_close=move |_| {
                         editing_task.set(None);
                         task_linked_rewards.set(vec![]);
@@ -692,6 +702,9 @@ pub fn TasksPage() -> impl IntoView {
                     linked_rewards=duplicate_linked_rewards.get()
                     linked_punishments=duplicate_linked_punishments.get()
                     categories=categories.get()
+                    rewards_enabled=settings_rewards_enabled(&settings.get())
+                    punishments_enabled=settings_punishments_enabled(&settings.get())
+                    current_user_id=current_user_id.get()
                     on_close=move |_| {
                         duplicating_task.set(None);
                         duplicate_linked_rewards.set(vec![]);
