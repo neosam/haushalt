@@ -23,7 +23,8 @@ hat also nur keinen Namen und keine Oberfläche.
 Kontext: Die Archetypen-Ableitung wurde am 2026-07-27 in drei Quick-Tasks eingeführt
 (`260727-a1u` shared, `260727-apd` Bulk-Edit-Extraktion, `260727-b9u` Formularumbau). Die fünf
 bestehenden Typen sind OneOff, Routine, Shared, BadHabit, Maintenance. Design-Referenz ist das
-Mockup, das in Quick `260727-b9u` als Spezifikation diente.
+Mockup unter `.planning/quick/260727-b9u-welle-1b-task-formular-nach-archetypen-u/260727-b9u-MOCKUP.html`
+(im Browser öffnen — Typ oben wechseln, unten Schalter umlegen: der Chip leitet den Typ live neu ab).
 
 **Blocker:** Bonusaufgaben werden vom Backend aktuell bestraft, wenn sie nicht erledigt werden —
 siehe [2026-07-27-freiform-tasks-werden-faelschlich-bestraft.md](./2026-07-27-freiform-tasks-werden-faelschlich-bestraft.md).

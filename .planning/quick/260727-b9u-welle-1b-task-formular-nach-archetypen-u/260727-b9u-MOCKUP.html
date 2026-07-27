@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aufgaben-Typen — Mockup</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #4f46e5; --primary-hover: #4338ca;
+  --success: #22c55e; --danger: #ef4444; --warning: #f59e0b;
+  --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --muted: #64748b; --border: #e2e8f0;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.6; padding: 1rem;
+}
+.wrap { max-width: 720px; margin: 0 auto; }
+h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+h2 { font-size: 1.05rem; margin: 2.5rem 0 .25rem; color: var(--primary); }
+.lead { color: var(--muted); font-size: .9rem; margin-bottom: 1rem; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: .5rem; padding: 1rem; }
+
+/* ---- Schritt 1: Typ-Wähler ---- */
+.types { display: grid; gap: .5rem; }
+@media (min-width: 600px) { .types { grid-template-columns: 1fr 1fr; } }
+.type {
+  display: flex; gap: .75rem; align-items: flex-start; text-align: left;
+  background: var(--card); border: 2px solid var(--border); border-radius: .5rem;
+  padding: .85rem; cursor: pointer; font: inherit; color: inherit; width: 100%;
+  transition: border-color .15s, background .15s;
+}
+.type:hover { border-color: #c7d2fe; }
+.type[aria-pressed="true"] { border-color: var(--primary); background: #eef2ff; }
+.type .ic { font-size: 1.4rem; line-height: 1.2; flex-shrink: 0; }
+.type .nm { font-weight: 600; display: block; }
+.type .ds { font-size: .8rem; color: var(--muted); display: block; }
+
+/* ---- Schritt 2: Formular ---- */
+.chip {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: #eef2ff; color: var(--primary); border: 1px solid #c7d2fe;
+  border-radius: 999px; padding: .2rem .7rem; font-size: .8rem; font-weight: 600;
+}
+.chip.changed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.fg { margin-bottom: 1rem; }
+label.fl { display: block; font-size: .85rem; font-weight: 500; margin-bottom: .3rem; }
+label.fl .req { color: var(--danger); }
+input[type=text], input[type=date], input[type=time], input[type=number], select {
+  width: 100%; padding: .6rem; border: 1px solid var(--border);
+  border-radius: .375rem; font: inherit; background: #fff;
+}
+.hint { font-size: .78rem; color: var(--muted); margin-top: .25rem; display: block; }
+.checkline { display: flex; gap: .5rem; align-items: flex-start; margin-bottom: .5rem; }
+.checkline input { margin-top: .35rem; }
+.note {
+  display: flex; gap: .6rem; background: #fef2f2; border-left: 3px solid var(--danger);
+  padding: .7rem .85rem; border-radius: .25rem; font-size: .84rem; margin-bottom: 1rem;
+}
+.note.info { background: #eff6ff; border-left-color: var(--primary); }
+
+details.grp { border-top: 1px solid var(--border); }
+details.grp summary {
+  cursor: pointer; padding: .8rem .25rem; font-weight: 500; font-size: .9rem;
+  list-style: none; display: flex; justify-content: space-between; align-items: center;
+}
+details.grp summary::-webkit-details-marker { display: none; }
+details.grp summary::after { content: "▾"; color: var(--muted); transition: transform .2s; }
+details.grp[open] summary::after { transform: rotate(180deg); }
+details.grp .body { padding: .25rem .25rem 1rem; }
+.badge-dot { background: var(--warning); color:#fff; border-radius:999px; font-size:.68rem; padding:.05rem .45rem; margin-left:.4rem; }
+
+/* ---- Schritt 3: Karten ---- */
+.task {
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 4px solid var(--border); border-radius: .5rem;
+  padding: .85rem; margin-bottom: .6rem;
+}
+.task.t-oneoff  { border-left-color: var(--primary); }
+.task.t-routine { border-left-color: var(--success); }
+.task.t-shared  { border-left-color: #0ea5e9; }
+.task.t-bad     { border-left-color: var(--warning); }
+.task.t-maint   { border-left-color: var(--danger); }
+.task .body { flex: 1; min-width: 55%; }
+.task .ttl { font-weight: 500; }
+.task .meta { font-size: .78rem; color: var(--muted); }
+.task .acts { display: flex; gap: .4rem; align-items: center; margin-left: auto; }
+.btn {
+  border: 1px solid var(--border); background: #fff; color: var(--text);
+  border-radius: .375rem; padding: .55rem .85rem; font: inherit; font-size: .85rem;
+  cursor: pointer; min-height: 44px; min-width: 44px;
+}
+.btn.primary { background: var(--success); border-color: var(--success); color: #fff; font-weight: 500; }
+.btn.warn { border-color: var(--warning); color: #92400e; background: #fffbeb; }
+.btn.danger { border-color: var(--danger); color: var(--danger); background: #fef2f2; font-weight: 500; }
+.counter { display: flex; align-items: center; gap: .35rem; }
+.counter .n { min-width: 2.4rem; text-align: center; font-size: .9rem; color: var(--muted); }
+.status {
+  font-size: .82rem; color: var(--danger); background: #fef2f2;
+  padding: .5rem .7rem; border-radius: .375rem; width: 100%; margin-top: .5rem;
+}
+.track { display: flex; gap: .18rem; margin-top: .3rem; font-size: .8rem; }
+.track span { width: 1.15rem; height: 1.15rem; display: grid; place-items: center; border-radius: .2rem; }
+.ok   { background: #dcfce7; color: #15803d; }
+.miss { background: #fee2e2; color: #b91c1c; }
+.none { background: #f1f5f9; color: #94a3b8; }
+.warnc{ background: #fef3c7; color: #b45309; }
+.now  { background: #eef2ff; color: var(--primary); }
+.cmp { display:grid; gap:.4rem; font-size:.82rem; }
+.cmp .row { display:grid; grid-template-columns: 8.5rem 1fr; gap:.5rem; align-items:center; }
+.cmp code { background:#f1f5f9; padding:.05rem .3rem; border-radius:.2rem; font-size:.78rem; }
+.foot { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .82rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Aufgaben-Typen statt Schalter-Matrix</h1>
+<p class="lead">Mockup zum Konzept — der Typ ist ein Einstieg, keine Einschränkung. Alles bleibt editierbar.</p>
+
+<h2>Schritt 1 · Was legst du an?</h2>
+<p class="lead">Ersetzt die Situation, in der man wissen muss, dass „Instandhaltung“ = <code>habit_type: Bad</code> + <code>assignee_cannot_uncomplete</code> ist.</p>
+<div class="types" id="types">
+  <button class="type" aria-pressed="true" data-t="oneoff">
+    <span class="ic">☑️</span><span><span class="nm">Aufgabe</span><span class="ds">Einmalig, dann erledigt</span></span>
+  </button>
+  <button class="type" aria-pressed="false" data-t="routine">
+    <span class="ic">🔁</span><span><span class="nm">Routine</span><span class="ds">Wiederkehrend, mit Streak</span></span>
+  </button>
+  <button class="type" aria-pressed="false" data-t="shared">
+    <span class="ic">👥</span><span><span class="nm">Gemeinsame Aufgabe</span><span class="ds">Jeder darf abhaken</span></span>
+  </button>
+  <button class="type" aria-pressed="false" data-t="bad">
+    <span class="ic">⚠️</span><span><span class="nm">Schlechte Angewohnheit</span><span class="ds">Du trackst Rückfälle selbst</span></span>
+  </button>
+  <button class="type" aria-pressed="false" data-t="maint">
+    <span class="ic">🛡️</span><span><span class="nm">Instandhaltung</span><span class="ds">Andere halten Verstöße fest</span></span>
+  </button>
+</div>
+
+<h2>Schritt 2 · Nur das Nötige — der Rest ist einen Klick entfernt</h2>
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:.5rem;flex-wrap:wrap">
+    <strong id="formTitle">Neue Aufgabe</strong>
+    <span class="chip" id="chip">☑️ Aufgabe</span>
+  </div>
+
+  <div id="noteBox"></div>
+
+  <div class="fg">
+    <label class="fl" for="f-title">Titel</label>
+    <input type="text" id="f-title" placeholder="z. B. Küche sauber halten">
+  </div>
+
+  <div id="baseFields"></div>
+
+  <details class="grp"><summary>Details</summary><div class="body">
+    <div class="fg"><label class="fl">Beschreibung</label><input type="text" placeholder="optional"></div>
+    <div class="fg"><label class="fl">Kategorie</label><select><option>Keine</option><option>Küche</option><option>Bad</option></select></div>
+    <div class="fg"><label class="fl">Fällig um</label><input type="time" value="20:00"><span class="hint">Leer = Ende des Tages</span></div>
+    <div class="checkline"><input type="checkbox" id="d1"><label for="d1">Auf meinem Dashboard anzeigen</label></div>
+  </div></details>
+
+  <details class="grp"><summary>Ziel &amp; Zählweise</summary><div class="body">
+    <div class="fg"><label class="fl">Wie oft pro Zeitraum?</label><input type="number" value="1" min="1"></div>
+    <div class="checkline"><input type="checkbox" id="d2" checked><label for="d2">Mehr als das Ziel erlauben</label></div>
+    <div class="fg"><label class="fl">Gewohnheitstyp</label>
+      <select id="s-habit"><option value="good">Gute Gewohnheit</option><option value="bad">Schlechte Gewohnheit</option></select>
+      <span class="hint">Bei schlechten Gewohnheiten sind Belohnung und Strafe vertauscht.</span></div>
+  </div></details>
+
+  <details class="grp" id="grpPoints"><summary>Punkte &amp; Konsequenzen</summary><div class="body">
+    <div class="fg"><label class="fl">Punkte bei Erfolg</label><input type="number" value="5"></div>
+    <div class="fg"><label class="fl">Punkte bei Verfehlen</label><input type="number" value="-3"></div>
+    <span class="hint">Verknüpfte Belohnungen und Bestrafungen erscheinen hier nur, wenn sie im Haushalt aktiviert sind — wie bei den Tabs.</span>
+  </div></details>
+
+  <details class="grp" id="grpRules"><summary>Wer darf was<span id="rulesDot"></span></summary><div class="body">
+    <div class="checkline"><input type="checkbox" id="s-anyone"><label for="s-anyone">Alle dürfen abhaken<span class="hint">Jedes Mitglied kann eintragen und wieder löschen.</span></label></div>
+    <div class="checkline"><input type="checkbox" id="s-nouncomp"><label for="s-nouncomp">Zuständige Person darf nicht zurücknehmen<span class="hint">Andere tragen ein — die zuständige Person kann es nicht selbst löschen.</span></label></div>
+    <div class="checkline"><input type="checkbox" id="d3"><label for="d3">Erledigung muss bestätigt werden</label></div>
+    <div class="note info" style="margin:.75rem 0 0"><span>💡</span><div>Änderst du hier etwas, ändert sich der Typ oben mit. Nichts ist gesperrt — der Typ ist nur ein Startpunkt.</div></div>
+  </div></details>
+</div>
+
+<h2>Schritt 3 · So liest sich die Liste</h2>
+<p class="lead">Derselbe Zustand wie heute — aber der Knopf sagt, was er tut.</p>
+
+<div class="task t-oneoff">
+  <div class="body"><div class="ttl">Steuererklärung abgeben</div><div class="meta">Einmalig · Fällig: Freitag · Simon</div></div>
+  <div class="acts"><button class="btn primary">✓ Erledigt</button></div>
+</div>
+
+<div class="task t-routine">
+  <div class="body"><div class="ttl">Geschirrspüler ausräumen</div><div class="meta">Täglich · Streak: 12 · Simon</div>
+    <div class="track"><span class="ok">✓</span><span class="ok">✓</span><span class="miss">✗</span><span class="ok">✓</span><span class="ok">✓</span><span class="now">○</span></div></div>
+  <div class="acts"><div class="counter"><button class="btn">−</button><span class="n">1/2</span><button class="btn primary">+</button></div></div>
+</div>
+
+<div class="task t-shared">
+  <div class="body"><div class="ttl">Müll rausbringen</div><div class="meta">👥 Gemeinsam · Wöchentlich · Dienstag · hauptverantwortlich: Anna</div></div>
+  <div class="acts"><button class="btn primary">✓ Hab ich gemacht</button></div>
+</div>
+
+<div class="task t-bad">
+  <div class="body"><div class="ttl">Zu spät ins Bett</div><div class="meta">⚠️ Schlechte Angewohnheit · Simon · 2 Rückfälle diese Woche</div>
+    <div class="track"><span class="none">○</span><span class="none">○</span><span class="warnc">●</span><span class="none">○</span><span class="warnc">●</span><span class="now">○</span></div></div>
+  <div class="acts"><button class="btn warn">Rückfall eintragen</button></div>
+</div>
+
+<div class="task t-maint">
+  <div class="body"><div class="ttl">Küche sauber halten</div><div class="meta">🛡️ Instandhaltung · zuständig: Simon</div>
+    <div class="track"><span class="none">○</span><span class="none">○</span><span class="miss">⚠</span><span class="miss">⚠</span><span class="none">○</span><span class="now">○</span></div></div>
+  <div class="acts"><button class="btn danger">Verstoß melden</button></div>
+  <div class="meta" style="width:100%;margin-top:.4rem">Ansicht der <em>anderen</em> Mitglieder</div>
+</div>
+
+<div class="task t-maint">
+  <div class="body"><div class="ttl">Küche sauber halten</div><div class="meta">🛡️ Instandhaltung · du bist zuständig</div>
+    <div class="track"><span class="none">○</span><span class="none">○</span><span class="miss">⚠</span><span class="miss">⚠</span><span class="none">○</span><span class="now">○</span></div></div>
+  <div class="status">2 Verstöße eingetragen — zuletzt gestern von Anna. Nur andere können sie löschen.</div>
+  <div class="meta" style="width:100%;margin-top:.4rem">Deine Ansicht — <strong>kein toter Knopf</strong>, sondern der Grund direkt sichtbar</div>
+</div>
+
+<h2>Warum das den Tooltip überflüssig macht</h2>
+<div class="card cmp">
+  <div class="row"><span>Heute</span><div>Blaues <code>+</code>, graues <code>−</code>, Erklärung im <code>title</code>-Attribut — auf dem Handy unsichtbar</div></div>
+  <div class="row"><span>Vorschlag</span><div>Wer nichts zurücknehmen darf, bekommt keinen Knopf, sondern den Zustand im Klartext</div></div>
+</div>
+
+<p class="foot">Wegwerf-Mockup · Farben und Abstände aus <code>frontend/styles.css</code> übernommen · Touch-Ziele hier durchgehend 44&nbsp;px</p>
+
+</div>
+
+<script>
+// Die Zuweisung ist in JEDEM Typ das letzte Basisfeld — nur Label, Pflicht und
+// Vorbelegung unterscheiden sich. Ein Feld, das mal da ist und mal nicht, findet niemand.
+const PRESETS = {
+  oneoff: { icon:"☑️", name:"Aufgabe", title:"Neue Aufgabe",
+    base:["date"], habit:"good", anyone:false, nouncomp:false, note:null,
+    assign:{ label:"Zugewiesen an", req:false, def:"", hint:"Leer lassen, wenn es niemandem fest gehört." } },
+  routine:{ icon:"🔁", name:"Routine", title:"Neue Routine",
+    base:["rec"], habit:"good", anyone:false, nouncomp:false, note:null,
+    assign:{ label:"Zugewiesen an", req:false, def:"", hint:"Nur diese Person kann abhaken — es sei denn, du öffnest das unter „Wer darf was“." } },
+  shared: { icon:"👥", name:"Gemeinsame Aufgabe", title:"Neue gemeinsame Aufgabe",
+    base:["rec"], habit:"good", anyone:true, nouncomp:false,
+    note:["info","👥","Jedes Haushaltsmitglied darf eintragen und wieder löschen."],
+    assign:{ label:"Hauptverantwortlich", req:false, def:"", hint:"Optional. Abhaken dürfen trotzdem alle — die Zuweisung steuert nur Anzeige und den Filter „nur meine“." } },
+  bad:    { icon:"⚠️", name:"Schlechte Angewohnheit", title:"Neue schlechte Angewohnheit",
+    base:["rec"], habit:"bad", anyone:false, nouncomp:false,
+    note:["info","⚠️","Rückfälle werden selbst eingetragen. Belohnung und Strafe sind vertauscht: Vermeiden bringt Punkte."],
+    assign:{ label:"Wer trackt das?", req:false, def:"Simon", hint:"Vorbelegt mit dir — kann aber auch für jemand anderen im Haushalt laufen." } },
+  maint:  { icon:"🛡️", name:"Instandhaltung", title:"Neue Instandhaltung",
+    base:["rec"], habit:"bad", anyone:false, nouncomp:true,
+    note:["danger","🛡️","Andere Mitglieder halten Verstöße fest. Die zuständige Person kann sie <strong>nicht selbst löschen</strong> — deshalb ist die Zuweisung hier Pflicht."],
+    assign:{ label:"Zuständige Person", req:true, def:"Simon", hint:"Pflichtfeld — ohne zuständige Person greift die Sperre nicht." } },
+};
+
+const FIELDS = {
+  date: `<div class="fg"><label class="fl">Datum</label><input type="date"></div>`,
+  rec:  `<div class="fg"><label class="fl">Wiederholung</label><select><option>Täglich</option><option>Wöchentlich</option><option>Monatlich</option><option>Bestimmte Wochentage</option></select></div>`,
+};
+
+function assignField(a) {
+  const people = ["Simon", "Anna", "Lea"];
+  const empty = a.req
+    ? `<option value="">Bitte wählen …</option>`
+    : `<option value=""${a.def ? "" : " selected"}>Niemand</option>`;
+  return `<div class="fg">
+    <label class="fl">${a.label}${a.req ? ' <span class="req">*</span>' : ""}</label>
+    <select>${empty}${people.map(p => `<option${p === a.def ? " selected" : ""}>${p}</option>`).join("")}</select>
+    <span class="hint">${a.hint}</span>
+  </div>`;
+}
+
+const $ = s => document.querySelector(s);
+let current = "oneoff";
+
+function render(t) {
+  const p = PRESETS[t];
+  $("#formTitle").textContent = p.title;
+  // Zuweisung immer als letztes Basisfeld — gleiche Position bei jedem Typ
+  $("#baseFields").innerHTML = p.base.map(k => FIELDS[k]).join("") + assignField(p.assign);
+  $("#noteBox").innerHTML = p.note
+    ? `<div class="note ${p.note[0]}"><span>${p.note[1]}</span><div>${p.note[2]}</div></div>` : "";
+  $("#s-habit").value = p.habit;
+  $("#s-anyone").checked = p.anyone;
+  $("#s-nouncomp").checked = p.nouncomp;
+  // Gruppe aufgeklappt starten, wenn der Typ dort etwas vom Standard abweichen lässt
+  $("#grpRules").open = p.anyone || p.nouncomp;
+  syncChip();
+}
+
+// Typ aus den Schaltern zurückrechnen — dieselbe Logik wie Task::archetype()
+function derive() {
+  const habit = $("#s-habit").value, anyone = $("#s-anyone").checked, nouncomp = $("#s-nouncomp").checked;
+  if (habit === "bad" && nouncomp) return "maint";
+  if (habit === "bad") return "bad";
+  if (anyone) return "shared";
+  return current === "oneoff" ? "oneoff" : "routine";
+}
+
+function syncChip() {
+  const d = derive(), p = PRESETS[d];
+  const chip = $("#chip");
+  chip.textContent = `${p.icon} ${p.name}`;
+  const drifted = d !== current;
+  chip.classList.toggle("changed", drifted);
+  $("#rulesDot").innerHTML = drifted ? '<span class="badge-dot">geändert</span>' : "";
+}
+
+document.querySelectorAll(".type").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".type").forEach(x => x.setAttribute("aria-pressed", "false"));
+  b.setAttribute("aria-pressed", "true");
+  current = b.dataset.t;
+  render(current);
+}));
+["#s-habit", "#s-anyone", "#s-nouncomp"].forEach(s => $(s).addEventListener("change", syncChip));
+
+render(current);
+</script>
+</body>
+</html>
