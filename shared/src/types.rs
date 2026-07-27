@@ -654,6 +654,50 @@ impl Task {
     pub fn is_household_wide(&self) -> bool {
         self.anyone_can_complete || self.assignee_cannot_uncomplete
     }
+
+    /// Derives which [`Archetype`] this task presents as, purely from the flags it already carries.
+    ///
+    /// The archetype only ever drives the *presentation*. What somebody may actually do still
+    /// comes from `TaskWithStatus::can_complete` / `can_uncomplete`. An unusual flag combination
+    /// may at worst yield a suboptimal label - it never changes behaviour.
+    ///
+    /// Ambiguous combinations are possible and allowed (e.g. a bad habit that anyone may check
+    /// off), so the first match wins in a fixed order. That order sorts by the most striking,
+    /// most operation-shaping property: whoever may not undo their own completion experiences
+    /// exactly that first; a bad habit shapes the interaction more strongly than "who may check
+    /// it off"; and "who may check it off" in turn more strongly than the rhythm.
+    pub fn archetype(&self) -> Archetype {
+        if self.assignee_cannot_uncomplete {
+            Archetype::Maintenance
+        } else if self.habit_type.is_inverted() {
+            Archetype::BadHabit
+        } else if self.anyone_can_complete {
+            Archetype::Shared
+        } else if self.recurrence_type == RecurrenceType::OneTime {
+            Archetype::OneOff
+        } else {
+            Archetype::Routine
+        }
+    }
+}
+
+/// The kind of task a flag combination adds up to - a presentation concept, never a permission.
+///
+/// Derived from an existing task via [`Task::archetype`]. `Archetype` is never transmitted; the
+/// serde derives exist only for consistency with the rest of this module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Archetype {
+    /// A single errand that is done once and then over.
+    OneOff,
+    /// A recurring chore, checked off by the person it belongs to.
+    Routine,
+    /// A recurring chore the whole household chips in on.
+    Shared,
+    /// A habit to get rid of - completing it costs points instead of earning them.
+    BadHabit,
+    /// Pinned on one person who may check it off but not undo it themselves.
+    Maintenance,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2065,6 +2109,39 @@ mod tests {
         create_task_with_status_full(completions, target, allow_exceed, is_user_assigned, false)
     }
 
+    /// Recurring standard task without any special flags - the starting point of the archetype
+    /// tests. `RecurrenceType::Daily` is deliberate: the defaults round-trip relies on a
+    /// `recurrence_type: None` preset leaving a recurring task recurring.
+    fn create_base_task() -> Task {
+        Task {
+            id: Uuid::new_v4(),
+            household_id: Uuid::new_v4(),
+            title: "Test Task".to_string(),
+            description: String::new(),
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: 1,
+            time_period: None,
+            allow_exceed_target: false,
+            anyone_can_complete: false,
+            assignee_cannot_uncomplete: false,
+            requires_review: false,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: HabitType::Good,
+            category_id: None,
+            category_name: None,
+            archived: false,
+            paused: false,
+            suggestion: None,
+            suggested_by: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
     fn create_task_with_status_full(
         completions: i32,
         target: i32,
@@ -2072,34 +2149,13 @@ mod tests {
         is_user_assigned: bool,
         anyone_can_complete: bool,
     ) -> TaskWithStatus {
+        let mut task = create_base_task();
+        task.target_count = target;
+        task.allow_exceed_target = allow_exceed;
+        task.anyone_can_complete = anyone_can_complete;
+
         TaskWithStatus {
-            task: Task {
-                id: Uuid::new_v4(),
-                household_id: Uuid::new_v4(),
-                title: "Test Task".to_string(),
-                description: String::new(),
-                recurrence_type: RecurrenceType::Daily,
-                recurrence_value: None,
-                assigned_user_id: None,
-                target_count: target,
-                time_period: None,
-                allow_exceed_target: allow_exceed,
-                anyone_can_complete,
-                assignee_cannot_uncomplete: false,
-                requires_review: false,
-                points_reward: None,
-                points_penalty: None,
-                due_time: None,
-                habit_type: HabitType::Good,
-                category_id: None,
-                category_name: None,
-                archived: false,
-                paused: false,
-                suggestion: None,
-                suggested_by: None,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            },
+            task,
             completions_today: completions,
             current_streak: 0,
             last_completion: None,
@@ -2289,6 +2345,81 @@ mod tests {
         task.task.assignee_cannot_uncomplete = true;
         assert!(!task.is_assignee());
         assert!(task.can_uncomplete());
+    }
+
+    #[test]
+    fn test_archetype_routine_for_plain_recurring_task() {
+        let task = create_base_task();
+        assert_eq!(task.archetype(), Archetype::Routine);
+    }
+
+    #[test]
+    fn test_archetype_one_off_for_one_time_task() {
+        let mut task = create_base_task();
+        task.recurrence_type = RecurrenceType::OneTime;
+        assert_eq!(task.archetype(), Archetype::OneOff);
+    }
+
+    #[test]
+    fn test_archetype_shared_when_anyone_can_complete() {
+        let mut task = create_base_task();
+        task.anyone_can_complete = true;
+        assert_eq!(task.archetype(), Archetype::Shared);
+    }
+
+    #[test]
+    fn test_archetype_bad_habit_for_inverted_habit_type() {
+        let mut task = create_base_task();
+        task.habit_type = HabitType::Bad;
+        assert_eq!(task.archetype(), Archetype::BadHabit);
+    }
+
+    #[test]
+    fn test_archetype_maintenance_when_assignee_cannot_uncomplete() {
+        let mut task = create_base_task();
+        task.assignee_cannot_uncomplete = true;
+        assert_eq!(task.archetype(), Archetype::Maintenance);
+    }
+
+    #[test]
+    fn test_archetype_bad_habit_wins_over_one_off() {
+        let mut task = create_base_task();
+        task.habit_type = HabitType::Bad;
+        task.recurrence_type = RecurrenceType::OneTime;
+        assert_eq!(task.archetype(), Archetype::BadHabit);
+    }
+
+    #[test]
+    fn test_archetype_maintenance_wins_over_routine() {
+        let mut task = create_base_task();
+        task.habit_type = HabitType::Good;
+        task.assignee_cannot_uncomplete = true;
+        assert_eq!(task.archetype(), Archetype::Maintenance);
+    }
+
+    #[test]
+    fn test_archetype_bad_habit_wins_over_shared() {
+        let mut task = create_base_task();
+        task.habit_type = HabitType::Bad;
+        task.anyone_can_complete = true;
+        assert_eq!(task.archetype(), Archetype::BadHabit);
+    }
+
+    #[test]
+    fn test_archetype_maintenance_wins_over_shared() {
+        let mut task = create_base_task();
+        task.assignee_cannot_uncomplete = true;
+        task.anyone_can_complete = true;
+        assert_eq!(task.archetype(), Archetype::Maintenance);
+    }
+
+    #[test]
+    fn test_archetype_maintenance_wins_over_bad_habit() {
+        // Rule 1 beats habit_type: not being able to undo your own completion is felt first
+        let mut task = create_base_task();
+        task.habit_type = HabitType::Bad;
+        task.assignee_cannot_uncomplete = true;
+        assert_eq!(task.archetype(), Archetype::Maintenance);
     }
 
     #[test]
