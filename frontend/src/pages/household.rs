@@ -225,10 +225,22 @@ pub fn HouseholdPage() -> impl IntoView {
         });
     });
 
-    let on_complete_task = Callback::new(move |task_id: String| {
+    // The card sends a whole burst of taps at once, so `count` may be greater than 1. The API
+    // has no batch endpoint; the calls run one after another and the list is refreshed once at
+    // the end instead of after every single tap.
+    let on_complete_task = Callback::new(move |(task_id, count): (String, i32)| {
         let id = household_id();
         wasm_bindgen_futures::spawn_local(async move {
-            if ApiClient::complete_task(&id, &task_id).await.is_ok() {
+            let mut any_ok = false;
+            for _ in 0..count {
+                if ApiClient::complete_task(&id, &task_id).await.is_ok() {
+                    any_ok = true;
+                } else {
+                    // The server refused - stop rather than hammering it with the rest.
+                    break;
+                }
+            }
+            if any_ok {
                 // Refresh tasks
                 if let Ok(t) = ApiClient::get_all_tasks_with_status(&id).await {
                     tasks.set(t);
@@ -241,10 +253,18 @@ pub fn HouseholdPage() -> impl IntoView {
         });
     });
 
-    let on_uncomplete_task = Callback::new(move |task_id: String| {
+    let on_uncomplete_task = Callback::new(move |(task_id, count): (String, i32)| {
         let id = household_id();
         wasm_bindgen_futures::spawn_local(async move {
-            if ApiClient::uncomplete_task(&id, &task_id).await.is_ok() {
+            let mut any_ok = false;
+            for _ in 0..count {
+                if ApiClient::uncomplete_task(&id, &task_id).await.is_ok() {
+                    any_ok = true;
+                } else {
+                    break;
+                }
+            }
+            if any_ok {
                 // Refresh tasks
                 if let Ok(t) = ApiClient::get_all_tasks_with_status(&id).await {
                     tasks.set(t);

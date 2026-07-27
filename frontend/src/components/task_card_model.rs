@@ -117,6 +117,40 @@ pub fn type_badge(archetype: Archetype) -> Option<(&'static str, &'static str)> 
     }
 }
 
+/// How long the card waits for further taps before it talks to the server.
+///
+/// Long enough that a burst of taps collapses into one round trip, short enough that a single
+/// tap still feels immediate — the count itself updates without waiting for any of this.
+pub const COUNTER_FLUSH_MS: u64 = 500;
+
+/// The count to display while taps are still pending.
+///
+/// Clamped at zero: the pending delta may briefly undershoot when somebody taps `−` more often
+/// than there are completions, and a card must never show "-1 ×".
+pub fn effective_completions(server_completions: i32, pending_delta: i32) -> i32 {
+    (server_completions + pending_delta).max(0)
+}
+
+/// Whether `+` is still available, judged on the optimistic count rather than the server's.
+///
+/// Mirrors `TaskWithStatus::can_complete`, which computes the same rule from `completions_today`.
+/// Without this the button would stay enabled through a whole burst of taps and let the user
+/// overshoot a target the server then rejects.
+pub fn can_complete_pending(
+    is_completable_by_user: bool,
+    allow_exceed_target: bool,
+    target_count: i32,
+    effective_completions: i32,
+) -> bool {
+    let target_met = target_count > 0 && effective_completions >= target_count;
+    is_completable_by_user && (allow_exceed_target || !target_met)
+}
+
+/// Whether `−` is still available. There has to be something left to take back.
+pub fn can_undo_pending(can_uncomplete: bool, effective_completions: i32) -> bool {
+    can_uncomplete && effective_completions > 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +274,70 @@ mod tests {
             assert!(!seen.contains(&label_key), "{label_key} used twice");
             seen.push(label_key);
         }
+    }
+
+    // ---- optimistic counter -------------------------------------------------
+
+    #[test]
+    fn pending_taps_are_added_to_the_server_count() {
+        assert_eq!(effective_completions(2, 3), 5);
+    }
+
+    /// Tapping `−` more often than there are completions must not produce a negative display.
+    #[test]
+    fn the_displayed_count_never_goes_negative() {
+        assert_eq!(effective_completions(1, -4), 0);
+    }
+
+    /// The core of the rework: the button has to close on the *optimistic* count. Judging by the
+    /// server's count would leave `+` enabled through a whole burst and overshoot the target.
+    #[test]
+    fn plus_closes_once_the_pending_taps_reach_the_target() {
+        // Server still says 0 of 3, but three taps are already queued.
+        let effective = effective_completions(0, 3);
+        assert!(!can_complete_pending(true, false, 3, effective));
+    }
+
+    #[test]
+    fn plus_stays_open_below_the_target() {
+        let effective = effective_completions(0, 2);
+        assert!(can_complete_pending(true, false, 3, effective));
+    }
+
+    #[test]
+    fn allow_exceed_keeps_plus_open_past_the_target() {
+        let effective = effective_completions(3, 2);
+        assert!(can_complete_pending(true, true, 3, effective));
+    }
+
+    /// A bonus task has no target, so `+` never closes.
+    #[test]
+    fn a_task_without_a_target_never_closes_plus() {
+        let effective = effective_completions(0, 9);
+        assert!(can_complete_pending(true, false, 0, effective));
+    }
+
+    #[test]
+    fn permission_still_overrides_everything() {
+        assert!(!can_complete_pending(false, true, 0, 0));
+    }
+
+    #[test]
+    fn undo_needs_something_to_take_back() {
+        assert!(!can_undo_pending(true, 0));
+        assert!(can_undo_pending(true, 1));
+    }
+
+    /// Pending taps make undo available before the server has heard about them.
+    #[test]
+    fn undo_opens_on_a_pending_tap_alone() {
+        let effective = effective_completions(0, 1);
+        assert!(can_undo_pending(true, effective));
+    }
+
+    #[test]
+    fn undo_stays_shut_without_the_permission() {
+        assert!(!can_undo_pending(false, 5));
     }
 
     #[test]

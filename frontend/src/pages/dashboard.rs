@@ -227,7 +227,10 @@ pub fn Dashboard() -> impl IntoView {
     };
 
     // Task completion handler
-    let on_complete_task = Callback::new(move |task_id: String| {
+    // The card sends a whole burst of taps at once, so `count` may be greater than 1. The API
+    // has no batch endpoint; the calls run one after another and the list is reloaded once at
+    // the end instead of after every single tap.
+    let on_complete_task = Callback::new(move |(task_id, count): (String, i32)| {
         // Find the household_id for this task
         let tasks = all_tasks.get();
         if let Some(twh) = tasks.iter().find(|t| t.task.task.id.to_string() == task_id) {
@@ -235,7 +238,16 @@ pub fn Dashboard() -> impl IntoView {
                 let task_id_clone = task_id.clone();
                 let show_all_mode = show_all.get();
                 wasm_bindgen_futures::spawn_local(async move {
-                    if ApiClient::complete_task(&household_id, &task_id_clone).await.is_ok() {
+                    let mut any_ok = false;
+                    for _ in 0..count {
+                        if ApiClient::complete_task(&household_id, &task_id_clone).await.is_ok() {
+                            any_ok = true;
+                        } else {
+                            // The server refused - stop rather than hammering it with the rest.
+                            break;
+                        }
+                    }
+                    if any_ok {
                         reload_tasks(show_all_mode).await;
                     }
                 });
@@ -244,7 +256,7 @@ pub fn Dashboard() -> impl IntoView {
     });
 
     // Task uncomplete handler
-    let on_uncomplete_task = Callback::new(move |task_id: String| {
+    let on_uncomplete_task = Callback::new(move |(task_id, count): (String, i32)| {
         // Find the household_id for this task
         let tasks = all_tasks.get();
         if let Some(twh) = tasks.iter().find(|t| t.task.task.id.to_string() == task_id) {
@@ -252,7 +264,15 @@ pub fn Dashboard() -> impl IntoView {
                 let task_id_clone = task_id.clone();
                 let show_all_mode = show_all.get();
                 wasm_bindgen_futures::spawn_local(async move {
-                    if ApiClient::uncomplete_task(&household_id, &task_id_clone).await.is_ok() {
+                    let mut any_ok = false;
+                    for _ in 0..count {
+                        if ApiClient::uncomplete_task(&household_id, &task_id_clone).await.is_ok() {
+                            any_ok = true;
+                        } else {
+                            break;
+                        }
+                    }
+                    if any_ok {
                         reload_tasks(show_all_mode).await;
                     }
                 });

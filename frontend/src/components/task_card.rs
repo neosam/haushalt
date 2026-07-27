@@ -1,4 +1,5 @@
 use chrono::{Datelike, NaiveDate, Utc, Weekday};
+use leptos::leptos_dom::helpers::TimeoutHandle;
 use leptos::*;
 use shared::{Archetype, RecurrenceType, TaskWithStatus};
 use std::collections::{BTreeMap, HashSet};
@@ -6,7 +7,10 @@ use std::time::Duration;
 
 use crate::components::context_menu::{ContextMenu, ContextMenuAction};
 use crate::components::period_tracker::PeriodTrackerCompact;
-use crate::components::task_card_model::{accent_class, card_action, type_badge, CardAction};
+use crate::components::task_card_model::{
+    accent_class, can_complete_pending, can_undo_pending, card_action, effective_completions,
+    type_badge, CardAction, COUNTER_FLUSH_MS,
+};
 use crate::i18n::{use_i18n, I18nContext};
 use crate::utils::timezone::today_in_tz;
 
@@ -53,8 +57,8 @@ fn format_next_due_date(date: NaiveDate, today: NaiveDate, i18n: &I18nContext) -
 #[component]
 pub fn TaskCard(
     task: TaskWithStatus,
-    #[prop(into)] on_complete: Callback<String>,
-    #[prop(into)] on_uncomplete: Callback<String>,
+    #[prop(into)] on_complete: Callback<(String, i32)>,
+    #[prop(into)] on_uncomplete: Callback<(String, i32)>,
     #[prop(default = "UTC".to_string())] timezone: String,
     #[prop(optional)] household_name: Option<String>,
     #[prop(optional)] household_id: Option<String>,
@@ -67,7 +71,6 @@ pub fn TaskCard(
     let i18n_stored = store_value(i18n);
 
     let is_target_met = task.is_target_met();
-    let can_complete = task.can_complete();
     // Whether the user may undo a completion: false for the assignee of a task flagged
     // assignee_cannot_uncomplete - somebody else has to clear it
     let can_uncomplete = task.can_uncomplete();
@@ -75,41 +78,87 @@ pub fn TaskCard(
     // Whether to show the +/- controls at all: the assignee, or anyone when the task allows it
     let is_completable_by_user = task.is_completable_by_user();
     let task_id = task.task.id.to_string();
-    let task_id_for_minus = task_id.clone();
     let task_id_for_dashboard = task_id.clone();
     let task_id_for_title = task_id.clone();
     let household_id_for_title = household_id.clone();
     let completions = task.completions_today;
     let target = task.task.target_count;
-    let has_completions = completions > 0;
+    let allow_exceed_target = task.task.allow_exceed_target;
 
     // Dashboard toggle state (reactive for immediate UI feedback)
     let is_on_dashboard = create_rw_signal(on_dashboard.unwrap_or(false));
 
-    // Debounce state
-    let is_debouncing = create_rw_signal(false);
+    // Taps land here first and are only sent once the tapping stops. The count on screen follows
+    // this signal, not the server, so the button reacts instantly - the previous version
+    // deferred every single tap by a second and dropped anything tapped in between.
+    let pending_delta = create_rw_signal(0i32);
+    let flush_timer = store_value(None::<TimeoutHandle>);
+    // Stored rather than cloned so `flush` stays `Copy` and both handlers can hold it.
+    let task_id_stored = store_value(task_id.clone());
+
+    // Sends what has piled up and clears the slate. One call carries the whole burst, so five
+    // taps cost one round trip and one list reload instead of five of each.
+    let flush = move || {
+        let delta = pending_delta.get_untracked();
+        if delta == 0 {
+            return;
+        }
+        pending_delta.set(0);
+        let id = task_id_stored.get_value();
+        if delta > 0 {
+            on_complete.call((id, delta));
+        } else {
+            on_uncomplete.call((id, -delta));
+        }
+    };
+
+    // Every tap restarts the clock: the burst is sent as a whole once it ends.
+    let restart_timer = move || {
+        flush_timer.update_value(|handle| {
+            if let Some(handle) = handle.take() {
+                handle.clear();
+            }
+            *handle =
+                set_timeout_with_handle(flush, Duration::from_millis(COUNTER_FLUSH_MS)).ok();
+        });
+    };
+
+    // The count as the user sees it: server state plus whatever is still queued.
+    let shown_completions = move || effective_completions(completions, pending_delta.get());
+    let plus_enabled = move || {
+        can_complete_pending(
+            is_completable_by_user,
+            allow_exceed_target,
+            target,
+            shown_completions(),
+        )
+    };
+    let minus_enabled = move || can_undo_pending(can_uncomplete, shown_completions());
 
     let on_plus = move |_| {
-        if can_complete && !is_debouncing.get() {
-            is_debouncing.set(true);
-
-            // Set 1-second timeout
-            let task_id_clone = task_id.clone();
-            set_timeout(
-                move || {
-                    on_complete.call(task_id_clone);
-                    is_debouncing.set(false);
-                },
-                Duration::from_secs(1)
-            );
+        if plus_enabled() {
+            pending_delta.update(|d| *d += 1);
+            restart_timer();
         }
     };
 
     let on_minus = move |_| {
-        if has_completions && can_uncomplete {
-            on_uncomplete.call(task_id_for_minus.clone());
+        if minus_enabled() {
+            pending_delta.update(|d| *d -= 1);
+            restart_timer();
         }
     };
+
+    // Leaving the card with taps still queued must not swallow them - send them on the way out.
+    // The callbacks belong to the parent list, which outlives this card.
+    on_cleanup(move || {
+        flush_timer.update_value(|handle| {
+            if let Some(handle) = handle.take() {
+                handle.clear();
+            }
+        });
+        flush();
+    });
 
     let archetype = task.task.archetype();
     let card_class = if is_target_met {
@@ -119,12 +168,15 @@ pub fn TaskCard(
     };
 
     // A task without a target is a bonus task: it is counted, not measured. Showing "3/0"
-    // would invent a goal it does not have, so the count stands on its own.
+    // would invent a goal it does not have, so the count stands on its own. Reads the optimistic
+    // count so the number moves with the tap, not with the round trip.
     let is_bonus = archetype == Archetype::Bonus;
-    let progress_display = if target > 0 {
-        format!("{}/{}", completions, target)
-    } else {
-        format!("{} ×", completions)
+    let progress_display = move || {
+        if target > 0 {
+            format!("{}/{}", shown_completions(), target)
+        } else {
+            format!("{} ×", shown_completions())
+        }
     };
 
     // Format next due date using household timezone
@@ -325,33 +377,31 @@ pub fn TaskCard(
                         <button
                             class="btn btn-outline"
                             style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
-                            disabled=!has_completions || !can_uncomplete
+                            disabled=move || !minus_enabled()
                             title=cannot_uncomplete_title.clone()
                             on:click=on_minus
                         >
                             "-"
                         </button>
                         <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
-                            {progress_display.clone()}
+                            {progress_display}
                         </span>
                         <button
-                            class=move || if is_debouncing.get() { "btn btn-primary btn-debouncing" } else { "btn btn-primary" }
+                            class="btn btn-primary"
                             style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
-                            disabled=move || !can_complete || is_debouncing.get()
+                            disabled=move || !plus_enabled()
                             on:click=on_plus
                         >
-                            {move || if is_debouncing.get() { "..." } else { "+" }}
+                            "+"
                         </button>
                     }.into_view(),
                     CardAction::Single { label_key, style } => {
                         let action_label = i18n_stored.get_value().t(label_key);
-                        let busy_class = format!("{} btn-debouncing", style.css_class());
-                        let idle_class = style.css_class().to_string();
-                        // The undo only appears once there is something to undo - a button that
-                        // can never do anything is exactly what this rework removes.
-                        let show_undo = has_completions && can_uncomplete;
+                        let button_class = style.css_class();
                         view! {
-                            {show_undo.then(|| view! {
+                            // The undo only appears once there is something to undo - a button
+                            // that can never do anything is exactly what this rework removes.
+                            <Show when=move || minus_enabled() fallback=|| ()>
                                 <button
                                     class="btn btn-outline"
                                     style="padding: 0.25rem 0.75rem; font-size: 1rem; min-width: 32px;"
@@ -359,33 +409,24 @@ pub fn TaskCard(
                                 >
                                     "-"
                                 </button>
-                            })}
-                            {has_completions.then(|| view! {
+                            </Show>
+                            <Show when=move || { shown_completions() > 0 } fallback=|| ()>
                                 <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
-                                    {progress_display.clone()}
+                                    {progress_display}
                                 </span>
-                            })}
+                            </Show>
                             <button
-                                class=move || if is_debouncing.get() { busy_class.clone() } else { idle_class.clone() }
-                                disabled=move || !can_complete || is_debouncing.get()
+                                class=button_class
+                                disabled=move || !plus_enabled()
                                 on:click=on_plus
                             >
-                                {move || if is_debouncing.get() {
-                                    "...".to_string()
-                                } else {
-                                    action_label.clone()
-                                }}
+                                {action_label.clone()}
                             </button>
                         }.into_view()
                     }
-                    CardAction::Locked => view! {
+                    CardAction::Locked | CardAction::ReadOnly => view! {
                         <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
-                            {progress_display.clone()}
-                        </span>
-                    }.into_view(),
-                    CardAction::ReadOnly => view! {
-                        <span style="font-size: 0.875rem; color: var(--text-muted); min-width: 2rem; text-align: center;">
-                            {progress_display.clone()}
+                            {progress_display}
                         </span>
                     }.into_view(),
                 }}
@@ -403,8 +444,8 @@ pub fn TaskCard(
 #[component]
 pub fn TaskList(
     tasks: Vec<TaskWithStatus>,
-    #[prop(into)] on_complete: Callback<String>,
-    #[prop(into)] on_uncomplete: Callback<String>,
+    #[prop(into)] on_complete: Callback<(String, i32)>,
+    #[prop(into)] on_uncomplete: Callback<(String, i32)>,
     #[prop(default = "UTC".to_string())] timezone: String,
 ) -> impl IntoView {
     let i18n = use_i18n();
@@ -515,8 +556,8 @@ fn group_tasks_by_category(tasks: Vec<TaskWithHousehold>, other_label: &str) -> 
 #[component]
 pub fn GroupedTaskList(
     tasks: Vec<TaskWithHousehold>,
-    #[prop(into)] on_complete: Callback<String>,
-    #[prop(into)] on_uncomplete: Callback<String>,
+    #[prop(into)] on_complete: Callback<(String, i32)>,
+    #[prop(into)] on_uncomplete: Callback<(String, i32)>,
     #[prop(default = "UTC".to_string())] timezone: String,
     #[prop(optional)] dashboard_task_ids: Option<HashSet<String>>,
     #[prop(optional, into)] on_toggle_dashboard: Option<Callback<(String, bool)>>,
