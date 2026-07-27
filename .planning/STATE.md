@@ -32,7 +32,7 @@ Milestone: v1.1 Hardening & Connectivity
 Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-27 - Completed quick task 260727-fs5: Task-Karte nach Archetypen (Welle 2)
+Last activity: 2026-07-27 - Completed quick task 260727-hke: Zähler-Buttons reagieren sofort
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
@@ -99,6 +99,7 @@ Keine — siehe `.planning/todos/completed/`.
 | 260727-dct | Freiform-Tasks (target_count 0) werden nicht mehr fälschlich bestraft | 2026-07-27 | 3f8ea3db | [260727-dct-freiform-tasks-target-count-0-werden-nic](./quick/260727-dct-freiform-tasks-target-count-0-werden-nic/) |
 | 260727-fcg | Bonusaufgabe als sechster Task-Archetyp | 2026-07-27 | f43c0238 | [260727-fcg-bonusaufgabe-als-sechster-task-archetyp](./quick/260727-fcg-bonusaufgabe-als-sechster-task-archetyp/) |
 | 260727-fs5 | Welle 2: Task-Karte nach Archetypen (sprechende Knöpfe, Akzente, Klartext statt totem Knopf) | 2026-07-27 | fc0ac402 | [260727-fs5-welle-2-task-karte-nach-archetypen](./quick/260727-fs5-welle-2-task-karte-nach-archetypen/) |
+| 260727-hke | Zähler-Buttons reagieren sofort, Request wird gebündelt (echter Debounce) | 2026-07-27 | 4b88a78d | [260727-hke-zaehler-buttons-optimistisch-zaehlen-req](./quick/260727-hke-zaehler-buttons-optimistisch-zaehlen-req/) |
 
 ## Session Continuity
 
