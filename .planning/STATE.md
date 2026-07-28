@@ -32,7 +32,7 @@ Milestone: v1.1 Hardening & Connectivity
 Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-27 - Completed quick task 260727-t5x: get_next_due_date überspringt den heutigen Termin nicht mehr
+Last activity: 2026-07-28 - Completed quick task 260728-c7k: Kategorie-Farbe in der Task-Liste, Kategorie- und Tages-Gruppen klappbar
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
@@ -102,6 +102,7 @@ Keine — siehe `.planning/todos/completed/`.
 | 260727-hke | Zähler-Buttons reagieren sofort, Request wird gebündelt (echter Debounce) | 2026-07-27 | 4b88a78d | [260727-hke-zaehler-buttons-optimistisch-zaehlen-req](./quick/260727-hke-zaehler-buttons-optimistisch-zaehlen-req/) |
 | 260727-t5x | Weekdays und Custom: get_next_due_date überspringt den heutigen Termin nicht mehr | 2026-07-27 | 4d5324f9 | [260727-t5x-weekdays-und-custom-get-next-due-date-da](./quick/260727-t5x-weekdays-und-custom-get-next-due-date-da/) |
 | 260727-vst | Bad-Habit-Texte: "Rückfall" durch "Verstoß" ersetzt (de + en) | 2026-07-27 | 1008cd0a | — (via /gsd-fast) |
+| 260728-c7k | Kategorie-Farbe in der Task-Liste anzeigen; Kategorie- und Tages-Gruppen klappbar | 2026-07-28 | 4ed8223d | [260728-c7k-kategorie-farbe-und-collapsible-gruppen](./quick/260728-c7k-kategorie-farbe-und-collapsible-gruppen/) |
 
 ## Session Continuity
 
