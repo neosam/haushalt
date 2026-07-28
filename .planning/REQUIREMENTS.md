@@ -89,7 +89,8 @@ Active milestone **v1.1 Hardening & Connectivity**. Each maps to a roadmap phase
 
 ### Nomi.ai Daily Report Push
 
-- [ ] **NOMI-01**: A user configures, per household, their own nomi.ai connection — target Nomi, API key, send time and an on/off switch — in one settings section
+- [ ] **NOMI-01**: A user configures, per household, their own nomi.ai connection — target, API key, send time and an on/off switch — in one settings section
+- [ ] **NOMI-07**: The target may be either a single Nomi or a Room (group chat); both are offered for selection by name, and the delivery path treats them as one abstraction rather than a branch at the call site
 - [ ] **NOMI-02**: The API key is stored encrypted at rest and is never returned to the client in plaintext
 - [ ] **NOMI-03**: At the configured local time (household timezone) the daily report is delivered to the configured Nomi as an OOC message
 - [ ] **NOMI-04**: A report exceeding the nomi.ai message length limit is shortened rather than failing, and the truncation is visible in the message
@@ -144,6 +145,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NOMI-04 | Phase 5 | Pending |
 | NOMI-05 | Phase 5 | Pending |
 | NOMI-06 | Phase 5 | Pending |
+| NOMI-07 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 22 total

@@ -166,28 +166,39 @@ has connected, starting with the daily report to a nomi.ai companion.
 
 **API facts** (researched 2026-07-28, see sources in the phase RESEARCH.md):
 
-- `POST https://api.nomi.ai/v1/nomis/{uuid}/chat`, body `{"messageText": "..."}`; `GET /v1/nomis`
-  lists the account's Nomis with their UUIDs.
+- Two possible targets, **both using the same `{"messageText": "..."}` body**:
+  - `POST /v1/nomis/{uuid}/chat` — a single Nomi. Listed via `GET /v1/nomis`.
+  - `POST /v1/rooms/{uuid}/chat` — a Room (group chat). Listed via `GET /v1/rooms`.
 - Auth header carries the **raw key, without a `Bearer ` prefix**: `Authorization: <uuid>`.
   Several secondary sources claim Bearer-style; the official docs do not.
-- Message length limit: 400 characters free, **800 with a subscription** (the user has one). The
-  limit should be treated as a runtime constraint, not hard-coded — Nomi has changed it before.
-- The call is **synchronous**: it waits for the Nomi's reply for up to 30 s, then returns `NoReply`.
-  Further failure modes: `NomiStillResponding`, `LimitExceeded`, HTTP 429 with `Retry-After`.
-  There is no fire-and-forget endpoint for direct chats.
+- **Rooms are the better fit for a scheduled job** and should be the reference path:
+  the room endpoint returns only `sentMessage` and does **not** wait for a reply, so the
+  `NoReply` (30 s) and `NomiStillResponding` failure modes of the direct chat simply do not
+  arise. Its errors are `RoomNotFound`, `InsufficientPlan`, `MessageCharacterLimitExceeded`,
+  `RoomStillCreating`, `InvalidBody`, `InvalidContentType`.
+- The direct-Nomi endpoint is **synchronous**: it waits up to 30 s for the reply, then returns
+  `NoReply`. Extra failure modes there: `NomiStillResponding`, `LimitExceeded`.
+- Message length: 800 for rooms; 400 free / 800 with a subscription for direct chats (the user
+  has a subscription). Treat the limit as a runtime constraint, not a hard-coded constant —
+  Nomi has changed it before.
+- HTTP 429 with a `Retry-After` header applies to both.
+- Optional, not required for this phase: `POST /v1/rooms/{id}/chat/request` with `{nomiUuid}`
+  asks a specific Nomi in the room to reply. Synchronous, 15 s timeout.
 
 #### Phase 5: Nomi.ai Daily Report Push
 
 **Goal**: A member configures a nomi.ai connection per household and receives the daily report there as an OOC message at a time of their choosing
 **Depends on**: Phase 2.1 — **already satisfied.** `services::report::generate_daily_report` is built and covered by 48 passing tests; call it directly rather than going through `GET /api/households/{id}/report`.
-**Requirements**: NOMI-01, NOMI-02, NOMI-03, NOMI-04, NOMI-05, NOMI-06
+**Requirements**: NOMI-01, NOMI-02, NOMI-03, NOMI-04, NOMI-05, NOMI-06, NOMI-07
 **Success Criteria** (what must be TRUE):
 
-  1. A member can set target Nomi, API key, send time and on/off per household; the key is stored encrypted and never returned in plaintext
-  2. At the configured local time the report arrives in the Nomi chat as `(OOC: Household App (…))`
-  3. A report longer than the limit is shortened visibly instead of failing
-  4. `NomiStillResponding`, `NoReply` and 429 are handled without aborting the run for other users
-  5. Adding a second content type later requires no change to the delivery path
+  1. A member can set target, API key, send time and on/off per household; the key is stored encrypted and never returned in plaintext
+  2. The target may be a single Nomi **or** a Room, both selectable by name from the account
+  3. At the configured local time the report arrives in that chat as `(OOC: Household App (…))`
+  4. A report longer than the limit is shortened with a counter (`… und N weitere`) instead of failing
+  5. `RoomStillCreating`, `NoReply`, `NomiStillResponding` and 429 are handled without aborting the run for other users
+  6. The settings show when the last send happened and what the last error was
+  7. Adding a second content type later requires no change to the delivery path
 
 **Plans**: TBD — run `/gsd-discuss-phase 5` first (open: encryption scheme, truncation strategy).
 The scheduler question is settled: `services::background_jobs` already ticks every minute
