@@ -85,6 +85,17 @@ Active milestone **v1.1 Hardening & Connectivity**. Each maps to a roadmap phase
 - [x] **TDEL-03**: After a successful delete the modal closes and the underlying task list reflects the removal
 - [x] **TDEL-04**: The delete action respects existing task permissions — it is not offered to users who may not delete the task
 
+## v1.2 Outbound Messaging (Planned)
+
+### Nomi.ai Daily Report Push
+
+- [ ] **NOMI-01**: A user configures, per household, their own nomi.ai connection — target Nomi, API key, send time and an on/off switch — in one settings section
+- [ ] **NOMI-02**: The API key is stored encrypted at rest and is never returned to the client in plaintext
+- [ ] **NOMI-03**: At the configured local time (household timezone) the daily report is delivered to the configured Nomi as an OOC message
+- [ ] **NOMI-04**: A report exceeding the nomi.ai message length limit is shortened rather than failing, and the truncation is visible in the message
+- [ ] **NOMI-05**: Delivery survives the documented API failure modes — `NomiStillResponding`, `NoReply`, HTTP 429 with `Retry-After` — without aborting the scheduled run for other users
+- [ ] **NOMI-06**: Content, destination and schedule are separable, so a further content type can be added later without changing the delivery path
+
 ## Out of Scope
 
 Explicitly excluded. Documented to prevent scope creep.
@@ -127,6 +138,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TDEL-02 | Quick task | Complete |
 | TDEL-03 | Quick task | Complete |
 | TDEL-04 | Quick task | Complete |
+| NOMI-01 | Phase 5 | Pending |
+| NOMI-02 | Phase 5 | Pending |
+| NOMI-03 | Phase 5 | Pending |
+| NOMI-04 | Phase 5 | Pending |
+| NOMI-05 | Phase 5 | Pending |
+| NOMI-06 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 22 total

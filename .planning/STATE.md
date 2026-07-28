@@ -70,7 +70,15 @@ Recent decisions affecting current work:
 - [v1.1]: In-memory SQLite per test; pass `current_date` to functions under test (no global time mocking)
 - [v1.1]: Tests stay in `#[cfg(test)] mod tests` next to code; fixtures use builder pattern
 - [migration]: Switched spec-driven workflow from OpenSpec to GSD (`.planning/`)
+- [v1.2]: Outbound push to nomi.ai instead of an inbound MCP server. An MCP design (phases 5-8, inbound read-only bearer tokens, separate `rmcp` server process) was fully planned on 2026-07-28 and then **discarded** — it solves the opposite problem. Do not revive it without a new requirement; the commits were abandoned, `jj op restore fbeab6da1e65` brings them back if ever needed.
+- [v1.2]: The nomi.ai API key is stored **encrypted at rest**, not hashed. Unlike an inbound token, which is only ever compared, an outgoing key must be recoverable in plaintext to be used. The project has no encryption-at-rest facility yet — this is an open decision for `/gsd-discuss-phase 5`.
+- [v1.2]: nomi.ai auth uses the **raw key** in the `Authorization` header, with no `Bearer ` prefix, per the official docs. Secondary sources claim otherwise.
 - [Phase 02.1]: Extended TestTaskBuilder with with_suggestion() to unblock Task 2's suggestion-CHECK smoke test (builder had no way to set the field before this plan)
+
+### Roadmap Evolution
+
+- 2026-07-28: Milestone v1.2 mit Phasen 5-8 (MCP-Server) angelegt, Phase 5 vollständig geplant — und am selben Tag komplett verworfen. Der Nutzer braucht Push statt Pull.
+- 2026-07-28: Milestone v1.2 als "Outbound Messaging" neu definiert, Phase 5 "Nomi.ai Daily Report Push" (NOMI-01..06). Hängt an Phase 2.1, die den Berichtstext liefert.
 
 ### Pending Todos
 

@@ -8,6 +8,7 @@ The v1.0 MVP is shipped (18 capability areas, full household task/habit manageme
 
 - ✅ **v1.0 MVP** - Phases shipped across 18 capabilities (shipped before GSD migration)
 - 🚧 **v1.1 Hardening & Connectivity** - Phases 1-4 incl. inserted 2.1 (in progress)
+- 📋 **v1.2 Outbound Messaging** - Phase 5 (planned, depends on Phase 2.1)
 - 📋 **v2.0 (future)** - TBD
 
 ## Phases
@@ -137,6 +138,56 @@ Plans:
 - [ ] 04-02: Offline detection, UI indicators, disabled action buttons
 - [ ] 04-03: Network-first API client with cache fallback and reconnect sync
 
+### 📋 v1.2 Outbound Messaging (Planned)
+
+**Milestone Goal:** The household app delivers content of its own accord to external services the user
+has connected, starting with the daily report to a nomi.ai companion.
+
+**Scope decisions** (from the design discussion, 2026-07-28):
+
+- **Push, not pull.** The app sends; nothing external queries it. An earlier MCP-server design
+  (inbound read-only tokens) was explored and discarded on 2026-07-28 — it solves the opposite
+  problem. Note the consequence for credentials: an outgoing API key must be **encrypted at rest**
+  and recoverable in plaintext to be used, not hashed like an inbound token.
+- **Per user, per household.** Each member configures their own connection for each household —
+  target Nomi, API key, send time, on/off — in one settings section. Not a household-wide setting.
+- **The report already exists.** Phase 2.1 produces the plain-text daily report; this milestone only
+  transports it. Phase 2.1 must be executed first.
+- **Built to extend.** Content, destination and schedule stay separable so further content types
+  (individual completions, weekly summaries) can be added later without touching the delivery path.
+  Only one content type ships in v1.2.
+
+**API facts** (researched 2026-07-28, see sources in the phase RESEARCH.md):
+
+- `POST https://api.nomi.ai/v1/nomis/{uuid}/chat`, body `{"messageText": "..."}`; `GET /v1/nomis`
+  lists the account's Nomis with their UUIDs.
+- Auth header carries the **raw key, without a `Bearer ` prefix**: `Authorization: <uuid>`.
+  Several secondary sources claim Bearer-style; the official docs do not.
+- Message length limit: 400 characters free, **800 with a subscription** (the user has one). The
+  limit should be treated as a runtime constraint, not hard-coded — Nomi has changed it before.
+- The call is **synchronous**: it waits for the Nomi's reply for up to 30 s, then returns `NoReply`.
+  Further failure modes: `NomiStillResponding`, `LimitExceeded`, HTTP 429 with `Retry-After`.
+  There is no fire-and-forget endpoint for direct chats.
+
+#### Phase 5: Nomi.ai Daily Report Push
+
+**Goal**: A member configures a nomi.ai connection per household and receives the daily report there as an OOC message at a time of their choosing
+**Depends on**: Phase 2.1 (provides the report text)
+**Requirements**: NOMI-01, NOMI-02, NOMI-03, NOMI-04, NOMI-05, NOMI-06
+**Success Criteria** (what must be TRUE):
+
+  1. A member can set target Nomi, API key, send time and on/off per household; the key is stored encrypted and never returned in plaintext
+  2. At the configured local time the report arrives in the Nomi chat as `(OOC: Household App (…))`
+  3. A report longer than the limit is shortened visibly instead of failing
+  4. `NomiStillResponding`, `NoReply` and 429 are handled without aborting the run for other users
+  5. Adding a second content type later requires no change to the delivery path
+
+**Plans**: TBD — run `/gsd-discuss-phase 5` first (open: encryption scheme, scheduler resolution, truncation strategy)
+
+Plans:
+
+- [ ] 05-01: TBD
+
 ### Completed Outside Phases
 
 **Delete Task from Edit Modal** (TDEL-01..04) — done 2026-07-26 as a quick task.
@@ -151,6 +202,9 @@ manage-tasks permission.
 Phases execute in numeric order: 1 → 2.1 → 2 → 3 → 4
 Phase 2.1 is an urgent insertion and runs before the remainder of Phase 2.
 
+Phase 5 (v1.2) is the only phase with a cross-milestone dependency: it needs the report text from
+Phase 2.1 and cannot start before 2.1 is executed. It is independent of phases 2, 3 and 4.
+
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. Custom Recurrence Period Fix | v1.1 | 1/1 | Complete | 2026-07-23 |
@@ -158,3 +212,4 @@ Phase 2.1 is an urgent insertion and runs before the remainder of Phase 2.
 | 2.1 Daily Task Report (INSERTED) | v1.1 | 1/6 | In Progress | - |
 | 3. Extend Recurrence Types | v1.1 | 0/TBD | Not started | - |
 | 4. Offline Task Viewing | v1.1 | 0/3 | Not started | - |
+| 5. Nomi.ai Daily Report Push | v1.2 | 0/TBD | Not started | - |
