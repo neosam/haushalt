@@ -36,6 +36,9 @@ pub mod set_date_modal;
 pub mod period_tracker;
 pub mod text_filter_input;
 
+#[cfg(test)]
+mod css_contract;
+
 // Primitive UI components
 pub mod button;
 pub mod icon_button;

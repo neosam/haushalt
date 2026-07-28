@@ -117,10 +117,10 @@ pub fn CategoryModal(
     };
 
     view! {
-        <div class="modal-overlay" on:click=move |_| on_close.call(())>
+        <div class="modal-backdrop" on:click=move |_| on_close.call(())>
             <div class="modal" on:click=|e| e.stop_propagation()>
                 <div class="modal-header">
-                    <h2>{i18n_stored.get_value().t("categories.manage")}</h2>
+                    <h3 class="modal-title">{i18n_stored.get_value().t("categories.manage")}</h3>
                     <button class="modal-close" on:click=move |_| on_close.call(())>"×"</button>
                 </div>
 
@@ -136,7 +136,7 @@ pub fn CategoryModal(
                                 <label class="form-label">{i18n_stored.get_value().t("categories.name")}</label>
                                 <input
                                     type="text"
-                                    class="form-control"
+                                    class="form-input"
                                     placeholder={i18n_stored.get_value().t("categories.name_placeholder")}
                                     prop:value=move || new_name.get()
                                     on:input=move |ev| new_name.set(event_target_value(&ev))
@@ -146,7 +146,7 @@ pub fn CategoryModal(
                                 <label class="form-label">{i18n_stored.get_value().t("categories.color")}</label>
                                 <input
                                     type="color"
-                                    class="form-control"
+                                    class="form-input"
                                     style="padding: 0.25rem; height: 38px;"
                                     prop:value=move || new_color.get()
                                     on:input=move |ev| new_color.set(event_target_value(&ev))
