@@ -32,7 +32,7 @@ Milestone: v1.1 Hardening & Connectivity
 Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-28 - Completed quick task 260728-cej: Task verschwindet nach dem Bearbeiten aus der Übersicht (drei Ursachen behoben)
+Last activity: 2026-07-28 - Completed quick task 260728-dah: Kategorien-Modal wurde unten in den Seitenfluss gerendert (undefinierte CSS-Klassen)
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
@@ -104,6 +104,7 @@ Keine — siehe `.planning/todos/completed/`.
 | 260727-vst | Bad-Habit-Texte: "Rückfall" durch "Verstoß" ersetzt (de + en) | 2026-07-27 | 1008cd0a | — (via /gsd-fast) |
 | 260728-c7k | Kategorie-Farbe in der Task-Liste anzeigen; Kategorie- und Tages-Gruppen klappbar | 2026-07-28 | 4ed8223d | [260728-c7k-kategorie-farbe-und-collapsible-gruppen](./quick/260728-c7k-kategorie-farbe-und-collapsible-gruppen/) |
 | 260728-cej | Task verschwindet nach dem Bearbeiten aus der Übersicht: Kategorie in der Update-Antwort, Reload nach Save, Aufklappzustand der Gruppen | 2026-07-28 | 1ca3f836 | [260728-cej-bug-task-verschwindet-nach-bearbeiten-au](./quick/260728-cej-bug-task-verschwindet-nach-bearbeiten-au/) |
+| 260728-dah | Kategorien-Modal wurde unten in den Seitenfluss gerendert: undefinierte CSS-Klassen korrigiert, Regressionstest ergänzt | 2026-07-28 | 17c21678 | [260728-dah-kategorien-modal-in-tasks-wird-nicht-als](./quick/260728-dah-kategorien-modal-in-tasks-wird-nicht-als/) |
 
 ## Session Continuity
 
