@@ -195,18 +195,27 @@ has connected, starting with the daily report to a nomi.ai companion.
   1. A member can set target, API key, send time and on/off per household; the key is stored encrypted and never returned in plaintext
   2. The target may be a single Nomi **or** a Room, both selectable by name from the account
   3. At the configured local time the report arrives in that chat as `(OOC: Household App (…))`
-  4. A report longer than the limit is shortened with a counter (`… und N weitere`) instead of failing
+  4. A report longer than the limit is shortened with a counter (`… and N more`, English per D-16's 2026-07-28 correction) instead of failing
   5. `RoomStillCreating`, `NoReply`, `NomiStillResponding` and 429 are handled without aborting the run for other users
   6. The settings show when the last send happened and what the last error was
   7. Adding a second content type later requires no change to the delivery path
 
-**Plans**: TBD — run `/gsd-discuss-phase 5` first (open: encryption scheme, truncation strategy).
+**Plans**: 5 plans in 5 waves (planned 2026-07-28; context in `05-CONTEXT.md` D-01..D-22,
+research in `05-RESEARCH.md`, validation contract in `05-VALIDATION.md`).
 The scheduler question is settled: `services::background_jobs` already ticks every minute
-(`check_interval_minutes: 1`), so a minute-precise send time needs no new scheduling machinery.
+(`check_interval_minutes: 1`), so a minute-precise send time needs no new scheduling machinery —
+but the tick drifts, so the send is a level trigger (`now_local >= send_time`) latched on
+`last_attempt_date`, not an equality check. Two new dependencies are unavoidable: `aes-gcm 0.10`
+and `reqwest 0.12` (rustls/webpki; `awc` is not in the tree and is `!Send`). New deployment secret:
+`NOMI_ENCRYPTION_KEY` (D-08).
 
 Plans:
 
-- [ ] 05-01: TBD
+- [ ] 05-01 (wave 1): Wave-0 blockers & credential foundation — the three dependencies, `Config.nomi_encryption_key` + `nomi_message_limit` with a redacting `Debug`, `services/crypto.rs` (AES-256-GCM), the `nomi_connections` migration plus its guarded test twin, and `start_scheduler(pool, JobConfig, NomiJobSettings)`
+- [ ] 05-02 (wave 2): Shared contract & encrypted storage — `NomiTargetKind`/`NomiTarget`/`NomiConnection`/`UpdateNomiConnectionRequest`/`NomiTargetsResponse`, `NomiConnectionRow`, and `services/nomi_connections.rs` CRUD with the enable guard and the D-19 feedback writers
+- [ ] 05-03 (wave 3): Delivery core — `services/nomi.rs` (one target abstraction, the `NomiTransport` seam, the full error taxonomy including both length-error spellings, the OOC wrapper, `is_due`) plus `generate_daily_report_capped` with the English `… and N more` counter
+- [ ] 05-04 (wave 4): Scheduled sender & HTTP API — `process_nomi_sends` in the minute tick with per-connection failure isolation, `GET`/`PUT /api/households/{id}/nomi` and `GET .../nomi/targets`, and the `module.nix` key options with a list-valued `EnvironmentFile`
+- [ ] 05-05 (wave 5): Frontend & acceptance — three `ApiClient` methods, 25 de/en strings, the ungated per-member section on `HouseholdSettingsPage`, and the human checkpoint (real send to a Nomi and to a Room, deployment secret, non-admin path)
 
 ### Completed Outside Phases
 
@@ -232,4 +241,4 @@ Phase 2.1 and cannot start before 2.1 is executed. It is independent of phases 2
 | 2.1 Daily Task Report (INSERTED) | v1.1 | 5/6 | Code fertig, Abnahme offen | - |
 | 3. Extend Recurrence Types | v1.1 | 0/TBD | Not started | - |
 | 4. Offline Task Viewing | v1.1 | 0/3 | Not started | - |
-| 5. Nomi.ai Daily Report Push | v1.2 | 0/TBD | Not started | - |
+| 5. Nomi.ai Daily Report Push | v1.2 | 0/5 | Planned | - |
