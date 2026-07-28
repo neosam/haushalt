@@ -17,7 +17,7 @@ use crate::components::pending_reviews::PendingReviews;
 use crate::components::pending_suggestions::PendingSuggestions;
 use crate::components::points_display::PointsBadge;
 use crate::components::set_date_modal::SetDateModal;
-use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
+use crate::components::task_card::{GroupStates, GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
 use crate::utils::task_modal::{settings_punishments_enabled, settings_rewards_enabled};
@@ -63,6 +63,10 @@ pub fn HouseholdPage() -> impl IntoView {
 
     // Dashboard task whitelist
     let dashboard_task_ids = create_rw_signal(HashSet::<String>::new());
+
+    // Open/closed state of the task groups. Lives here so it survives the list rebuilds
+    // that follow every task refresh.
+    let group_states = create_rw_signal(GroupStates::new());
 
     // Task detail modal state
     let detail_task_id = create_rw_signal(Option::<String>::None);
@@ -759,7 +763,7 @@ pub fn HouseholdPage() -> impl IntoView {
                                     .into_iter()
                                     .map(|t| TaskWithHousehold::new(t, Some(hh_id.clone()), None))
                                     .collect();
-                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date on_pause=on_context_pause solo_mode=is_solo_mode /> }
+                                view! { <GroupedTaskList tasks=tasks_with_household on_complete=on_complete_task on_uncomplete=on_uncomplete_task timezone=tz dashboard_task_ids=dashboard_ids on_toggle_dashboard=on_toggle_dashboard on_click_title=on_click_task_title on_edit=on_context_edit on_set_date=on_context_set_date on_pause=on_context_pause solo_mode=is_solo_mode group_states=group_states /> }
                             }}
                         </div>
 

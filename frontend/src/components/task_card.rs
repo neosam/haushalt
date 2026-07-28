@@ -2,7 +2,7 @@ use chrono::{Datelike, NaiveDate, Utc, Weekday};
 use leptos::leptos_dom::helpers::TimeoutHandle;
 use leptos::*;
 use shared::{Archetype, RecurrenceType, TaskWithStatus};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 
 use crate::components::context_menu::{ContextMenu, ContextMenuAction};
@@ -528,6 +528,44 @@ impl DueDateGroup {
     fn starts_expanded(&self) -> bool {
         matches!(self, DueDateGroup::Today)
     }
+
+    /// Stable identity of the group, independent of translation and task contents.
+    /// The open/closed state is remembered under this key so it survives the re-render
+    /// that follows every list refresh.
+    fn state_key(&self) -> String {
+        match self {
+            DueDateGroup::Today => "today".to_string(),
+            DueDateGroup::Tomorrow => "tomorrow".to_string(),
+            DueDateGroup::Weekday(days_until, _) => format!("weekday-{}", days_until),
+            DueDateGroup::Later(date) => format!("later-{}", date),
+            DueDateGroup::NoSchedule => "no-schedule".to_string(),
+        }
+    }
+}
+
+/// Remembered open/closed state of the collapsible groups, keyed by [`DueDateGroup::state_key`]
+/// and [`category_state_key`]. Lives on the page so it outlives the list's re-renders.
+pub type GroupStates = HashMap<String, bool>;
+
+/// Stable identity of a category sub-group within a date group.
+fn category_state_key(date_key: &str, category_name: &str) -> String {
+    format!("{}/{}", date_key, category_name)
+}
+
+/// Open state of a group: what the user last chose, otherwise the group's default.
+fn group_open_state(states: &GroupStates, key: &str, default_open: bool) -> bool {
+    states.get(key).copied().unwrap_or(default_open)
+}
+
+/// Record the group's new open state after the browser toggled its `<details>`.
+/// Writing without reading reactively keeps the toggle from re-rendering the list.
+fn remember_group_state(states: Option<RwSignal<GroupStates>>, key: &str, ev: &web_sys::Event) {
+    let Some(states) = states else { return };
+    // `toggle` does not bubble, so the target is always the `<details>` that changed.
+    let is_open = event_target::<web_sys::HtmlDetailsElement>(ev).open();
+    states.update_untracked(|s| {
+        s.insert(key.to_string(), is_open);
+    });
 }
 
 /// A category sub-group within a date group.
@@ -596,6 +634,10 @@ pub fn GroupedTaskList(
     #[prop(optional, into)] on_pause: Option<Callback<(String, String, bool)>>,
     /// When true, hides the Edit action (Solo Mode - only Set Date allowed)
     #[prop(default = false)] solo_mode: bool,
+    /// Remembered open/closed state of the groups. Every list refresh rebuilds this
+    /// component, so without a signal that lives on the page a group the user opened
+    /// would snap shut again - and the task they just edited would vanish with it.
+    #[prop(optional)] group_states: Option<RwSignal<GroupStates>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let i18n_stored = store_value(i18n);
@@ -633,7 +675,16 @@ pub fn GroupedTaskList(
                         {groups.into_iter().map(|(group, group_tasks)| {
                             let title = group.title(&i18n_stored.get_value());
                             let is_collapsible = group.is_collapsible();
-                            let starts_expanded = group.starts_expanded();
+                            let date_key = group.state_key();
+                            // Read untracked: the open state must not make this view depend on
+                            // the signal, or every toggle would rebuild the list underneath it.
+                            let group_open = match group_states {
+                                Some(states) => states.with_untracked(|s| {
+                                    group_open_state(s, &date_key, group.starts_expanded())
+                                }),
+                                None => group.starts_expanded(),
+                            };
+                            let date_key_for_toggle = date_key.clone();
                             let tz_inner = tz.clone();
                             let dashboard_ids_inner = dashboard_ids.clone();
                             let other_label_inner = other_label_view.clone();
@@ -648,6 +699,16 @@ pub fn GroupedTaskList(
                                 let show_category_header = has_multiple_categories;
                                 let CategoryGroup { name: cat_name, color: cat_color, tasks: cat_tasks } = cat_group;
                                 let cat_task_count = cat_tasks.len();
+                                let cat_key = category_state_key(&date_key, &cat_name);
+                                // Category groups default to open; only an explicit collapse by
+                                // the user is remembered.
+                                let cat_open = match group_states {
+                                    Some(states) => states.with_untracked(|s| {
+                                        group_open_state(s, &cat_key, true)
+                                    }),
+                                    None => true,
+                                };
+                                let cat_key_for_toggle = cat_key.clone();
                                 let task_views = cat_tasks.into_iter().map(|twh| {
                                     let tz_task = tz_cat.clone();
                                     let task_id = twh.task_id();
@@ -761,7 +822,8 @@ pub fn GroupedTaskList(
                                     view! {
                                         <details
                                             class="category-group collapsible-group"
-                                            open=true
+                                            open=cat_open
+                                            on:toggle=move |ev| remember_group_state(group_states, &cat_key_for_toggle, &ev)
                                             style="border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 0.5rem; overflow: hidden;"
                                         >
                                             <summary style=header_style>
@@ -781,7 +843,12 @@ pub fn GroupedTaskList(
 
                             if is_collapsible {
                                 view! {
-                                    <details class="task-group collapsible-group" open=starts_expanded style="margin-bottom: 1rem;">
+                                    <details
+                                        class="task-group collapsible-group"
+                                        open=group_open
+                                        on:toggle=move |ev| remember_group_state(group_states, &date_key_for_toggle, &ev)
+                                        style="margin-bottom: 1rem;"
+                                    >
                                         <summary style="font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: rgba(79, 70, 229, 0.15); color: var(--primary-color); border-radius: var(--border-radius);">
                                             <span class="group-chevron">"\u{25b8}"</span>
                                             <span>{title}</span>
@@ -1246,5 +1313,61 @@ mod tests {
             assert!(group.is_collapsible(), "{:?} should be collapsible", group);
             assert!(!group.starts_expanded(), "{:?} should start collapsed", group);
         }
+    }
+
+    // Tests for the remembered open/closed state of the groups
+
+    #[test]
+    fn test_state_key_is_distinct_per_group() {
+        let keys = [
+            DueDateGroup::Today.state_key(),
+            DueDateGroup::Tomorrow.state_key(),
+            DueDateGroup::Weekday(3, "dates.wednesday".to_string()).state_key(),
+            DueDateGroup::Weekday(5, "dates.friday".to_string()).state_key(),
+            DueDateGroup::Later(NaiveDate::from_ymd_opt(2026, 8, 15).unwrap()).state_key(),
+            DueDateGroup::NoSchedule.state_key(),
+        ];
+
+        let unique: HashSet<&String> = keys.iter().collect();
+        assert_eq!(unique.len(), keys.len(), "every group needs its own key: {:?}", keys);
+    }
+
+    /// The key must not depend on the translated title - otherwise switching the language
+    /// would silently forget which groups were open.
+    #[test]
+    fn test_state_key_ignores_weekday_label() {
+        let monday = DueDateGroup::Weekday(3, "dates.monday".to_string());
+        let mittwoch = DueDateGroup::Weekday(3, "dates.wednesday".to_string());
+
+        assert_eq!(monday.state_key(), mittwoch.state_key());
+    }
+
+    #[test]
+    fn test_category_state_key_is_scoped_to_its_date_group() {
+        let today = category_state_key(&DueDateGroup::Today.state_key(), "Küche");
+        let tomorrow = category_state_key(&DueDateGroup::Tomorrow.state_key(), "Küche");
+
+        assert_ne!(today, tomorrow);
+        assert!(today.starts_with("today/"));
+    }
+
+    #[test]
+    fn test_group_open_state_falls_back_to_default() {
+        let states = GroupStates::new();
+
+        assert!(group_open_state(&states, "today", true));
+        assert!(!group_open_state(&states, "tomorrow", false));
+    }
+
+    #[test]
+    fn test_group_open_state_prefers_remembered_choice() {
+        let mut states = GroupStates::new();
+        states.insert("tomorrow".to_string(), true);
+        states.insert("today".to_string(), false);
+
+        // The user opened "tomorrow", which defaults to collapsed ...
+        assert!(group_open_state(&states, "tomorrow", false));
+        // ... and closed "today", which defaults to expanded.
+        assert!(!group_open_state(&states, "today", true));
     }
 }

@@ -11,7 +11,7 @@ use crate::utils::task_modal::{settings_punishments_enabled, settings_rewards_en
 use crate::utils::{matches_text_filter, TaskModalData};
 use crate::components::modal::Modal;
 use crate::components::set_date_modal::SetDateModal;
-use crate::components::task_card::{GroupedTaskList, TaskWithHousehold};
+use crate::components::task_card::{GroupStates, GroupedTaskList, TaskWithHousehold};
 use crate::components::task_detail_modal::TaskDetailModal;
 use crate::components::task_modal::TaskModal;
 use crate::components::text_filter_input::TextFilterInput;
@@ -37,6 +37,10 @@ pub fn Dashboard() -> impl IntoView {
 
     // Dashboard task whitelist
     let dashboard_task_ids = create_rw_signal(HashSet::<String>::new());
+
+    // Open/closed state of the task groups. Lives here so it survives the list rebuilds
+    // that follow every task refresh.
+    let group_states = create_rw_signal(GroupStates::new());
 
     // Task detail modal state
     let detail_task_id = create_rw_signal(Option::<String>::None);
@@ -584,6 +588,7 @@ pub fn Dashboard() -> impl IntoView {
                                         on_edit=on_context_edit
                                         on_set_date=on_context_set_date
                                         on_pause=on_context_pause
+                                        group_states=group_states
                                     />
                                 </div>
                             }.into_view()
