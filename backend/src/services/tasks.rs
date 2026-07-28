@@ -85,34 +85,11 @@ pub async fn create_task(
     .execute(pool)
     .await?;
 
-    Ok(Task {
-        id,
-        household_id: *household_id,
-        title: request.title.clone(),
-        description: request.description.clone().unwrap_or_default(),
-        recurrence_type: request.recurrence_type.clone(),
-        recurrence_value: request.recurrence_value.clone(),
-        assigned_user_id: request.assigned_user_id,
-        target_count,
-        time_period: request.time_period,
-        allow_exceed_target,
-        anyone_can_complete,
-        assignee_cannot_uncomplete,
-        requires_review,
-        points_reward: request.points_reward,
-        points_penalty: request.points_penalty,
-        due_time: request.due_time.clone(),
-        habit_type,
-        category_id: request.category_id,
-        category_name: None,
-        category_color: None,
-        archived: false,
-        paused: false,
-        suggestion: suggestion_status,
-        suggested_by: suggested_by.copied(),
-        created_at: now,
-        updated_at: now,
-    })
+    // Read the task back instead of assembling it by hand: only the query in `get_task`
+    // joins `task_categories`, so a hand-built answer would always carry an empty category
+    // and callers that put it straight into their list would drop the task out of its
+    // category group.
+    get_task(pool, &id).await?.ok_or(TaskError::NotFound)
 }
 
 pub async fn get_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Option<Task>, TaskError> {
@@ -538,7 +515,10 @@ pub async fn update_task(
     .execute(pool)
     .await?;
 
-    Ok(task.to_shared())
+    // `task` comes from a plain `SELECT * FROM tasks` and therefore carries no category
+    // name or color. Returning it as-is strips the category from every client that puts
+    // the answer back into its task list, so read the joined row instead.
+    get_task(pool, task_id).await?.ok_or(TaskError::NotFound)
 }
 
 pub async fn archive_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Task, TaskError> {
@@ -4594,5 +4574,103 @@ mod tests {
         let fetched = get_task(&pool, &created.id).await.unwrap().unwrap();
         assert_eq!(fetched.category_name, None);
         assert_eq!(fetched.category_color, None);
+    }
+
+    /// The create answer goes straight into the client's task list, so it has to carry the
+    /// category - otherwise a freshly created task shows up outside its category group.
+    #[tokio::test]
+    async fn test_create_task_returns_category() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+        let category_id = insert_test_category(&pool, &household_id, "Küche", "#FF8800").await;
+
+        let created = create_task(&pool, &household_id, &category_task_request("Spülen", Some(category_id)), None)
+            .await
+            .unwrap();
+
+        assert_eq!(created.category_id, Some(category_id));
+        assert_eq!(created.category_name.as_deref(), Some("Küche"));
+        assert_eq!(created.category_color.as_deref(), Some("#FF8800"));
+    }
+
+    /// Same for the update answer: the overview replaces its list entry with it, so a
+    /// category-less answer drops the task out of its category group.
+    #[tokio::test]
+    async fn test_update_task_returns_category() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+        let category_id = insert_test_category(&pool, &household_id, "Bad", "#3B82F6").await;
+
+        let created = create_task(&pool, &household_id, &category_task_request("Putzen", Some(category_id)), None)
+            .await
+            .unwrap();
+
+        let update = UpdateTaskRequest {
+            title: Some("Putzen (neu)".to_string()),
+            description: None,
+            recurrence_type: None,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: None,
+            time_period: None,
+            allow_exceed_target: None,
+            anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: None,
+            archived: None,
+            paused: None,
+        };
+        let updated = update_task(&pool, &created.id, &update).await.unwrap();
+
+        assert_eq!(updated.title, "Putzen (neu)");
+        assert_eq!(updated.category_id, Some(category_id));
+        assert_eq!(updated.category_name.as_deref(), Some("Bad"));
+        assert_eq!(updated.category_color.as_deref(), Some("#3B82F6"));
+    }
+
+    /// Clearing the category must clear name and color with it.
+    #[tokio::test]
+    async fn test_update_task_clearing_category_drops_name_and_color() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+        let category_id = insert_test_category(&pool, &household_id, "Flur", "#10B981").await;
+
+        let created = create_task(&pool, &household_id, &category_task_request("Wischen", Some(category_id)), None)
+            .await
+            .unwrap();
+
+        let update = UpdateTaskRequest {
+            title: None,
+            description: None,
+            recurrence_type: None,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: None,
+            time_period: None,
+            allow_exceed_target: None,
+            anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id: Some(None),
+            archived: None,
+            paused: None,
+        };
+        let updated = update_task(&pool, &created.id, &update).await.unwrap();
+
+        assert_eq!(updated.category_id, None);
+        assert_eq!(updated.category_name, None);
+        assert_eq!(updated.category_color, None);
     }
 }
