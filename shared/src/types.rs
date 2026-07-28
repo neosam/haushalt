@@ -633,6 +633,8 @@ pub struct Task {
     pub category_id: Option<Uuid>,
     /// Category name (populated when loading task with category)
     pub category_name: Option<String>,
+    /// Category color as a CSS color string (populated when loading task with category)
+    pub category_color: Option<String>,
     /// Whether the task is archived (hidden from active lists)
     pub archived: bool,
     /// Whether the task is paused (no automated punishments while paused)
@@ -2221,6 +2223,7 @@ mod tests {
             habit_type: HabitType::Good,
             category_id: None,
             category_name: None,
+            category_color: None,
             archived: false,
             paused: false,
             suggestion: None,

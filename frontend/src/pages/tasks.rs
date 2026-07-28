@@ -834,6 +834,7 @@ mod tests {
             habit_type: shared::HabitType::Good,
             category_id: None,
             category_name: None,
+            category_color: None,
             archived: false,
             paused: false,
             assigned_user_id: None,

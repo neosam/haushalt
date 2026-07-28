@@ -2622,3 +2622,32 @@ body.dark-mode .task-item.selected {
         grid-template-columns: 1fr 1fr;
     }
 }
+
+/* Collapsible task groups (due date groups and category sub-groups) */
+.collapsible-group > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.collapsible-group > summary::-webkit-details-marker {
+    display: none;
+}
+
+.collapsible-group > summary .group-chevron {
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+
+.collapsible-group[open] > summary .group-chevron {
+    transform: rotate(90deg);
+}
+
+.group-task-count {
+    margin-left: auto;
+    font-weight: 400;
+    opacity: 0.75;
+}

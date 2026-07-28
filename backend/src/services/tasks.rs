@@ -105,6 +105,7 @@ pub async fn create_task(
         habit_type,
         category_id: request.category_id,
         category_name: None,
+        category_color: None,
         archived: false,
         paused: false,
         suggestion: suggestion_status,
@@ -117,7 +118,7 @@ pub async fn create_task(
 pub async fn get_task(pool: &SqlitePool, task_id: &Uuid) -> Result<Option<Task>, TaskError> {
     let task: Option<TaskRowWithCategory> = sqlx::query_as(
         r#"
-        SELECT t.*, tc.name as category_name
+        SELECT t.*, tc.name as category_name, tc.color as category_color
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.id = ?
@@ -384,7 +385,7 @@ fn get_month_start(date: NaiveDate) -> NaiveDate {
 pub async fn list_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Task>, TaskError> {
     let tasks: Vec<TaskRowWithCategory> = sqlx::query_as(
         r#"
-        SELECT t.*, tc.name as category_name
+        SELECT t.*, tc.name as category_name, tc.color as category_color
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.household_id = ? AND t.archived = 0
@@ -402,7 +403,7 @@ pub async fn list_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Ta
 pub async fn list_archived_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Task>, TaskError> {
     let tasks: Vec<TaskRowWithCategory> = sqlx::query_as(
         r#"
-        SELECT t.*, tc.name as category_name
+        SELECT t.*, tc.name as category_name, tc.color as category_color
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.household_id = ? AND t.archived = 1
@@ -423,7 +424,7 @@ pub async fn list_user_assigned_tasks(
 ) -> Result<Vec<Task>, TaskError> {
     let tasks: Vec<TaskRowWithCategory> = sqlx::query_as(
         r#"
-        SELECT t.*, tc.name as category_name
+        SELECT t.*, tc.name as category_name, tc.color as category_color
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.household_id = ? AND t.assigned_user_id = ? AND t.archived = 0
@@ -1123,6 +1124,7 @@ pub async fn list_pending_reviews(
                     habit_type: row.t_habit_type.parse().unwrap_or(shared::HabitType::Good),
                     category_id: None,
                     category_name: None,
+                    category_color: None,
                     archived: false, // Pending reviews are for active tasks
                     paused: false, // Pending reviews are for active tasks
                     suggestion: None,
@@ -1420,7 +1422,7 @@ pub async fn get_dashboard_tasks_with_status(
 pub async fn list_suggested_tasks(pool: &SqlitePool, household_id: &Uuid) -> Result<Vec<Task>, TaskError> {
     let tasks: Vec<TaskRowWithCategory> = sqlx::query_as(
         r#"
-        SELECT t.*, tc.name as category_name
+        SELECT t.*, tc.name as category_name, tc.color as category_color
         FROM tasks t
         LEFT JOIN task_categories tc ON t.category_id = tc.id
         WHERE t.household_id = ? AND t.suggestion = 'suggested'
@@ -4509,5 +4511,88 @@ mod tests {
 
         // Alice's completion should still exist
         test_utils::assert_completion_exists(&pool, &task.id, &alice_id, CompletionStatus::Approved).await;
+    }
+
+    /// Insert a category directly — the shared helper would need columns the test schema lacks.
+    async fn insert_test_category(pool: &SqlitePool, household_id: &Uuid, name: &str, color: &str) -> Uuid {
+        let category_id = Uuid::new_v4();
+        sqlx::query("INSERT INTO task_categories (id, household_id, name, color) VALUES (?, ?, ?, ?)")
+            .bind(category_id.to_string())
+            .bind(household_id.to_string())
+            .bind(name)
+            .bind(color)
+            .execute(pool)
+            .await
+            .unwrap();
+        category_id
+    }
+
+    fn category_task_request(title: &str, category_id: Option<Uuid>) -> CreateTaskRequest {
+        CreateTaskRequest {
+            title: title.to_string(),
+            description: None,
+            recurrence_type: RecurrenceType::Daily,
+            recurrence_value: None,
+            assigned_user_id: None,
+            target_count: Some(1),
+            time_period: None,
+            allow_exceed_target: None,
+            anyone_can_complete: None,
+            assignee_cannot_uncomplete: None,
+            requires_review: None,
+            points_reward: None,
+            points_penalty: None,
+            due_time: None,
+            habit_type: None,
+            category_id,
+            is_suggestion: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_carries_category_color() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+        let category_id = insert_test_category(&pool, &household_id, "Küche", "#FF8800").await;
+
+        let created = create_task(&pool, &household_id, &category_task_request("Spülen", Some(category_id)), None)
+            .await
+            .unwrap();
+
+        let tasks = list_tasks(&pool, &household_id).await.unwrap();
+        let listed = tasks.iter().find(|t| t.id == created.id).unwrap();
+        assert_eq!(listed.category_name.as_deref(), Some("Küche"));
+        assert_eq!(listed.category_color.as_deref(), Some("#FF8800"));
+    }
+
+    #[tokio::test]
+    async fn test_get_task_carries_category_color() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+        let category_id = insert_test_category(&pool, &household_id, "Bad", "#3B82F6").await;
+
+        let created = create_task(&pool, &household_id, &category_task_request("Putzen", Some(category_id)), None)
+            .await
+            .unwrap();
+
+        let fetched = get_task(&pool, &created.id).await.unwrap().unwrap();
+        assert_eq!(fetched.category_color.as_deref(), Some("#3B82F6"));
+    }
+
+    #[tokio::test]
+    async fn test_task_without_category_has_no_color() {
+        let pool = setup_test_db().await;
+        let user_id = create_test_user(&pool).await;
+        let household_id = create_test_household(&pool, &user_id).await;
+
+        let created = create_task(&pool, &household_id, &category_task_request("Ohne Kategorie", None), None)
+            .await
+            .unwrap();
+
+        let fetched = get_task(&pool, &created.id).await.unwrap().unwrap();
+        assert_eq!(fetched.category_name, None);
+        assert_eq!(fetched.category_color, None);
     }
 }

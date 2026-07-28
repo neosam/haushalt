@@ -823,6 +823,7 @@ mod tests {
                 id TEXT PRIMARY KEY NOT NULL,
                 household_id TEXT NOT NULL REFERENCES households(id),
                 name TEXT NOT NULL,
+                color TEXT,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

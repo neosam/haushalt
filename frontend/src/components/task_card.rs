@@ -516,11 +516,32 @@ impl DueDateGroup {
             DueDateGroup::NoSchedule => i18n.t("dates.no_schedule"),
         }
     }
+
+    /// Whether this date group can be collapsed.
+    /// Today always stays open so the tasks that matter right now are never hidden.
+    fn is_collapsible(&self) -> bool {
+        !matches!(self, DueDateGroup::Today)
+    }
+
+    /// Whether this date group starts expanded.
+    /// Only today does, so the list opens on today's tasks.
+    fn starts_expanded(&self) -> bool {
+        matches!(self, DueDateGroup::Today)
+    }
+}
+
+/// A category sub-group within a date group.
+pub struct CategoryGroup {
+    pub name: String,
+    /// Configured category color as a CSS color string, if the category has one.
+    pub color: Option<String>,
+    pub tasks: Vec<TaskWithHousehold>,
 }
 
 /// Group tasks by category within a date group.
-/// Returns a sorted list of (category_name, tasks) tuples.
-fn group_tasks_by_category(tasks: Vec<TaskWithHousehold>, other_label: &str) -> Vec<(String, Vec<TaskWithHousehold>)> {
+/// Categories come out alphabetically, tasks alphabetically within each category,
+/// and the uncategorized tasks last under `other_label`.
+fn group_tasks_by_category(tasks: Vec<TaskWithHousehold>, other_label: &str) -> Vec<CategoryGroup> {
     let mut by_category: BTreeMap<String, Vec<TaskWithHousehold>> = BTreeMap::new();
     let mut uncategorized: Vec<TaskWithHousehold> = Vec::new();
 
@@ -532,17 +553,24 @@ fn group_tasks_by_category(tasks: Vec<TaskWithHousehold>, other_label: &str) -> 
         }
     }
 
-    let mut result: Vec<(String, Vec<TaskWithHousehold>)> = by_category.into_iter().collect();
-    // Sort categories alphabetically
-    result.sort_by(|a, b| a.0.cmp(&b.0));
-    // Sort tasks alphabetically within each category
-    for (_, category_tasks) in &mut result {
-        category_tasks.sort_by_key(|a| a.title().to_lowercase());
-    }
+    // BTreeMap already yields the categories in alphabetical order.
+    let mut result: Vec<CategoryGroup> = by_category
+        .into_iter()
+        .map(|(name, mut tasks)| {
+            tasks.sort_by_key(|a| a.title().to_lowercase());
+            // Every task of a category carries the same color; take the first one that has it.
+            let color = tasks.iter().find_map(|t| t.category_color().cloned());
+            CategoryGroup { name, color, tasks }
+        })
+        .collect();
+
     if !uncategorized.is_empty() {
-        // Sort uncategorized tasks alphabetically
         uncategorized.sort_by_key(|a| a.title().to_lowercase());
-        result.push((other_label.to_string(), uncategorized));
+        result.push(CategoryGroup {
+            name: other_label.to_string(),
+            color: None,
+            tasks: uncategorized,
+        });
     }
     result
 }
@@ -604,148 +632,173 @@ pub fn GroupedTaskList(
                     <div>
                         {groups.into_iter().map(|(group, group_tasks)| {
                             let title = group.title(&i18n_stored.get_value());
-                            let is_today = matches!(group, DueDateGroup::Today);
+                            let is_collapsible = group.is_collapsible();
+                            let starts_expanded = group.starts_expanded();
                             let tz_inner = tz.clone();
                             let dashboard_ids_inner = dashboard_ids.clone();
                             let other_label_inner = other_label_view.clone();
                             // Sub-group by category
                             let category_groups = group_tasks_by_category(group_tasks, &other_label_inner);
-                            let has_multiple_categories = category_groups.len() > 1 || (category_groups.len() == 1 && category_groups[0].0 != other_label_inner);
-                            view! {
-                                <div class="task-group" style=if is_today { "margin-bottom: 1.5rem;" } else { "margin-bottom: 1rem;" }>
-                                    <div style=if is_today {
-                                        "font-weight: 600; font-size: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border-radius: var(--border-radius);"
-                                    } else {
-                                        "font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: rgba(79, 70, 229, 0.15); color: var(--primary-color); border-radius: var(--border-radius);"
-                                    }>
-                                        {title}
+                            let has_multiple_categories = category_groups.len() > 1 || (category_groups.len() == 1 && category_groups[0].name != other_label_inner);
+                            let group_task_count = category_groups.iter().map(|g| g.tasks.len()).sum::<usize>();
+
+                            let category_views = category_groups.into_iter().map(|cat_group| {
+                                let tz_cat = tz_inner.clone();
+                                let dashboard_ids_cat = dashboard_ids_inner.clone();
+                                let show_category_header = has_multiple_categories;
+                                let CategoryGroup { name: cat_name, color: cat_color, tasks: cat_tasks } = cat_group;
+                                let cat_task_count = cat_tasks.len();
+                                let task_views = cat_tasks.into_iter().map(|twh| {
+                                    let tz_task = tz_cat.clone();
+                                    let task_id = twh.task_id();
+                                    let is_on_dashboard = dashboard_ids_cat.as_ref()
+                                        .map(|ids| ids.contains(&task_id))
+                                        .unwrap_or(false);
+                                    // Extract household info from the task wrapper
+                                    let hh_id = twh.household_id.clone();
+                                    let hh_name = twh.household_name.clone();
+
+                                    // Build context menu actions
+                                    let mut ctx_actions: Vec<ContextMenuAction> = Vec::new();
+                                    let is_no_schedule = twh.task.next_due_date.is_none();
+
+                                    // Edit action (hidden in Solo Mode)
+                                    if !solo_mode {
+                                        if let (Some(edit_cb), Some(ref hid)) = (on_edit, &hh_id) {
+                                            let edit_label = i18n_stored.get_value().t("task_card.edit");
+                                            let tid = task_id.clone();
+                                            let hid_clone = hid.clone();
+                                            ctx_actions.push(ContextMenuAction {
+                                                label: edit_label,
+                                                on_click: Callback::new(move |_| edit_cb.call((tid.clone(), hid_clone.clone()))),
+                                                danger: false,
+                                            });
+                                        }
+                                    }
+
+                                    // Set date action (only for tasks without schedule)
+                                    if is_no_schedule {
+                                        if let (Some(set_date_cb), Some(ref hid)) = (on_set_date, &hh_id) {
+                                            let set_date_label = i18n_stored.get_value().t("task_card.set_date");
+                                            let tid = task_id.clone();
+                                            let hid_clone = hid.clone();
+                                            ctx_actions.push(ContextMenuAction {
+                                                label: set_date_label,
+                                                on_click: Callback::new(move |_| set_date_cb.call((tid.clone(), hid_clone.clone()))),
+                                                danger: false,
+                                            });
+                                        }
+                                    }
+
+                                    // Pause/Unpause action (hidden in Solo Mode)
+                                    if !solo_mode {
+                                        if let (Some(pause_cb), Some(ref hid)) = (on_pause, &hh_id) {
+                                            let is_paused = twh.task.task.paused;
+                                            let pause_label = if is_paused {
+                                                i18n_stored.get_value().t("task_card.unpause")
+                                            } else {
+                                                i18n_stored.get_value().t("task_card.pause")
+                                            };
+                                            let tid = task_id.clone();
+                                            let hid_clone = hid.clone();
+                                            ctx_actions.push(ContextMenuAction {
+                                                label: pause_label,
+                                                on_click: Callback::new(move |_| pause_cb.call((tid.clone(), hid_clone.clone(), is_paused))),
+                                                danger: false,
+                                            });
+                                        }
+                                    }
+
+                                    let context_actions = ctx_actions;
+
+                                    // Render TaskCard with appropriate props based on available data
+                                    // Match on household info (both must be Some to display household)
+                                    match (on_toggle_dashboard, on_click_title, hh_id, hh_name) {
+                                        // With household info
+                                        (Some(toggle_cb), Some(title_cb), Some(hid), Some(name)) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
+                                        }
+                                        (Some(toggle_cb), None, Some(hid), Some(name)) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb context_actions=context_actions /> }.into_view()
+                                        }
+                                        (None, Some(title_cb), Some(hid), Some(name)) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_click_title=title_cb context_actions=context_actions /> }.into_view()
+                                        }
+                                        (None, None, Some(hid), Some(name)) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid context_actions=context_actions /> }.into_view()
+                                        }
+                                        // With household_id only (for title click callback)
+                                        (Some(toggle_cb), Some(title_cb), Some(hid), None) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
+                                        }
+                                        (None, Some(title_cb), Some(hid), None) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_click_title=title_cb context_actions=context_actions /> }.into_view()
+                                        }
+                                        // Without household info
+                                        (Some(toggle_cb), Some(title_cb), None, _) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
+                                        }
+                                        (Some(toggle_cb), None, _, _) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb context_actions=context_actions /> }.into_view()
+                                        }
+                                        (None, Some(title_cb), _, _) => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_click_title=title_cb context_actions=context_actions /> }.into_view()
+                                        }
+                                        _ => {
+                                            view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task context_actions=context_actions /> }.into_view()
+                                        }
+                                    }
+                                }).collect_view();
+
+                                if show_category_header {
+                                    // Left bar in the configured category color; categories
+                                    // without a color fall back to the neutral border color.
+                                    let bar_color = cat_color.unwrap_or_else(|| "var(--border-color)".to_string());
+                                    let header_style = format!(
+                                        "font-weight: 500; font-size: 0.75rem; padding: 0.5rem 1rem; color: var(--text-muted); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); border-left: 4px solid {};",
+                                        bar_color
+                                    );
+                                    view! {
+                                        <details
+                                            class="category-group collapsible-group"
+                                            open=true
+                                            style="border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 0.5rem; overflow: hidden;"
+                                        >
+                                            <summary style=header_style>
+                                                <span class="group-chevron">"\u{25b8}"</span>
+                                                <span>{cat_name}</span>
+                                                <span class="group-task-count">{cat_task_count}</span>
+                                            </summary>
+                                            {task_views}
+                                        </details>
+                                    }.into_view()
+                                } else {
+                                    view! { <div class="category-group">{task_views}</div> }.into_view()
+                                }
+                            }).collect_view();
+
+                            let content = view! { <div style="margin-top: 0.5rem;">{category_views}</div> };
+
+                            if is_collapsible {
+                                view! {
+                                    <details class="task-group collapsible-group" open=starts_expanded style="margin-bottom: 1rem;">
+                                        <summary style="font-weight: 500; font-size: 0.875rem; padding: 0.5rem 1rem; background: rgba(79, 70, 229, 0.15); color: var(--primary-color); border-radius: var(--border-radius);">
+                                            <span class="group-chevron">"\u{25b8}"</span>
+                                            <span>{title}</span>
+                                            <span class="group-task-count">{group_task_count}</span>
+                                        </summary>
+                                        {content}
+                                    </details>
+                                }.into_view()
+                            } else {
+                                view! {
+                                    <div class="task-group" style="margin-bottom: 1.5rem;">
+                                        <div style="font-weight: 600; font-size: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border-radius: var(--border-radius);">
+                                            {title}
+                                        </div>
+                                        {content}
                                     </div>
-                                    <div style="margin-top: 0.5rem;">
-                                        {category_groups.into_iter().map(|(cat_name, cat_tasks)| {
-                                            let tz_cat = tz_inner.clone();
-                                            let dashboard_ids_cat = dashboard_ids_inner.clone();
-                                            let show_category_header = has_multiple_categories;
-                                            view! {
-                                                <div class="category-group" style=if show_category_header {
-                                                    "border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 0.5rem; overflow: hidden;"
-                                                } else {
-                                                    ""
-                                                }>
-                                                    {if show_category_header {
-                                                        view! {
-                                                            <div style="font-weight: 500; font-size: 0.75rem; padding: 0.5rem 1rem; color: var(--text-muted); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
-                                                                {cat_name}
-                                                            </div>
-                                                        }.into_view()
-                                                    } else {
-                                                        ().into_view()
-                                                    }}
-                                                    {cat_tasks.into_iter().map(|twh| {
-                                                        let tz_task = tz_cat.clone();
-                                                        let task_id = twh.task_id();
-                                                        let is_on_dashboard = dashboard_ids_cat.as_ref()
-                                                            .map(|ids| ids.contains(&task_id))
-                                                            .unwrap_or(false);
-                                                        // Extract household info from the task wrapper
-                                                        let hh_id = twh.household_id.clone();
-                                                        let hh_name = twh.household_name.clone();
-
-                                                        // Build context menu actions
-                                                        let mut ctx_actions: Vec<ContextMenuAction> = Vec::new();
-                                                        let is_no_schedule = twh.task.next_due_date.is_none();
-
-                                                        // Edit action (hidden in Solo Mode)
-                                                        if !solo_mode {
-                                                            if let (Some(edit_cb), Some(ref hid)) = (on_edit, &hh_id) {
-                                                                let edit_label = i18n_stored.get_value().t("task_card.edit");
-                                                                let tid = task_id.clone();
-                                                                let hid_clone = hid.clone();
-                                                                ctx_actions.push(ContextMenuAction {
-                                                                    label: edit_label,
-                                                                    on_click: Callback::new(move |_| edit_cb.call((tid.clone(), hid_clone.clone()))),
-                                                                    danger: false,
-                                                                });
-                                                            }
-                                                        }
-
-                                                        // Set date action (only for tasks without schedule)
-                                                        if is_no_schedule {
-                                                            if let (Some(set_date_cb), Some(ref hid)) = (on_set_date, &hh_id) {
-                                                                let set_date_label = i18n_stored.get_value().t("task_card.set_date");
-                                                                let tid = task_id.clone();
-                                                                let hid_clone = hid.clone();
-                                                                ctx_actions.push(ContextMenuAction {
-                                                                    label: set_date_label,
-                                                                    on_click: Callback::new(move |_| set_date_cb.call((tid.clone(), hid_clone.clone()))),
-                                                                    danger: false,
-                                                                });
-                                                            }
-                                                        }
-
-                                                        // Pause/Unpause action (hidden in Solo Mode)
-                                                        if !solo_mode {
-                                                            if let (Some(pause_cb), Some(ref hid)) = (on_pause, &hh_id) {
-                                                                let is_paused = twh.task.task.paused;
-                                                                let pause_label = if is_paused {
-                                                                    i18n_stored.get_value().t("task_card.unpause")
-                                                                } else {
-                                                                    i18n_stored.get_value().t("task_card.pause")
-                                                                };
-                                                                let tid = task_id.clone();
-                                                                let hid_clone = hid.clone();
-                                                                ctx_actions.push(ContextMenuAction {
-                                                                    label: pause_label,
-                                                                    on_click: Callback::new(move |_| pause_cb.call((tid.clone(), hid_clone.clone(), is_paused))),
-                                                                    danger: false,
-                                                                });
-                                                            }
-                                                        }
-
-                                                        let context_actions = ctx_actions;
-
-                                                        // Render TaskCard with appropriate props based on available data
-                                                        // Match on household info (both must be Some to display household)
-                                                        match (on_toggle_dashboard, on_click_title, hh_id, hh_name) {
-                                                            // With household info
-                                                            (Some(toggle_cb), Some(title_cb), Some(hid), Some(name)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            (Some(toggle_cb), None, Some(hid), Some(name)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            (None, Some(title_cb), Some(hid), Some(name)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid on_click_title=title_cb context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            (None, None, Some(hid), Some(name)) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_name=name household_id=hid context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            // With household_id only (for title click callback)
-                                                            (Some(toggle_cb), Some(title_cb), Some(hid), None) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            (None, Some(title_cb), Some(hid), None) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task household_id=hid on_click_title=title_cb context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            // Without household info
-                                                            (Some(toggle_cb), Some(title_cb), None, _) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb on_click_title=title_cb context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            (Some(toggle_cb), None, _, _) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_dashboard=is_on_dashboard on_toggle_dashboard=toggle_cb context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            (None, Some(title_cb), _, _) => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task on_click_title=title_cb context_actions=context_actions /> }.into_view()
-                                                            }
-                                                            _ => {
-                                                                view! { <TaskCard task=twh.task on_complete=on_complete on_uncomplete=on_uncomplete timezone=tz_task context_actions=context_actions /> }.into_view()
-                                                            }
-                                                        }
-                                                    }).collect_view()}
-                                                </div>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                </div>
+                                }.into_view()
                             }
                         }).collect_view()}
                     </div>
@@ -803,6 +856,11 @@ impl TaskWithHousehold {
         self.task.task.category_name.as_ref()
     }
 
+    /// Get the configured category color from the inner task.
+    pub fn category_color(&self) -> Option<&String> {
+        self.task.task.category_color.as_ref()
+    }
+
     /// Get the task title from the inner task.
     pub fn title(&self) -> &str {
         &self.task.task.title
@@ -855,6 +913,7 @@ mod tests {
                 habit_type: HabitType::Good,
                 category_id: None,
                 category_name: None,
+                category_color: None,
                 archived: false,
                 paused: false,
                 created_at: Utc::now(),
@@ -970,6 +1029,7 @@ mod tests {
                 habit_type: HabitType::Good,
                 category_id: None,
                 category_name: None,
+                category_color: None,
                 archived: false,
                 paused: false,
                 created_at: Utc::now(),
@@ -1089,5 +1149,102 @@ mod tests {
         let task = create_restricted_test_task(false);
         assert!(task.can_complete());
         assert!(task.can_uncomplete());
+    }
+
+    // Tests for category grouping: name, color and ordering
+
+    fn create_task_in_category(title: &str, category: Option<(&str, Option<&str>)>) -> TaskWithHousehold {
+        let mut task = create_test_task(0, 1);
+        task.task.title = title.to_string();
+        if let Some((name, color)) = category {
+            task.task.category_id = Some(Uuid::new_v4());
+            task.task.category_name = Some(name.to_string());
+            task.task.category_color = color.map(|c| c.to_string());
+        }
+        TaskWithHousehold::from_task(task)
+    }
+
+    #[test]
+    fn test_group_by_category_uses_configured_color() {
+        let tasks = vec![create_task_in_category("Spülen", Some(("Küche", Some("#FF8800"))))];
+        let groups = group_tasks_by_category(tasks, "Sonstige");
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "Küche");
+        assert_eq!(groups[0].color.as_deref(), Some("#FF8800"));
+    }
+
+    #[test]
+    fn test_group_by_category_without_color_stays_none() {
+        let tasks = vec![create_task_in_category("Spülen", Some(("Küche", None)))];
+        let groups = group_tasks_by_category(tasks, "Sonstige");
+
+        assert_eq!(groups[0].color, None);
+    }
+
+    #[test]
+    fn test_group_by_category_picks_color_from_first_task_that_has_one() {
+        // Only tasks loaded through the category join carry the color
+        let tasks = vec![
+            create_task_in_category("A Task", Some(("Küche", None))),
+            create_task_in_category("B Task", Some(("Küche", Some("#00AA55")))),
+        ];
+        let groups = group_tasks_by_category(tasks, "Sonstige");
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].tasks.len(), 2);
+        assert_eq!(groups[0].color.as_deref(), Some("#00AA55"));
+    }
+
+    #[test]
+    fn test_group_by_category_uncategorized_goes_last_without_color() {
+        let tasks = vec![
+            create_task_in_category("Ohne", None),
+            create_task_in_category("Mit", Some(("Küche", Some("#FF8800")))),
+        ];
+        let groups = group_tasks_by_category(tasks, "Sonstige");
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].name, "Küche");
+        assert_eq!(groups[1].name, "Sonstige");
+        assert_eq!(groups[1].color, None);
+    }
+
+    #[test]
+    fn test_group_by_category_sorts_categories_and_tasks() {
+        let tasks = vec![
+            create_task_in_category("zebra", Some(("Wohnzimmer", None))),
+            create_task_in_category("Apfel", Some(("Wohnzimmer", None))),
+            create_task_in_category("Spülen", Some(("Küche", None))),
+        ];
+        let groups = group_tasks_by_category(tasks, "Sonstige");
+
+        assert_eq!(groups[0].name, "Küche");
+        assert_eq!(groups[1].name, "Wohnzimmer");
+        assert_eq!(groups[1].tasks[0].title(), "Apfel");
+        assert_eq!(groups[1].tasks[1].title(), "zebra");
+    }
+
+    // Tests for collapsible date groups
+
+    #[test]
+    fn test_today_is_not_collapsible_and_starts_expanded() {
+        assert!(!DueDateGroup::Today.is_collapsible());
+        assert!(DueDateGroup::Today.starts_expanded());
+    }
+
+    #[test]
+    fn test_other_date_groups_are_collapsible_and_start_collapsed() {
+        let groups = [
+            DueDateGroup::Tomorrow,
+            DueDateGroup::Weekday(3, "dates.wednesday".to_string()),
+            DueDateGroup::Later(NaiveDate::from_ymd_opt(2026, 8, 15).unwrap()),
+            DueDateGroup::NoSchedule,
+        ];
+
+        for group in groups {
+            assert!(group.is_collapsible(), "{:?} should be collapsible", group);
+            assert!(!group.starts_expanded(), "{:?} should start collapsed", group);
+        }
     }
 }

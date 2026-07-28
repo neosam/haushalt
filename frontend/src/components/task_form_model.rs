@@ -453,6 +453,7 @@ mod tests {
             habit_type,
             category_id: None,
             category_name: None,
+            category_color: None,
             archived: false,
             paused: false,
             created_at: chrono::Utc::now(),

@@ -2372,6 +2372,7 @@ mod tests {
             habit_type: HabitType::Good,
             category_id: None,
             category_name: None,
+            category_color: None,
             suggestion: None,
             suggested_by: None,
             archived: false,

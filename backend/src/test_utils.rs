@@ -749,6 +749,7 @@ impl TestTaskBuilder {
             habit_type: self.habit_type,
             category_id: self.category_id,
             category_name: None,
+            category_color: None,
             archived: self.archived,
             paused: self.paused,
             suggestion: self.suggestion,
