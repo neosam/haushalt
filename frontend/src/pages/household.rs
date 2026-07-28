@@ -301,11 +301,16 @@ pub fn HouseholdPage() -> impl IntoView {
     };
 
     // Handle task save from edit modal
-    let on_task_save = move |saved_task: Task| {
-        // Update tasks list
-        tasks.update(|t| {
-            if let Some(pos) = t.iter().position(|tw| tw.task.id == saved_task.id) {
-                t[pos].task = saved_task;
+    //
+    // The saved task alone is not enough to patch the list entry: the surrounding
+    // `TaskWithStatus` carries the computed `next_due_date`, which a changed recurrence
+    // invalidates. Reload the list instead so date group and category both match the
+    // server again.
+    let on_task_save = move |_saved_task: Task| {
+        let id = household_id();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(t) = ApiClient::get_all_tasks_with_status(&id).await {
+                tasks.set(t);
             }
         });
         editing_task.set(None);
