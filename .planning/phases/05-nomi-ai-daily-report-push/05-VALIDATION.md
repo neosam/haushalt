@@ -56,37 +56,39 @@ translation-key-presence tests and the `css_contract` test that fails the build 
 | 05-01-T2 | 05-01 | 1 | NOMI-02 | T-01, T-03, T-05 | Fresh nonce per encryption; wrong key fails closed; no key in any error | unit | `nix develop -c cargo test -p backend --lib crypto::` | ❌ new `backend/src/services/crypto.rs` | ⬜ pending |
 | 05-01-T3 | 05-01 | 1 | NOMI-01, NOMI-02 | T-03, T-06 | The credential column is a BLOB named `api_key_encrypted`; test and real schema provably identical | unit (db) | `nix develop -c cargo test -p backend --lib test_utils::` | ❌ new migration + `test_utils.rs` edit | ⬜ pending |
 | 05-01-T4 | 05-01 | 1 | NOMI-03 | T-02, T-04 | The job can reach the key; a malformed key disables rather than crashes | unit | `nix develop -c cargo test -p backend --lib background_jobs::tests::nomi_settings` | ✅ `background_jobs.rs`, `main.rs` | ⬜ pending |
-| 05-02-T1 | 05-02 | 2 | NOMI-01, NOMI-02, NOMI-07 | T-08 | The read DTO structurally cannot carry the key | unit | `nix develop -c cargo test -p shared --lib` | ✅ `shared/src/types.rs` | ⬜ pending |
+| 05-02-T1 | 05-02 | 2 | NOMI-01, NOMI-02, NOMI-07 | T-08, T-09 | The read DTO structurally cannot carry the key; the write DTO — the only type holding it in plaintext — has a redacting `Debug` | unit | `nix develop -c cargo test -p shared --lib` | ✅ `shared/src/types.rs` | ⬜ pending |
 | 05-02-T2 | 05-02 | 2 | NOMI-01 | T-08, T-09 | The row is not serializable and its `Debug` hides the ciphertext | unit | `nix develop -c cargo test -p backend --lib models::nomi_connection` | ❌ new `backend/src/models/nomi_connection.rs` | ⬜ pending |
 | 05-02-T3 | 05-02 | 2 | NOMI-01, NOMI-02 | T-10, T-11, T-12, T-13 | Per-(household,user) isolation; ciphertext in the column; fresh nonce on update; error text truncated in chars | unit (db) | `nix develop -c cargo test -p backend --lib nomi_connections::` | ❌ new `backend/src/services/nomi_connections.rs` | ⬜ pending |
-| 05-03-T1 | 05-03 | 3 | NOMI-03, NOMI-05, NOMI-07 | T-13, T-14, T-15 | Host is a const HTTPS literal; no error carries the key; `is_due` latches per local day | unit (pure) | `nix develop -c cargo test -p backend --lib nomi::tests` | ❌ new `backend/src/services/nomi.rs` | ⬜ pending |
+| 05-03-T1 | 05-03 | 3 | NOMI-03, NOMI-05, NOMI-07 | T-13, T-14, T-15 | Host is a const HTTPS literal; no error carries the key; `is_due`/`already_attempted_today` latch per local day; `FakeTransport` is `pub(crate)` and can queue `TransportError` | unit (pure) | `nix develop -c cargo test -p backend --lib nomi::tests` | ❌ new `backend/src/services/nomi.rs` | ⬜ pending |
 | 05-03-T2 | 05-03 | 3 | NOMI-03, NOMI-06, NOMI-07 | T-16, T-18 | Raw `Authorization` header asserted on a recorded request; 25 s timeout | unit (fake transport) | `nix develop -c cargo test -p backend --lib nomi::` | ❌ same file | ⬜ pending |
-| 05-03-T3 | 05-03 | 3 | NOMI-04 | T-17 | Characters not bytes; never exceeds the limit; degenerate header cannot panic | unit (pure) | `nix develop -c cargo test -p backend --lib report::` | ✅ `backend/src/services/report.rs` | ⬜ pending |
-| 05-04-T1 | 05-04 | 4 | NOMI-03, NOMI-05 | T-20, T-22, T-24, T-25, T-27 | One failure does not abort the run; a removed member is disabled; `last_error` never holds the key | unit (db + fake transport) | `nix develop -c cargo test -p backend --lib background_jobs::` | ✅ `background_jobs.rs` | ⬜ pending |
+| 05-03-T3 | 05-03 | 3 | NOMI-04 | T-17 | Characters not bytes; never exceeds the limit for **any** argument (last-resort clamp below the skeleton cost); degenerate header cannot panic | unit (pure) | `nix develop -c cargo test -p backend --lib report::` | ✅ `backend/src/services/report.rs` | ⬜ pending |
+| 05-04-T1 | 05-04 | 4 | NOMI-03, NOMI-05 | T-20, T-22, T-24, T-25, T-27 | One failure does not abort the run; a removed member is disabled; `last_error` never holds the key; the day is latched **before** the send-time parse, so a malformed row writes once, not 1440× | unit (db + fake transport) | `nix develop -c cargo test -p backend --lib background_jobs::` | ✅ `background_jobs.rs` | ⬜ pending |
 | 05-04-T2 | 05-04 | 4 | NOMI-01, NOMI-02, NOMI-07 | T-23, T-28 | User identity comes only from the JWT; membership checked before every nomi call | unit (pure mappers) | `nix develop -c cargo test -p backend --lib handlers::nomi` | ❌ new `backend/src/handlers/nomi.rs` | ⬜ pending |
-| 05-04-T3 | 05-04 | 4 | NOMI-02 | T-21, T-26 | Both secret files coexist; the plain-string option carries the Nix-store warning | eval | `nix develop -c nix eval --file ./module.nix --apply builtins.isFunction` | ✅ `module.nix` | ⬜ pending |
+| 05-04-T3 | 05-04 | 4 | NOMI-02 | T-21, T-26 | Both secret files coexist as a 2-element `EnvironmentFile`; the plain-string option carries the Nix-store warning | eval (real NixOS module evaluation via `pkgs.nixos`, ~30 s) | see 05-04 Task 3 `<verify>` — `nix develop -c nix eval --impure --expr '…builtins.length ef == 2'`. Verified 2026-07-28 to **fail** against the unfixed module with `expected a list but found a string` | ✅ `module.nix` | ⬜ pending |
 | 05-05-T1 | 05-05 | 5 | NOMI-01 | T-32 | Every label exists in de and en; both JSON files still parse | unit | `nix develop -c cargo test -p frontend --lib i18n::` | ✅ `frontend/src/api/mod.rs`, `translations/*.json`, `i18n/mod.rs` | ⬜ pending |
 | 05-05-T2 | 05-05 | 5 | NOMI-01, NOMI-07 | T-29, T-31, T-33 | The key field is never populated from the server; no `inner_html`; no undefined `form-*` class | unit | `nix develop -c cargo test -p frontend --lib` | ✅ `frontend/src/pages/household_settings.rs` | ⬜ pending |
-| 05-05-T3 | 05-05 | 5 | NOMI-03, NOMI-07 | T-29, T-21 | A real send reaches a real chat; the deployment secret arrives without dropping the JWT secret | **manual** | — (checkpoint, see § Manual-Only Verifications) | n/a | ⬜ pending |
+| 05-05-T3 | 05-05 | 5 | NOMI-03, NOMI-07 | T-29, T-21 | A real send reaches a real chat; the deployment secret arrives without dropping the JWT secret | **manual** + regression gate | `nix develop -c cargo test --workspace && nix develop -c cargo check --workspace && nix develop -c cargo clippy -p backend --all-targets`, then the checklist in § Manual-Only Verifications | n/a | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
-**Nyquist note:** every task except 05-05-T3 carries an `<automated>` command. 05-05-T3 is the
-phase's human checkpoint and is manual by nature — it verifies the live third-party service and the
-deployment host, neither of which is reachable from the test suite. No three consecutive tasks lack
-an automated verify.
+**Nyquist note:** every task carries an `<automated>` command. 05-05-T3 is the phase's human
+checkpoint: its automated part is the full regression gate, run immediately before pausing, and its
+substance — the live third-party service and the deployment host — is manual by nature, because
+neither is reachable from the test suite. No task lacks an automated verify.
 
 ---
 
 ## Wave 0 Requirements
 
-Per RESEARCH.md, two infrastructure gaps block everything else and must land first. **All three are
-closed by plan 05-01 (wave 1), which nothing else depends on being skipped:**
+Per RESEARCH.md, three infrastructure gaps block everything else. **The two that block every other
+plan are closed by 05-01 (wave 1); the transport seam is closed by 05-03 Task 1, in the same plan
+that first needs it:**
 
 - [ ] `backend/src/test_utils.rs` — `run_migrations()` does **not** run `backend/migrations/`; it
       hand-builds a duplicate schema. → 05-01 Task 3 adds the table twice **and** adds a
       `PRAGMA table_info` / `PRAGMA index_list` drift guard. (Evidence that this is a live risk: the
-      test `user_settings` table carries three columns the real migration does not have.)
+      test `user_settings` table carries three columns the real migration does not have.) The guard
+      compares full `PRAGMA table_info` **and** full `PRAGMA index_list` tuples.
 - [ ] `start_scheduler(pool: Arc<SqlitePool>, config: JobConfig)` (`background_jobs.rs:77`)
       receives **no** `Config`, so the encryption key cannot reach the job. → 05-01 Task 4 changes the
       signature to take `NomiJobSettings` and rewires `main.rs:49-55`.
@@ -110,7 +112,7 @@ closed by plan 05-01 (wave 1), which nothing else depends on being skipped:**
 
 ## Validation Sign-Off
 
-- [x] All tasks have `<automated>` verify or are the declared manual checkpoint (05-05-T3)
+- [x] All tasks have an `<automated>` verify; 05-05-T3 additionally carries the manual checklist
 - [x] Sampling continuity: no 3 consecutive tasks without automated verify
 - [x] Wave 0 covers all MISSING references (test schema, scheduler signature, transport seam)
 - [x] No watch-mode flags
