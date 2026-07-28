@@ -94,7 +94,7 @@ Active milestone **v1.1 Hardening & Connectivity**. Each maps to a roadmap phase
 - [ ] **NOMI-02**: The API key is stored encrypted at rest and is never returned to the client in plaintext
 - [ ] **NOMI-03**: At the configured local time (household timezone) the daily report is delivered to the configured Nomi as an OOC message
 - [ ] **NOMI-04**: A report exceeding the nomi.ai message length limit is shortened rather than failing, and the truncation is visible in the message
-- [ ] **NOMI-05**: Delivery survives the documented API failure modes — `NomiStillResponding`, `NoReply`, HTTP 429 with `Retry-After` — without aborting the scheduled run for other users
+- [ ] **NOMI-05**: Delivery survives the documented API failure modes — `RoomStillCreating`, `NoReply`, `NomiStillResponding`, `TooManyRequests` (HTTP 429), `MessageLengthLimitExceeded` / `MessageCharacterLimitExceeded` — without aborting the scheduled run for other users or households
 - [ ] **NOMI-06**: Content, destination and schedule are separable, so a further content type can be added later without changing the delivery path
 
 ## Out of Scope

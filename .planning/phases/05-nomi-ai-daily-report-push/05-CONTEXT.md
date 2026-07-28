@@ -72,19 +72,45 @@ never hashed. Do not carry over reasoning from token-validation code.
 - **D-15:** The message is wrapped as an OOC aside: `(OOC: Household App (<report text>))`.
   Define the wrapper in exactly one place.
 - **D-16:** When the wrapped message exceeds the length limit, **shorten the task list and append
-  a counter** (`… und N weitere`). Do not truncate blindly from the end — that would drop
-  "Missed yesterday", which is the more interesting half.
+  a counter** — in **English**, e.g. `… and 7 more`. Do not truncate blindly from the end; that
+  would drop "Missed yesterday", the more interesting half.
+  **Corrected 2026-07-28:** an earlier draft of this decision wrote the counter in German. That
+  was wrong. `backend/src/services/report.rs:3` states the report text is *always* English by
+  design, bypassing frontend i18n because a later phase feeds it to an LLM (phase 2.1, D-01).
+  The counter is part of that text and follows the same rule. Only the **settings UI** strings
+  are localized de/en.
 - **D-17:** Treat the character limit as a **runtime constraint, not a hard-coded constant**.
   It is 800 for rooms, and 400/800 for direct chats depending on subscription; Nomi has changed
   these values before.
 
 ### Failure handling and feedback
 - **D-18:** Handle the documented failure modes without crashing the run: `RoomStillCreating`,
-  `InsufficientPlan`, `MessageCharacterLimitExceeded`, `RoomNotFound` / `NomiNotFound`, and —
-  for direct chats only — `NoReply` (30 s) and `NomiStillResponding`. Honour HTTP 429's
-  `Retry-After`.
+  `InsufficientPlan`, `RoomNotFound` / `NomiNotFound`, HTTP 429 `TooManyRequests`, and — for
+  direct chats only — `NoReply` (30 s) and `NomiStillResponding`.
+  **Two corrections, 2026-07-28:**
+  (a) An earlier draft said to honour a `Retry-After` header. The official docs do **not**
+  document one — only 429 / `TooManyRequests`. Back off on 429 using our own policy and read
+  `Retry-After` opportunistically if present, but never depend on it.
+  (b) The length error has **different names per endpoint**: `MessageLengthLimitExceeded` for
+  `/v1/nomis/:id/chat`, `MessageCharacterLimitExceeded` for `/v1/rooms/:id/chat`. A `match` on
+  only one spelling falls through silently. Handle both.
 - **D-19:** Record **last send time and last error** per connection and surface both in the
   settings UI. Without this a stale API key fails silently for days.
+
+### Where the settings live
+- **D-20:** The connection is configured in a **new section on `HouseholdSettingsPage`**
+  (`frontend/src/pages/household_settings.rs`, route `/households/:id/settings`), labelled clearly
+  as the member's *personal* settings for this household — as opposed to the household-wide
+  administrative sections above it. It becomes the natural home for further per-member,
+  per-household settings later.
+- **D-21:** No route guard has to change. Verified 2026-07-28: the page has **no** admin guard;
+  it is reachable by every member, and individual sections are gated inline with
+  `<Show when=move || current_role.get().map(|r| r.can_manage_tasks())…>` (see lines 265-266,
+  and the existing non-admin fallback at line 295). The new section simply carries **no** such
+  `Show` wrapper, so every member sees their own.
+- **D-22:** Target selection (D-05) is proxied through our backend, never called from the browser.
+  The frontend must never hold or see the nomi.ai API key — it asks our backend for the list of
+  Nomis and Rooms, and the backend talks to nomi.ai using the stored, decrypted key.
 
 ### Claude's Discretion
 - Table and module naming, and whether the connection lives in a new table or extends an existing one
