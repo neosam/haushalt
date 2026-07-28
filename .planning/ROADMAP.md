@@ -96,11 +96,18 @@ habits into one section. No schema change, no `?date=` parameter, no LLM integra
 Plans:
 
 - [x] 02.1-01 (wave 0): Test-harness and web-sys build gaps — 22-column `household_settings`, `missed_task_penalties` + junction tables, `insert_missed_task_penalty` fixture, `Clipboard`/`Navigator` features
-- [ ] 02.1-02 (wave 1): `shared::DailyReportResponse` + report service core — timezone date resolution, "Due today" section, shared line formatter, empty states
-- [ ] 02.1-03 (wave 2): "Missed yesterday" section — penalized good habits plus indulged bad habits, one list, vacation-suppressed
-- [ ] 02.1-04 (wave 2): Thin handler `GET /api/households/{id}/report` + route registration
-- [ ] 02.1-05 (wave 3): Frontend — `ReportPage`, Report tab after Tasks, copy button, de/en strings, mobile-first CSS
+- [x] 02.1-02 (wave 1): `shared::DailyReportResponse` + report service core — timezone date resolution, "Due today" section, shared line formatter, empty states
+- [x] 02.1-03 (wave 2): "Missed yesterday" section — penalized good habits plus indulged bad habits, one list, vacation-suppressed
+- [x] 02.1-04 (wave 2): Thin handler `GET /api/households/{id}/report` + route registration
+- [x] 02.1-05 (wave 3): Frontend — `ReportPage`, Report tab after Tasks, copy button, de/en strings, mobile-first CSS
 - [ ] 02.1-06 (wave 4): Human verification checkpoint — tab placement, verbatim rendering, clipboard, empty states, XSS probe
+
+> **Doku-Nachtrag 2026-07-28:** Die Pläne 02.1-02..05 waren bereits ausgeführt, ohne dass ROADMAP,
+> STATE oder SUMMARYs nachgezogen wurden (bewusst: Code zuerst, GSD-Doku später). Nachgewiesen am
+> 2026-07-28: `services/report.rs` (1438 Zeilen, `generate_daily_report`), `handlers/report.rs`,
+> `frontend/src/pages/report.rs` mit registrierter Route, `shared::DailyReportResponse`, und
+> `nix develop -c cargo test -p backend report` → **48 passed, 0 failed**. Es fehlen weiterhin die
+> SUMMARY-Dateien für 02.1-02..05 und die menschliche Abnahme 02.1-06.
 
 #### Phase 3: Extend Recurrence Types
 
@@ -172,7 +179,7 @@ has connected, starting with the daily report to a nomi.ai companion.
 #### Phase 5: Nomi.ai Daily Report Push
 
 **Goal**: A member configures a nomi.ai connection per household and receives the daily report there as an OOC message at a time of their choosing
-**Depends on**: Phase 2.1 (provides the report text)
+**Depends on**: Phase 2.1 — **already satisfied.** `services::report::generate_daily_report` is built and covered by 48 passing tests; call it directly rather than going through `GET /api/households/{id}/report`.
 **Requirements**: NOMI-01, NOMI-02, NOMI-03, NOMI-04, NOMI-05, NOMI-06
 **Success Criteria** (what must be TRUE):
 
@@ -182,7 +189,9 @@ has connected, starting with the daily report to a nomi.ai companion.
   4. `NomiStillResponding`, `NoReply` and 429 are handled without aborting the run for other users
   5. Adding a second content type later requires no change to the delivery path
 
-**Plans**: TBD — run `/gsd-discuss-phase 5` first (open: encryption scheme, scheduler resolution, truncation strategy)
+**Plans**: TBD — run `/gsd-discuss-phase 5` first (open: encryption scheme, truncation strategy).
+The scheduler question is settled: `services::background_jobs` already ticks every minute
+(`check_interval_minutes: 1`), so a minute-precise send time needs no new scheduling machinery.
 
 Plans:
 
@@ -209,7 +218,7 @@ Phase 2.1 and cannot start before 2.1 is executed. It is independent of phases 2
 |-------|-----------|----------------|--------|-----------|
 | 1. Custom Recurrence Period Fix | v1.1 | 1/1 | Complete | 2026-07-23 |
 | 2. Habit Tracker Test Coverage | v1.1 | 2/5 | In progress | - |
-| 2.1 Daily Task Report (INSERTED) | v1.1 | 1/6 | In Progress | - |
+| 2.1 Daily Task Report (INSERTED) | v1.1 | 5/6 | Code fertig, Abnahme offen | - |
 | 3. Extend Recurrence Types | v1.1 | 0/TBD | Not started | - |
 | 4. Offline Task Viewing | v1.1 | 0/3 | Not started | - |
 | 5. Nomi.ai Daily Report Push | v1.2 | 0/TBD | Not started | - |

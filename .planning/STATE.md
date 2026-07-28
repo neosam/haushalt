@@ -28,10 +28,13 @@ See: .planning/PROJECT.md (updated 2026-07-23)
 
 ## Current Position
 
-Milestone: v1.1 Hardening & Connectivity
-Phase: 02.1 (daily-task-report-inserted-urgent) — EXECUTING
-Plan: 2 of 6
-Status: Ready to execute
+Milestone: v1.2 Outbound Messaging
+Phase: 05 (nomi-ai-daily-report-push) — needs `/gsd-discuss-phase 5`
+Plan: 0 of TBD
+Status: Ready to discuss
+
+Phase 02.1 ist code-seitig fertig (5 von 6 Plänen), nur die menschliche Abnahme 02.1-06 und die
+SUMMARYs für 02.1-02..05 fehlen. Am 2026-07-28 nachgewiesen — siehe Doku-Nachtrag in ROADMAP.md.
 Last activity: 2026-07-28 - Completed quick task 260728-dah: Kategorien-Modal wurde unten in den Seitenfluss gerendert (undefinierte CSS-Klassen)
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
