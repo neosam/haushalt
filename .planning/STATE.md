@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Hardening & Connectivity
-current_phase: 02.1
-current_phase_name: daily-task-report-inserted-urgent
-status: executing
-stopped_at: Completed 02.1-01-PLAN.md
-last_updated: "2026-07-26T16:56:34.838Z"
-last_activity: 2026-07-26
-last_activity_desc: Phase 02.1 execution started
+milestone: v1.2
+milestone_name: Outbound Messaging
+current_phase: "05"
+current_phase_name: nomi-ai-daily-report-push
+status: planned
+stopped_at: Phase 05 geplant — 5 Pläne, Plan-Checker bestanden
+last_updated: "2026-07-28T00:00:00.000Z"
+last_activity: 2026-07-28
+last_activity_desc: Phase 05 (nomi.ai Daily Report Push) geplant — 5 Pläne in 5 Wellen
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 0
-  total_plans: 6
-  completed_plans: 1
-  percent: 0
+  total_plans: 11
+  completed_plans: 5
+  percent: 45
 ---
 
 # Project State

@@ -186,5 +186,26 @@ never hashed. Do not carry over reasoning from token-validation code.
 
 ---
 
+## Note on the decision-coverage gate (2026-07-28)
+
+`gsd-tools check gap-analysis.plan-post` reports **D-02, D-11, D-12, D-14 and D-18 as
+"not covered"**. That is a false positive: the check greps the plans for the literal strings
+`D-02`, `D-11`, … , and these five happen to be implemented without their ID being quoted.
+Verified by hand, and independently by the plan-checker (which found all 22 decisions to have
+implementing tasks):
+
+| Decision | Implemented in | Evidence |
+|---|---|---|
+| D-02 (only one content type) | all plans | negative decision — nothing beyond the daily report is planned anywhere |
+| D-11 (ride the existing minute tick) | 05-01, 05-03, 05-04 | `already_attempted_today`, `check_interval` |
+| D-12 (household timezone) | 05-01, 05-03, 05-04, 05-05 | timezone resolution in the due check |
+| D-14 (call the report service directly) | 05-03, 05-04 | `generate_daily_report` / `generate_daily_report_capped` |
+| D-18 (documented failure modes) | 05-02, 05-03, 05-04, 05-05 | `RoomStillCreating` and the rest of the taxonomy |
+
+Do not "fix" this by pasting decision IDs into the plans — re-verify against the evidence column
+instead.
+
+---
+
 *Phase: 05-nomi-ai-daily-report-push*
 *Context gathered: 2026-07-28 via direct design conversation*

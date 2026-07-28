@@ -156,10 +156,13 @@ has connected, starting with the daily report to a nomi.ai companion.
   (inbound read-only tokens) was explored and discarded on 2026-07-28 — it solves the opposite
   problem. Note the consequence for credentials: an outgoing API key must be **encrypted at rest**
   and recoverable in plaintext to be used, not hashed like an inbound token.
+
 - **Per user, per household.** Each member configures their own connection for each household —
   target Nomi, API key, send time, on/off — in one settings section. Not a household-wide setting.
+
 - **The report already exists.** Phase 2.1 produces the plain-text daily report; this milestone only
   transports it. Phase 2.1 must be executed first.
+
 - **Built to extend.** Content, destination and schedule stay separable so further content types
   (individual completions, weekly summaries) can be added later without touching the delivery path.
   Only one content type ships in v1.2.
@@ -171,16 +174,20 @@ has connected, starting with the daily report to a nomi.ai companion.
   - `POST /v1/rooms/{uuid}/chat` — a Room (group chat). Listed via `GET /v1/rooms`.
 - Auth header carries the **raw key, without a `Bearer ` prefix**: `Authorization: <uuid>`.
   Several secondary sources claim Bearer-style; the official docs do not.
+
 - **Rooms are the better fit for a scheduled job** and should be the reference path:
   the room endpoint returns only `sentMessage` and does **not** wait for a reply, so the
   `NoReply` (30 s) and `NomiStillResponding` failure modes of the direct chat simply do not
   arise. Its errors are `RoomNotFound`, `InsufficientPlan`, `MessageCharacterLimitExceeded`,
   `RoomStillCreating`, `InvalidBody`, `InvalidContentType`.
+
 - The direct-Nomi endpoint is **synchronous**: it waits up to 30 s for the reply, then returns
   `NoReply`. Extra failure modes there: `NomiStillResponding`, `LimitExceeded`.
+
 - Message length: 800 for rooms; 400 free / 800 with a subscription for direct chats (the user
   has a subscription). Treat the limit as a runtime constraint, not a hard-coded constant —
   Nomi has changed it before.
+
 - HTTP 429 with a `Retry-After` header applies to both.
 - Optional, not required for this phase: `POST /v1/rooms/{id}/chat/request` with `{nomiUuid}`
   asks a specific Nomi in the room to reply. Synchronous, 15 s timeout.
