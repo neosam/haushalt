@@ -6,7 +6,7 @@
 //! D-02: the layout is fixed and machine-parseable (stable headers, one task per line).
 //! D-19: all logic lives in this service so it is unit-testable; the handler stays thin.
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -21,6 +21,87 @@ const DUE_TODAY_EMPTY: &str = "No tasks scheduled for today";
 const MISSED_YESTERDAY_HEADER: &str = "Missed yesterday:";
 /// D-23: verbatim, user-chosen empty state.
 const MISSED_YESTERDAY_EMPTY: &str = "All tasks completed yesterday";
+
+/// Phase 6 D-06: the output language of a rendered report.
+///
+/// This narrows Phase 2.1's D-01 ("the report is always English") rather than replacing it:
+/// `GET /api/households/{id}/report` still emits English, so its existing tests and any later
+/// LLM consumer are unaffected. Only the public cross-household reports of Phase 6 choose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReportLanguage {
+    #[default]
+    En,
+    De,
+}
+
+impl ReportLanguage {
+    /// Parse a language code from storage or an API request.
+    ///
+    /// An unknown code falls back to English instead of failing: `user_settings` treats
+    /// English as its default too, and a report that renders in the wrong language is far
+    /// less harmful than one that does not render at all.
+    pub fn from_code(code: &str) -> Self {
+        match code {
+            "de" => Self::De,
+            _ => Self::En,
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::En => "en",
+            Self::De => "de",
+        }
+    }
+
+    fn strings(self) -> ReportStrings {
+        match self {
+            Self::En => ReportStrings {
+                title: "Daily report",
+                due_today_header: DUE_TODAY_HEADER,
+                due_today_empty: DUE_TODAY_EMPTY,
+                missed_yesterday_header: MISSED_YESTERDAY_HEADER,
+                missed_yesterday_empty: MISSED_YESTERDAY_EMPTY,
+                by_prefix: "by",
+                done_marker: "done",
+                // Exactly what `chrono`'s `%a` produced before this struct existed, so the
+                // English output is byte-for-byte unchanged.
+                weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            },
+            Self::De => ReportStrings {
+                title: "Tagesbericht",
+                due_today_header: "Heute fällig:",
+                due_today_empty: "Keine Aufgaben für heute geplant",
+                missed_yesterday_header: "Gestern verpasst:",
+                missed_yesterday_empty: "Gestern alle Aufgaben erledigt",
+                by_prefix: "bis",
+                done_marker: "erledigt",
+                weekdays: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+            },
+        }
+    }
+}
+
+/// Every piece of language-dependent text in a report, resolved once per render.
+///
+/// `chrono` is built without `unstable-locales` here, so weekday names cannot come from
+/// `%a` for anything but English — they are carried explicitly, Monday first.
+struct ReportStrings {
+    title: &'static str,
+    due_today_header: &'static str,
+    due_today_empty: &'static str,
+    missed_yesterday_header: &'static str,
+    missed_yesterday_empty: &'static str,
+    by_prefix: &'static str,
+    done_marker: &'static str,
+    weekdays: [&'static str; 7],
+}
+
+impl ReportStrings {
+    fn weekday(&self, date: NaiveDate) -> &'static str {
+        self.weekdays[date.weekday().num_days_from_monday() as usize]
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ReportError {
@@ -47,7 +128,11 @@ struct ReportLine {
     done: bool,
 }
 
-/// Generate the daily report for `user_id` in `household_id`.
+/// Generate the daily report for `user_id` in `household_id`, in English.
+///
+/// D-01: the per-household report is always English, and this signature keeps it that way —
+/// callers cannot accidentally localize it. Phase 6's public reports call
+/// [`generate_daily_report_localized`] instead.
 ///
 /// `now_utc` is injected by the caller (the handler passes `Utc::now()`) precisely so
 /// the date resolution stays testable with a pinned moment.
@@ -56,6 +141,17 @@ pub async fn generate_daily_report(
     household_id: &Uuid,
     user_id: &Uuid,
     now_utc: DateTime<Utc>,
+) -> Result<String, ReportError> {
+    generate_daily_report_localized(pool, household_id, user_id, now_utc, ReportLanguage::En).await
+}
+
+/// Generate the daily report for `user_id` in `household_id` in `language` (Phase 6 D-06).
+pub async fn generate_daily_report_localized(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    user_id: &Uuid,
+    now_utc: DateTime<Utc>,
+    language: ReportLanguage,
 ) -> Result<String, ReportError> {
     // T-02-A / T-02-C: the membership guard runs FIRST, before any household name,
     // settings or task data is read, so a non-member can neither read the report nor
@@ -88,6 +184,7 @@ pub async fn generate_daily_report(
         today,
         &due_today,
         &missed_yesterday,
+        &language.strings(),
     ))
 }
 
@@ -305,39 +402,43 @@ fn format_report(
     today: NaiveDate,
     due_today: &[ReportLine],
     missed_yesterday: &[ReportLine],
+    strings: &ReportStrings,
 ) -> String {
     format!(
-        "Daily report — {} — {}\n\n{}\n{}\n\n{}\n{}",
+        "{} — {} — {}, {}\n\n{}\n{}\n\n{}\n{}",
+        strings.title,
         household_name,
-        // D-01: `chrono` has no `unstable-locales` here, so `%a` is always English.
-        today.format("%a, %Y-%m-%d"),
-        DUE_TODAY_HEADER,
-        format_section(due_today, DUE_TODAY_EMPTY),
-        MISSED_YESTERDAY_HEADER,
-        format_section(missed_yesterday, MISSED_YESTERDAY_EMPTY),
+        // The weekday comes from `ReportStrings`, not `%a`: `chrono` has no
+        // `unstable-locales` here, so `%a` can only ever produce English.
+        strings.weekday(today),
+        today.format("%Y-%m-%d"),
+        strings.due_today_header,
+        format_section(due_today, strings.due_today_empty, strings),
+        strings.missed_yesterday_header,
+        format_section(missed_yesterday, strings.missed_yesterday_empty, strings),
     )
 }
 
-fn format_section(lines: &[ReportLine], empty_state: &str) -> String {
+fn format_section(lines: &[ReportLine], empty_state: &str, strings: &ReportStrings) -> String {
     if lines.is_empty() {
         return empty_state.to_string();
     }
     lines
         .iter()
-        .map(format_report_line)
+        .map(|line| format_report_line(line, strings))
         .collect::<Vec<_>>()
         .join("\n")
 }
 
 /// The ONE line formatter, shared by both sections (D-21 + DRY).
 /// `- {title}`, then ` (by {due_time})` when set (D-21), then ` (done)` (D-07).
-fn format_report_line(line: &ReportLine) -> String {
+fn format_report_line(line: &ReportLine, strings: &ReportStrings) -> String {
     let mut rendered = format!("- {}", line.title);
     if let Some(due_time) = &line.due_time {
-        rendered.push_str(&format!(" (by {})", due_time));
+        rendered.push_str(&format!(" ({} {})", strings.by_prefix, due_time));
     }
     if line.done {
-        rendered.push_str(" (done)");
+        rendered.push_str(&format!(" ({})", strings.done_marker));
     }
     rendered
 }
@@ -379,6 +480,14 @@ mod tests {
         }
     }
 
+    fn en() -> ReportStrings {
+        ReportLanguage::En.strings()
+    }
+
+    fn de() -> ReportStrings {
+        ReportLanguage::De.strings()
+    }
+
     /// Household + a member user who is the report's caller.
     async fn setup(pool: &SqlitePool) -> (Uuid, Uuid) {
         let household_id = create_test_household(pool).await;
@@ -403,35 +512,6 @@ mod tests {
 
     fn missed_contains(report: &str, needle: &str) -> bool {
         missed_section(report).iter().any(|l| l.contains(needle))
-    }
-
-    /// `create_test_household_with_name` always creates `owner@test.com`, whose email is
-    /// UNIQUE — so a second household in the same pool has to be built by hand.
-    async fn create_extra_household(pool: &SqlitePool, name: &str, owner_email: &str) -> Uuid {
-        let owner_id = create_test_user(pool, owner_email, Role::Owner).await;
-        let id = Uuid::new_v4();
-        let now = Utc::now();
-        sqlx::query(
-            "INSERT INTO households (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(id.to_string())
-        .bind(name)
-        .bind(owner_id.to_string())
-        .bind(now)
-        .bind(now)
-        .execute(pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            r#"INSERT INTO household_settings (household_id, timezone, hierarchy_type, vacation_mode, auto_archive_days, updated_at)
-            VALUES (?, 'UTC', 'democratic', FALSE, 30, ?)"#,
-        )
-        .bind(id.to_string())
-        .bind(now)
-        .execute(pool)
-        .await
-        .unwrap();
-        id
     }
 
     async fn insert_completion(pool: &SqlitePool, task_id: &Uuid, user_id: &Uuid, due_date: NaiveDate) {
@@ -463,13 +543,16 @@ mod tests {
                         Missed yesterday:\n\
                         All tasks completed yesterday";
 
-        assert_eq!(format_report("Test Household", today, &[], &[]), expected);
+        assert_eq!(
+            format_report("Test Household", today, &[], &[], &en()),
+            expected
+        );
     }
 
     #[test]
     fn test_format_report_line_without_due_time() {
         assert_eq!(
-            format_report_line(&line("Vacuuming", None, false)),
+            format_report_line(&line("Vacuuming", None, false), &en()),
             "- Vacuuming"
         );
     }
@@ -477,7 +560,7 @@ mod tests {
     #[test]
     fn test_format_report_line_with_due_time() {
         assert_eq!(
-            format_report_line(&line("Clean the litter box", Some("20:00"), false)),
+            format_report_line(&line("Clean the litter box", Some("20:00"), false), &en()),
             "- Clean the litter box (by 20:00)"
         );
     }
@@ -485,7 +568,7 @@ mod tests {
     #[test]
     fn test_format_report_line_done_marker() {
         assert_eq!(
-            format_report_line(&line("Clean the litter box", Some("20:00"), true)),
+            format_report_line(&line("Clean the litter box", Some("20:00"), true), &en()),
             "- Clean the litter box (by 20:00) (done)"
         );
     }
@@ -493,11 +576,115 @@ mod tests {
     #[test]
     fn test_format_report_header_is_english() {
         let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
-        let report = format_report("Kitchen", today, &[], &[]);
+        let report = format_report("Kitchen", today, &[], &[], &en());
         assert!(
             report.starts_with("Daily report — Kitchen — Sat, 2026-07-25"),
             "got: {report}"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 6 D-06: per-report language
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_report_language_from_code() {
+        assert_eq!(ReportLanguage::from_code("de"), ReportLanguage::De);
+        assert_eq!(ReportLanguage::from_code("en"), ReportLanguage::En);
+        // Unknown codes must not fail a render — they fall back to English.
+        assert_eq!(ReportLanguage::from_code("fr"), ReportLanguage::En);
+        assert_eq!(ReportLanguage::from_code(""), ReportLanguage::En);
+        assert_eq!(ReportLanguage::default(), ReportLanguage::En);
+    }
+
+    #[test]
+    fn test_report_language_code_round_trips() {
+        for language in [ReportLanguage::En, ReportLanguage::De] {
+            assert_eq!(ReportLanguage::from_code(language.code()), language);
+        }
+    }
+
+    #[test]
+    fn test_format_report_german_empty_sections() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
+        let expected = "Tagesbericht — Küche — Sa, 2026-07-25\n\
+                        \n\
+                        Heute fällig:\n\
+                        Keine Aufgaben für heute geplant\n\
+                        \n\
+                        Gestern verpasst:\n\
+                        Gestern alle Aufgaben erledigt";
+
+        assert_eq!(format_report("Küche", today, &[], &[], &de()), expected);
+    }
+
+    #[test]
+    fn test_format_report_line_german() {
+        assert_eq!(
+            format_report_line(&line("Katzenklo", Some("20:00"), true), &de()),
+            "- Katzenklo (bis 20:00) (erledigt)"
+        );
+    }
+
+    /// Every weekday must map to the right abbreviation in both languages — an off-by-one
+    /// in `num_days_from_monday` would otherwise only show up on one day of the week.
+    #[test]
+    fn test_weekday_abbreviations_cover_the_whole_week() {
+        // 2026-07-20 is a Monday.
+        let monday = NaiveDate::from_ymd_opt(2026, 7, 20).unwrap();
+        let english = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        let german = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+
+        for offset in 0..7 {
+            let date = monday + chrono::Duration::days(offset);
+            assert_eq!(en().weekday(date), english[offset as usize], "{date}");
+            assert_eq!(de().weekday(date), german[offset as usize], "{date}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_generate_daily_report_localized_renders_german() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        create_test_task(&pool, &household_id)
+            .with_title("Staubsaugen")
+            .with_recurrence(RecurrenceType::Daily)
+            .with_due_time("18:00")
+            .build()
+            .await;
+
+        let report = generate_daily_report_localized(
+            &pool,
+            &household_id,
+            &user_id,
+            pinned_now(),
+            ReportLanguage::De,
+        )
+        .await
+        .unwrap();
+
+        assert!(report.starts_with("Tagesbericht — "), "got: {report}");
+        assert!(report.contains("Heute fällig:"), "got: {report}");
+        assert!(report.contains("- Staubsaugen (bis 18:00)"), "got: {report}");
+        assert!(
+            report.contains("Gestern alle Aufgaben erledigt"),
+            "got: {report}"
+        );
+    }
+
+    /// D-06 explicitly preserves D-01 for the per-household endpoint: the un-suffixed
+    /// entry point must stay English no matter what Phase 6 does.
+    #[tokio::test]
+    async fn test_generate_daily_report_stays_english() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(report.starts_with("Daily report — "), "got: {report}");
+        assert!(report.contains(DUE_TODAY_HEADER), "got: {report}");
     }
 
     // ------------------------------------------------------------------
@@ -989,7 +1176,7 @@ mod tests {
         let pool = create_test_pool().await;
         let (household_id, user_id) = setup(&pool).await;
         let other_household =
-            create_extra_household(&pool, "Other Household", "other-owner@test.com").await;
+            create_test_household_with_name(&pool, "Other Household").await;
         let task = create_test_task(&pool, &other_household)
             .with_title("Foreign chore")
             .build()
@@ -1318,7 +1505,7 @@ mod tests {
         let pool = create_test_pool().await;
         let (household_id, user_id) = setup(&pool).await;
         let other_household =
-            create_extra_household(&pool, "Other Household", "other-owner@test.com").await;
+            create_test_household_with_name(&pool, "Other Household").await;
         let task = create_test_task(&pool, &other_household)
             .with_title("Foreign smoking")
             .with_habit_type(HabitType::Bad)

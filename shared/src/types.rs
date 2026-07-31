@@ -431,6 +431,66 @@ pub struct DailyReportResponse {
 }
 
 // ============================================================================
+// Public Report Types (Phase 6, PUBREP-01..07)
+// ============================================================================
+
+/// A named, cross-household report the user shares as an unauthenticated URL.
+///
+/// PUBREP-02: `token` IS the credential. It is returned to its owner on purpose — the
+/// owner needs it to build the shareable link — but it never leaves the authenticated
+/// `/api/users/me/reports` endpoints.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PublicReport {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    pub token: Uuid,
+    /// D-06: `"en"` or `"de"`, validated by the backend.
+    pub language: String,
+    /// D-05: a disabled report keeps its configuration but answers 404 on its URL.
+    pub enabled: bool,
+    /// D-01: the explicit household selection, never "all my households".
+    pub household_ids: Vec<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl PublicReport {
+    /// The path the token is served under, relative to the site root.
+    ///
+    /// Lives in `shared` so the frontend builds the shareable link from the same string
+    /// the backend routes on — the two cannot drift apart.
+    pub fn public_path(&self) -> String {
+        format!("/api/public/reports/{}", self.token)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreatePublicReportRequest {
+    pub name: String,
+    /// Defaults to `"en"` when absent.
+    pub language: Option<String>,
+    /// Defaults to an empty selection when absent.
+    pub household_ids: Option<Vec<Uuid>>,
+}
+
+/// Every field is optional — absent means "leave unchanged". `household_ids` is the one
+/// exception to that reading in spirit: when present it REPLACES the whole selection,
+/// mirroring how `UpdateHouseholdSettingsRequest` treats its default reward/punishment lists.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdatePublicReportRequest {
+    pub name: Option<String>,
+    pub language: Option<String>,
+    pub enabled: Option<bool>,
+    pub household_ids: Option<Vec<Uuid>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicReportsResponse {
+    pub reports: Vec<PublicReport>,
+}
+
+// ============================================================================
 // Task Types
 // ============================================================================
 

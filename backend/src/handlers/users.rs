@@ -12,6 +12,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             // User settings routes must come before /{id} to avoid matching "me" as an id
             .route("/me/settings", web::get().to(get_user_settings))
             .route("/me/settings", web::put().to(update_user_settings))
+            // Same reason: the public report routes all live under /me.
+            .configure(crate::handlers::public_reports::configure_user_routes)
             .route("/{id}", web::get().to(get_user))
             .route("/{id}", web::put().to(update_user))
     );

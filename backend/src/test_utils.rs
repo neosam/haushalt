@@ -461,6 +461,39 @@ async fn create_test_schema(pool: &SqlitePool) {
     .execute(pool)
     .await
     .unwrap();
+
+    // Public reports (Phase 6) — must stay in sync with
+    // migrations/20240150000000_public_reports.sql, which this schema mirrors.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS public_reports (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            language TEXT NOT NULL DEFAULT 'en',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS public_report_households (
+            report_id TEXT NOT NULL REFERENCES public_reports(id) ON DELETE CASCADE,
+            household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            PRIMARY KEY (report_id, household_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 // ============================================================================
@@ -473,9 +506,24 @@ pub async fn create_test_household(pool: &SqlitePool) -> Uuid {
 }
 
 /// Create a test household with a specific name
+///
+/// The owner's email is generated per call, so any number of households can live in the
+/// same pool. It used to be a fixed `owner@test.com`, which made a second household fail
+/// on the UNIQUE constraint and forced callers to hand-roll their own fixture.
 pub async fn create_test_household_with_name(pool: &SqlitePool, name: &str) -> Uuid {
+    let owner_email = format!("owner-{}@test.com", Uuid::new_v4());
+    create_test_household_with_owner(pool, name, &owner_email).await
+}
+
+/// Create a test household whose owner has a specific email — for tests that need to
+/// address the owner afterwards.
+pub async fn create_test_household_with_owner(
+    pool: &SqlitePool,
+    name: &str,
+    owner_email: &str,
+) -> Uuid {
     let id = Uuid::new_v4();
-    let owner_id = create_test_user(pool, "owner@test.com", Role::Owner).await;
+    let owner_id = create_test_user(pool, owner_email, Role::Owner).await;
 
     let now = Utc::now();
     sqlx::query(

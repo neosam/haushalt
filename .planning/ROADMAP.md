@@ -8,7 +8,7 @@ The v1.0 MVP is shipped (18 capability areas, full household task/habit manageme
 
 - ✅ **v1.0 MVP** - Phases shipped across 18 capabilities (shipped before GSD migration)
 - 🚧 **v1.1 Hardening & Connectivity** - Phases 1-4 incl. inserted 2.1 (in progress)
-- 📋 **v1.2 Outbound Messaging** - Phase 5 (planned, depends on Phase 2.1)
+- 🚧 **v1.2 Outbound Messaging** - Phase 6 (in progress); Phase 5 deferred 2026-07-31
 - 📋 **v2.0 (future)** - TBD
 
 ## Phases
@@ -192,7 +192,58 @@ has connected, starting with the daily report to a nomi.ai companion.
 - Optional, not required for this phase: `POST /v1/rooms/{id}/chat/request` with `{nomiUuid}`
   asks a specific Nomi in the room to reply. Synchronous, 15 s timeout.
 
-#### Phase 5: Nomi.ai Daily Report Push
+#### Phase 6: Public Cross-Household Report Links
+
+**Goal**: A user configures named, cross-household reports in their user settings and shares each one as an unauthenticated URL that returns nothing but the report text
+**Depends on**: Phase 2.1 — satisfied. `services::report::generate_daily_report` is built and covered by 48 passing tests; this phase makes it language-aware and calls it once per selected household.
+**Requirements**: PUBREP-01..07
+**Success Criteria** (what must be TRUE):
+
+  1. A user can create, rename, and delete several reports in their user settings
+  2. Each report has an explicit household selection, restricted to households the user belongs to
+  3. Opening the generated URL in a logged-out browser returns the report as `text/plain` and nothing else
+  4. The output contains one daily-report block per selected household, each resolved in that household's own timezone
+  5. A report renders in the language configured on that report; the existing `GET /api/households/{id}/report` stays English
+  6. Switching a report off returns 404 on its URL; regenerating the token invalidates the old URL
+  7. Losing membership in a household removes it from the output without breaking the rest
+
+**Decisions** (2026-07-31, with the user):
+
+- **D-01**: Household selection is explicit, never "all my households" — a newly joined household must not silently
+  appear in an already distributed URL.
+- **D-02**: One `generate_daily_report` block per household, concatenated. The existing block already carries the
+  household name in its header, so no new formatting layer is needed and the per-household code path stays untouched.
+- **D-03**: The public response is `text/plain; charset=utf-8`. No HTML wrapper, no JSON envelope.
+- **D-04**: Each household block resolves "today"/"yesterday" in its own timezone. No new user-level timezone setting.
+- **D-05**: The token is a UUID v4, regenerable, and the report has an on/off switch. No expiry date.
+- **D-06**: Output language is a per-report setting (`de`/`en`). This narrows Phase 2.1's D-01 ("the report is always
+  English") to the per-household endpoint only — that endpoint keeps emitting English so its 48 tests and any later
+  LLM consumer are unaffected.
+- **D-07**: Blocks are ordered alphabetically by household name, so the output is deterministic without storing a
+  sort position.
+- **D-08**: Households the owner is no longer a member of are skipped silently. `generate_daily_report` already
+  returns `NotAMember`; the aggregator swallows exactly that variant and no other.
+- **D-09**: The public endpoint is rate limited per token via the existing in-memory `RateLimiter` and answers with
+  `X-Robots-Tag: noindex, nofollow`.
+- **D-10**: A disabled report, an unknown token and a malformed token all answer `404` with the same body, so the
+  endpoint leaks no information about which tokens exist.
+
+**Plans**: executed in one bundled session on 2026-07-31 (user preference: code first, GSD docs after).
+
+Plans:
+
+- [ ] 06-01: Migration `public_reports` + `public_report_households`, mirrored in `test_utils::create_test_schema`
+- [ ] 06-02: Shared contract — `PublicReport`, `CreatePublicReportRequest`, `UpdatePublicReportRequest`
+- [ ] 06-03: `report.rs` becomes language-aware (`ReportLanguage`, `ReportStrings`); household endpoint pinned to English
+- [ ] 06-04: `services/public_reports.rs` — CRUD, token regeneration, membership-validated household selection, aggregation
+- [ ] 06-05: `handlers/public_reports.rs` — authenticated CRUD under `/api/users/me/reports`, unauthenticated `/api/public/reports/{token}`
+- [ ] 06-06: Frontend — `ApiClient` methods, report section on `UserSettingsPage`, de/en strings, mobile-first CSS
+
+#### Phase 5: Nomi.ai Daily Report Push (DEFERRED)
+
+> **Deferred 2026-07-31** at the user's request in favour of Phase 6. The plans, context and research
+> under `.planning/phases/05-nomi-ai-daily-report-push/` remain valid and untouched; nothing was executed,
+> so there is no code to unwind. Pick it up again with `/gsd-execute-phase 5`.
 
 **Goal**: A member configures a nomi.ai connection per household and receives the daily report there as an OOC message at a time of their choosing
 **Depends on**: Phase 2.1 — **already satisfied.** `services::report::generate_daily_report` is built and covered by 48 passing tests; call it directly rather than going through `GET /api/households/{id}/report`.
@@ -248,4 +299,5 @@ Phase 2.1 and cannot start before 2.1 is executed. It is independent of phases 2
 | 2.1 Daily Task Report (INSERTED) | v1.1 | 5/6 | Code fertig, Abnahme offen | - |
 | 3. Extend Recurrence Types | v1.1 | 0/TBD | Not started | - |
 | 4. Offline Task Viewing | v1.1 | 0/3 | Not started | - |
-| 5. Nomi.ai Daily Report Push | v1.2 | 0/5 | Planned | - |
+| 5. Nomi.ai Daily Report Push | v1.2 | 0/5 | Deferred (2026-07-31) | - |
+| 6. Public Cross-Household Report Links | v1.2 | 0/6 | In progress | - |

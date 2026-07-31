@@ -24,6 +24,7 @@ pub mod journal;
 pub mod announcement;
 pub mod refresh_token;
 pub mod statistics;
+pub mod public_report;
 
 pub use user::*;
 pub use household::*;
@@ -45,10 +46,13 @@ pub use journal::*;
 pub use announcement::*;
 pub use refresh_token::*;
 pub use statistics::*;
+pub use public_report::*;
 
 /// Application state shared across all handlers
 pub struct AppState {
     pub db: SqlitePool,
     pub config: Config,
     pub login_rate_limiter: Arc<RateLimiter>,
+    /// PUBREP-07: throttles the unauthenticated public report endpoint, keyed by token.
+    pub public_report_rate_limiter: Arc<RateLimiter>,
 }

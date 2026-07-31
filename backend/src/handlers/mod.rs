@@ -19,6 +19,7 @@ pub mod dashboard;
 pub mod legal;
 pub mod statistics;
 pub mod report;
+pub mod public_reports;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -29,5 +30,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .configure(invitations::configure)
             .configure(dashboard::configure)
             .configure(legal::configure)
+            // The only unauthenticated household-data endpoint in the application.
+            .configure(public_reports::configure_public_routes)
     );
 }

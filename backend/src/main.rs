@@ -62,11 +62,17 @@ async fn main() -> std::io::Result<()> {
     // Create rate limiter for login (5 attempts per 15 minutes)
     let login_rate_limiter = Arc::new(middleware::RateLimiter::new(5, 15 * 60));
 
+    // PUBREP-07: the public report endpoint is unauthenticated, so it gets its own,
+    // far more permissive limiter — 30 requests per minute per token, enough for a person
+    // refreshing the page and for a polling integration, but not for scraping in a loop.
+    let public_report_rate_limiter = Arc::new(middleware::RateLimiter::new(30, 60));
+
     // Create app state
     let app_state = web::Data::new(models::AppState {
         db: pool.clone(),
         config: config.clone(),
         login_rate_limiter,
+        public_report_rate_limiter,
     });
 
     // Create pool and config data for WebSocket handler

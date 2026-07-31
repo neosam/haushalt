@@ -87,7 +87,17 @@ Active milestone **v1.1 Hardening & Connectivity**. Each maps to a roadmap phase
 
 ## v1.2 Outbound Messaging (Planned)
 
-### Nomi.ai Daily Report Push
+### Public Cross-Household Report Links
+
+- [ ] **PUBREP-01**: A user creates one or more named reports in their user settings, each spanning an explicitly chosen set of the households they belong to
+- [ ] **PUBREP-02**: Each report exposes a URL carrying an unguessable UUID token that returns the report without any authentication
+- [ ] **PUBREP-03**: The public response contains nothing but the report text — the same content as the per-household daily report, one block per selected household
+- [ ] **PUBREP-04**: Each report carries its own output language (de/en); the per-household report endpoint stays English (D-01)
+- [ ] **PUBREP-05**: A report can be switched off and its token regenerated, which immediately invalidates the previous URL
+- [ ] **PUBREP-06**: A household whose membership the owner has lost is silently dropped from the output, so a stale link cannot leak data
+- [ ] **PUBREP-07**: The public endpoint is rate limited per token and marked non-indexable
+
+### Nomi.ai Daily Report Push (deferred)
 
 - [ ] **NOMI-01**: A user configures, per household, their own nomi.ai connection — target, API key, send time and an on/off switch — in one settings section
 - [ ] **NOMI-07**: The target may be either a single Nomi or a Room (group chat); both are offered for selection by name, and the delivery path treats them as one abstraction rather than a branch at the call site
@@ -139,6 +149,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TDEL-02 | Quick task | Complete |
 | TDEL-03 | Quick task | Complete |
 | TDEL-04 | Quick task | Complete |
+| PUBREP-01 | Phase 6 | Pending |
+| PUBREP-02 | Phase 6 | Pending |
+| PUBREP-03 | Phase 6 | Pending |
+| PUBREP-04 | Phase 6 | Pending |
+| PUBREP-05 | Phase 6 | Pending |
+| PUBREP-06 | Phase 6 | Pending |
+| PUBREP-07 | Phase 6 | Pending |
 | NOMI-01 | Phase 5 | Pending |
 | NOMI-02 | Phase 5 | Pending |
 | NOMI-03 | Phase 5 | Pending |
