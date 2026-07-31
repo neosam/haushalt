@@ -775,5 +775,23 @@
   "solo_mode.confirm_cooldown": "Du musst 48 Stunden warten, um den Solo-Modus nach der Aktivierung zu beenden.",
   "solo_mode.exit_in": "Beendung in",
   "solo_mode.request_exit": "Ausstieg beantragen",
-  "solo_mode.cancel_exit": "Ausstieg abbrechen"
+  "solo_mode.cancel_exit": "Ausstieg abbrechen",
+
+  "public_reports.title": "Geteilte Berichte",
+  "public_reports.hint": "Ein geteilter Bericht fasst mehrere deiner Haushalte zusammen und ist über eine eigene URL ohne Anmeldung abrufbar. Behandle die URL wie ein Passwort — wer sie kennt, sieht den Bericht.",
+  "public_reports.name_placeholder": "Name des Berichts",
+  "public_reports.name_required": "Bitte einen Namen eingeben",
+  "public_reports.create": "Bericht anlegen",
+  "public_reports.created": "Bericht angelegt",
+  "public_reports.saved": "Bericht gespeichert",
+  "public_reports.deleted": "Bericht gelöscht",
+  "public_reports.empty": "Noch kein Bericht angelegt.",
+  "public_reports.enabled": "Aktiv",
+  "public_reports.disabled_hint": "Der Bericht ist deaktiviert — die URL liefert nichts.",
+  "public_reports.households": "Haushalte",
+  "public_reports.no_households": "Du bist in keinem Haushalt.",
+  "public_reports.reset_link": "Link zurücksetzen",
+  "public_reports.reset_link_confirm": "Der bisherige Link wird sofort ungültig.",
+  "public_reports.link_reset": "Neuer Link erzeugt",
+  "public_reports.delete_confirm": "Bericht wirklich löschen?"
 }

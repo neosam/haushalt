@@ -2088,6 +2088,38 @@ pub struct MonthlyStatisticsResponse {
 mod tests {
     use super::*;
 
+    /// The path is the contract between the frontend's shareable link and the backend's
+    /// route. If this ever changes, both sides have to change with it.
+    #[test]
+    fn test_public_report_path_is_built_from_the_token() {
+        let token = Uuid::new_v4();
+        let report = PublicReport {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            name: "Alle Haushalte".to_string(),
+            token,
+            language: "de".to_string(),
+            enabled: true,
+            household_ids: vec![Uuid::new_v4()],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        assert_eq!(report.public_path(), format!("/api/public/reports/{token}"));
+        // The path carries the token, never the report id.
+        assert!(!report.public_path().contains(&report.id.to_string()));
+    }
+
+    #[test]
+    fn test_update_public_report_request_default_changes_nothing() {
+        let request = UpdatePublicReportRequest::default();
+
+        assert!(request.name.is_none());
+        assert!(request.language.is_none());
+        assert!(request.enabled.is_none());
+        assert!(request.household_ids.is_none());
+    }
+
     #[test]
     fn test_role_permissions() {
         assert!(Role::Owner.can_manage_members());

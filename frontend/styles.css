@@ -2651,3 +2651,96 @@ body.dark-mode .task-item.selected {
     font-weight: 400;
     opacity: 0.75;
 }
+
+/* Shared cross-household report links (user settings) — mobile first */
+.public-reports {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.public-report-create {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.public-report {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    background-color: var(--background-color);
+}
+
+.public-report-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.public-report-language {
+    max-width: var(--input-max-width);
+}
+
+.public-report-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.public-report-households {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.public-report-url {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+/* The token makes these URLs long; wrapping beats a page that scrolls sideways. */
+.public-report-url-value {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    background-color: var(--card-color);
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+}
+
+.public-report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+@media (min-width: 768px) {
+    .public-report-create {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .public-report-create .form-input {
+        max-width: var(--input-max-width);
+    }
+
+    .public-report-row {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .public-report-url {
+        flex-direction: row;
+        align-items: center;
+    }
+}

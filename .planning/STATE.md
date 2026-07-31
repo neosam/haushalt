@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Outbound Messaging
-current_phase: "05"
-current_phase_name: nomi-ai-daily-report-push
-status: planned
-stopped_at: Phase 05 geplant — 5 Pläne, Plan-Checker bestanden
-last_updated: "2026-07-28T00:00:00.000Z"
-last_activity: 2026-07-28
-last_activity_desc: Phase 05 (nomi.ai Daily Report Push) geplant — 5 Pläne in 5 Wellen
+current_phase: "06"
+current_phase_name: public-cross-household-report-links
+status: executing
+stopped_at: Phase 06 umgesetzt — Backend und Frontend gebaut, Testsuite grün
+last_updated: "2026-07-31T00:00:00.000Z"
+last_activity: 2026-07-31
+last_activity_desc: Phase 06 (Public Cross-Household Report Links) umgesetzt; Phase 05 (nomi.ai) zurückgestellt
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 0
-  total_plans: 11
-  completed_plans: 5
-  percent: 45
+  total_plans: 17
+  completed_plans: 11
+  percent: 65
 ---
 
 # Project State

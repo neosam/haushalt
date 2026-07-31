@@ -25,10 +25,10 @@ use std::path::{Path, PathBuf};
 ///   decision.
 const UNSTYLED_CLASSES: &[&str] = &["modal-body", "modal-sm"];
 
-/// Only classes in these namespaces are checked. Both drive modal layout and
-/// form appearance, where a missing rule breaks the page rather than merely
-/// looking off.
-const CHECKED_PREFIXES: &[&str] = &["modal-", "form-"];
+/// Only classes in these namespaces are checked. They drive modal layout, form
+/// appearance and the shared-report section, where a missing rule breaks the
+/// page rather than merely looking off.
+const CHECKED_PREFIXES: &[&str] = &["modal-", "form-", "public-report"];
 
 fn frontend_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -105,7 +105,7 @@ fn relative(path: &Path) -> String {
 }
 
 #[test]
-fn every_modal_and_form_class_is_defined_in_the_stylesheet() {
+fn every_checked_namespace_class_is_defined_in_the_stylesheet() {
     let stylesheet = stylesheet();
     let mut undefined: Vec<String> = Vec::new();
 

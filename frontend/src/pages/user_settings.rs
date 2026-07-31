@@ -3,6 +3,7 @@ use shared::UpdateUserSettingsRequest;
 
 use crate::api::ApiClient;
 use crate::components::loading::Loading;
+use crate::components::public_reports_section::PublicReportsSection;
 use crate::i18n::{supported_languages, use_i18n};
 
 #[component]
@@ -127,6 +128,8 @@ pub fn UserSettingsPage() -> impl IntoView {
                     </div>
                 </form>
             </div>
+
+            <PublicReportsSection />
         </Show>
     }
 }

@@ -775,5 +775,23 @@
   "solo_mode.confirm_cooldown": "You will need to wait 48 hours to exit Solo Mode after activation.",
   "solo_mode.exit_in": "Exiting in",
   "solo_mode.request_exit": "Request Exit",
-  "solo_mode.cancel_exit": "Cancel Exit"
+  "solo_mode.cancel_exit": "Cancel Exit",
+
+  "public_reports.title": "Shared reports",
+  "public_reports.hint": "A shared report combines several of your households and is retrievable through its own URL without logging in. Treat the URL like a password — anyone who has it can read the report.",
+  "public_reports.name_placeholder": "Report name",
+  "public_reports.name_required": "Please enter a name",
+  "public_reports.create": "Create report",
+  "public_reports.created": "Report created",
+  "public_reports.saved": "Report saved",
+  "public_reports.deleted": "Report deleted",
+  "public_reports.empty": "No reports yet.",
+  "public_reports.enabled": "Active",
+  "public_reports.disabled_hint": "This report is switched off — its URL returns nothing.",
+  "public_reports.households": "Households",
+  "public_reports.no_households": "You are not a member of any household.",
+  "public_reports.reset_link": "Reset link",
+  "public_reports.reset_link_confirm": "The previous link stops working immediately.",
+  "public_reports.link_reset": "New link generated",
+  "public_reports.delete_confirm": "Really delete this report?"
 }

@@ -8,14 +8,14 @@ use shared::{
     ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, Announcement, ApiError, ApiSuccess,
     AuthResponse, ChatMessageWithUser, CreateAnnouncementRequest, CreateChatMessageRequest,
     CreateHouseholdRequest, CreateInvitationRequest, CreateJournalEntryRequest, CreateNoteRequest, UpdateHouseholdRequest,
-    CreatePointConditionRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
+    CreatePointConditionRequest, CreatePublicReportRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
     CreateUserRequest, DailyReportResponse, Household, HouseholdMembership, HouseholdSettings, Invitation, InvitationWithHousehold,
     InviteUserRequest, JournalEntry, JournalEntryWithUser, LeaderboardEntry, LoginRequest, MemberWithUser,
     MonthlyStatisticsResponse, Note, NoteWithUser, PendingPunishmentCompletion, PendingReview,
-    PendingRewardRedemption, PointCondition, Punishment, RandomPickResult, RandomRewardPickResult,
+    PendingRewardRedemption, PointCondition, PublicReport, PublicReportsResponse, Punishment, RandomPickResult, RandomRewardPickResult,
     RefreshTokenRequest, Reward, Task, TaskCompletion, TaskPunishmentLink, TaskRewardLink, TaskWithDetails,
     TaskWithStatus, UpdateAnnouncementRequest, UpdateChatMessageRequest, UpdateHouseholdSettingsRequest,
-    UpdateJournalEntryRequest, UpdateNoteRequest, UpdatePunishmentRequest, UpdateRewardRequest,
+    UpdateJournalEntryRequest, UpdateNoteRequest, UpdatePublicReportRequest, UpdatePunishmentRequest, UpdateRewardRequest,
     UpdateRoleRequest, UpdateTaskRequest, UpdateUserSettingsRequest, User, UserPunishment,
     UserPunishmentWithUser, UserReward, UserRewardWithUser, UserSettings, WeeklyStatisticsResponse,
 };
@@ -1584,6 +1584,53 @@ impl ApiClient {
         request: UpdateUserSettingsRequest,
     ) -> Result<UserSettings, String> {
         Self::request("PUT", "/users/me/settings", Some(request), true).await
+    }
+
+    // Public cross-household report endpoints (Phase 6)
+    pub async fn list_public_reports() -> Result<Vec<PublicReport>, String> {
+        let response: PublicReportsResponse =
+            Self::request("GET", "/users/me/reports", None::<()>, true).await?;
+        Ok(response.reports)
+    }
+
+    pub async fn create_public_report(
+        request: CreatePublicReportRequest,
+    ) -> Result<PublicReport, String> {
+        Self::request("POST", "/users/me/reports", Some(request), true).await
+    }
+
+    pub async fn update_public_report(
+        report_id: &str,
+        request: UpdatePublicReportRequest,
+    ) -> Result<PublicReport, String> {
+        Self::request(
+            "PUT",
+            &format!("/users/me/reports/{}", report_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    /// Mint a new token, invalidating every previously shared URL for this report.
+    pub async fn regenerate_public_report_token(report_id: &str) -> Result<PublicReport, String> {
+        Self::request(
+            "POST",
+            &format!("/users/me/reports/{}/token", report_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_public_report(report_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/users/me/reports/{}", report_id),
+            None::<()>,
+            true,
+        )
+        .await
     }
 
     // Dashboard task whitelist endpoints
