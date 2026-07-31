@@ -228,16 +228,29 @@ has connected, starting with the daily report to a nomi.ai companion.
 - **D-10**: A disabled report, an unknown token and a malformed token all answer `404` with the same body, so the
   endpoint leaks no information about which tokens exist.
 
-**Plans**: executed in one bundled session on 2026-07-31 (user preference: code first, GSD docs after).
+**Plans**: executed in one bundled session on 2026-07-31 (user preference: code first, GSD docs after),
+landing as two commits — backend, then frontend.
 
 Plans:
 
-- [ ] 06-01: Migration `public_reports` + `public_report_households`, mirrored in `test_utils::create_test_schema`
-- [ ] 06-02: Shared contract — `PublicReport`, `CreatePublicReportRequest`, `UpdatePublicReportRequest`
-- [ ] 06-03: `report.rs` becomes language-aware (`ReportLanguage`, `ReportStrings`); household endpoint pinned to English
-- [ ] 06-04: `services/public_reports.rs` — CRUD, token regeneration, membership-validated household selection, aggregation
-- [ ] 06-05: `handlers/public_reports.rs` — authenticated CRUD under `/api/users/me/reports`, unauthenticated `/api/public/reports/{token}`
-- [ ] 06-06: Frontend — `ApiClient` methods, report section on `UserSettingsPage`, de/en strings, mobile-first CSS
+- [x] 06-01: Migration `public_reports` + `public_report_households`, mirrored in `test_utils::create_test_schema`
+- [x] 06-02: Shared contract — `PublicReport`, `CreatePublicReportRequest`, `UpdatePublicReportRequest`
+- [x] 06-03: `report.rs` becomes language-aware (`ReportLanguage`, `ReportStrings`); household endpoint pinned to English
+- [x] 06-04: `services/public_reports.rs` — CRUD, token regeneration, membership-validated household selection, aggregation
+- [x] 06-05: `handlers/public_reports.rs` — authenticated CRUD under `/api/users/me/reports`, unauthenticated `/api/public/reports/{token}`
+- [x] 06-06: Frontend — `ApiClient` methods, report section on `UserSettingsPage`, de/en strings, mobile-first CSS
+
+**Verification 2026-07-31** — workspace suite green (345 backend / 168 frontend / 69 shared), clippy clean in
+`backend` and `shared`, and an end-to-end run against a fresh SQLite database with the server up: the migration
+applies, an unauthenticated `GET` returns `200 text/plain` with one block per household in the configured
+language, and switching off (404), rotating the token (old link 404), selecting a foreign household (403),
+unknown and malformed tokens (404) and the rate limit (429) all behave as designed.
+
+**Still open**: the human UI check — the settings section has not been looked at in a browser, only built.
+
+**Incidental fix**: `test_utils::create_test_household_with_name` now generates a per-call owner email. It used to
+hardcode `owner@test.com`, so a second household in one test database hit the UNIQUE constraint; `report.rs` had
+worked around that with a local duplicate of the fixture, which this replaces.
 
 #### Phase 5: Nomi.ai Daily Report Push (DEFERRED)
 

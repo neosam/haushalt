@@ -29,9 +29,14 @@ See: .planning/PROJECT.md (updated 2026-07-23)
 ## Current Position
 
 Milestone: v1.2 Outbound Messaging
-Phase: 05 (nomi-ai-daily-report-push) — geplant am 2026-07-28, 5 Pläne in 5 Wellen
-Plan: 0 of 5
-Status: Ready to execute (`/gsd-execute-phase 5`)
+Phase: 06 (public-cross-household-report-links) — umgesetzt am 2026-07-31, 6 Pläne in 2 Commits
+Plan: 6 of 6
+Status: Code fertig und gegen einen laufenden Server verifiziert; offen ist nur die Sichtprüfung
+der Einstellungen-Sektion im Browser.
+
+Phase 05 (nomi.ai) ist auf Wunsch des Nutzers zurückgestellt. Die Pläne unter
+`.planning/phases/05-nomi-ai-daily-report-push/` bleiben gültig — es wurde nichts davon
+ausgeführt, also gibt es auch nichts zurückzudrehen.
 
 Phase 02.1 ist code-seitig fertig (5 von 6 Plänen), nur die menschliche Abnahme 02.1-06 und die
 SUMMARYs für 02.1-02..05 fehlen. Am 2026-07-28 nachgewiesen — siehe Doku-Nachtrag in ROADMAP.md.
@@ -73,6 +78,15 @@ Recent decisions affecting current work:
 - [v1.1]: In-memory SQLite per test; pass `current_date` to functions under test (no global time mocking)
 - [v1.1]: Tests stay in `#[cfg(test)] mod tests` next to code; fixtures use builder pattern
 - [migration]: Switched spec-driven workflow from OpenSpec to GSD (`.planning/`)
+- [v1.2, 2026-07-31]: Ein geteilter Bericht ist **pro Benutzer**, nicht pro Haushalt, und seine
+  Haushaltsauswahl ist **explizit** — niemals "alle meine Haushalte". Sonst würde ein neu
+  beigetretener Haushalt still in eine bereits verteilte URL rutschen.
+- [v1.2, 2026-07-31]: Die Sprache ist eine Eigenschaft des einzelnen Berichts. Das schränkt
+  Phase 2.1s D-01 ("der Bericht ist immer englisch") auf den Haushalts-Endpoint ein, statt es
+  aufzuheben: `generate_daily_report` bleibt englisch, `generate_daily_report_localized` ist neu.
+- [v1.2, 2026-07-31]: Das Rate-Limit des öffentlichen Endpoints zählt **nur existierende Tokens**.
+  Der Limiter ist eine In-Memory-Map über den URL-Parameter; würde er unbekannte Tokens zählen,
+  könnte jeder sie mit Zufalls-UUIDs unbegrenzt wachsen lassen.
 - [v1.2]: Outbound push to nomi.ai instead of an inbound MCP server. An MCP design (phases 5-8, inbound read-only bearer tokens, separate `rmcp` server process) was fully planned on 2026-07-28 and then **discarded** — it solves the opposite problem. Do not revive it without a new requirement; the commits were abandoned, `jj op restore fbeab6da1e65` brings them back if ever needed.
 - [v1.2]: The nomi.ai API key is stored **encrypted at rest**, not hashed. Unlike an inbound token, which is only ever compared, an outgoing key must be recoverable in plaintext to be used. The project has no encryption-at-rest facility yet — this is an open decision for `/gsd-discuss-phase 5`.
 - [v1.2]: nomi.ai auth uses the **raw key** in the `Authorization` header, with no `Bearer ` prefix, per the official docs. Secondary sources claim otherwise.

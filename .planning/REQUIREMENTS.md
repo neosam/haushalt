@@ -89,13 +89,13 @@ Active milestone **v1.1 Hardening & Connectivity**. Each maps to a roadmap phase
 
 ### Public Cross-Household Report Links
 
-- [ ] **PUBREP-01**: A user creates one or more named reports in their user settings, each spanning an explicitly chosen set of the households they belong to
-- [ ] **PUBREP-02**: Each report exposes a URL carrying an unguessable UUID token that returns the report without any authentication
-- [ ] **PUBREP-03**: The public response contains nothing but the report text — the same content as the per-household daily report, one block per selected household
-- [ ] **PUBREP-04**: Each report carries its own output language (de/en); the per-household report endpoint stays English (D-01)
-- [ ] **PUBREP-05**: A report can be switched off and its token regenerated, which immediately invalidates the previous URL
-- [ ] **PUBREP-06**: A household whose membership the owner has lost is silently dropped from the output, so a stale link cannot leak data
-- [ ] **PUBREP-07**: The public endpoint is rate limited per token and marked non-indexable
+- [x] **PUBREP-01**: A user creates one or more named reports in their user settings, each spanning an explicitly chosen set of the households they belong to
+- [x] **PUBREP-02**: Each report exposes a URL carrying an unguessable UUID token that returns the report without any authentication
+- [x] **PUBREP-03**: The public response contains nothing but the report text — the same content as the per-household daily report, one block per selected household
+- [x] **PUBREP-04**: Each report carries its own output language (de/en); the per-household report endpoint stays English (D-01)
+- [x] **PUBREP-05**: A report can be switched off and its token regenerated, which immediately invalidates the previous URL
+- [x] **PUBREP-06**: A household whose membership the owner has lost is silently dropped from the output, so a stale link cannot leak data
+- [x] **PUBREP-07**: The public endpoint is rate limited per token and marked non-indexable
 
 ### Nomi.ai Daily Report Push (deferred)
 
@@ -149,13 +149,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TDEL-02 | Quick task | Complete |
 | TDEL-03 | Quick task | Complete |
 | TDEL-04 | Quick task | Complete |
-| PUBREP-01 | Phase 6 | Pending |
-| PUBREP-02 | Phase 6 | Pending |
-| PUBREP-03 | Phase 6 | Pending |
-| PUBREP-04 | Phase 6 | Pending |
-| PUBREP-05 | Phase 6 | Pending |
-| PUBREP-06 | Phase 6 | Pending |
-| PUBREP-07 | Phase 6 | Pending |
+| PUBREP-01 | Phase 6 | Complete |
+| PUBREP-02 | Phase 6 | Complete |
+| PUBREP-03 | Phase 6 | Complete |
+| PUBREP-04 | Phase 6 | Complete |
+| PUBREP-05 | Phase 6 | Complete |
+| PUBREP-06 | Phase 6 | Complete |
+| PUBREP-07 | Phase 6 | Complete |
 | NOMI-01 | Phase 5 | Pending |
 | NOMI-02 | Phase 5 | Pending |
 | NOMI-03 | Phase 5 | Pending |
