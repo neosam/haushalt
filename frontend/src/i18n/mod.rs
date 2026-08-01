@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use leptos::*;
 
+#[cfg(test)]
+mod translation_contract;
+
 /// Translation data loaded from JSON files
 type Translations = HashMap<String, String>;
 
