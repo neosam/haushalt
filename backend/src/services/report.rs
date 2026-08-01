@@ -82,6 +82,41 @@ impl ReportLanguage {
     }
 }
 
+/// What a caller may vary about a rendered report.
+///
+/// A struct rather than more parameters: the two knobs are both booleans-with-a-name from
+/// the call site's point of view, and `Default` keeps the per-household endpoint's behaviour
+/// pinned in one place instead of spelled out at every call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReportOptions {
+    /// Phase 6 D-06.
+    pub language: ReportLanguage,
+    /// Whether the "Missed yesterday" section is rendered at all.
+    ///
+    /// When false the report stops after "Due today" — the header does not appear with an
+    /// empty body, because a section nobody asked for should leave no trace.
+    pub include_missed: bool,
+}
+
+impl Default for ReportOptions {
+    fn default() -> Self {
+        // D-01/D-20: English, both sections — what the per-household endpoint has always done.
+        Self {
+            language: ReportLanguage::En,
+            include_missed: true,
+        }
+    }
+}
+
+impl ReportOptions {
+    pub fn new(language: ReportLanguage, include_missed: bool) -> Self {
+        Self {
+            language,
+            include_missed,
+        }
+    }
+}
+
 /// Every piece of language-dependent text in a report, resolved once per render.
 ///
 /// `chrono` is built without `unstable-locales` here, so weekday names cannot come from
@@ -128,11 +163,11 @@ struct ReportLine {
     done: bool,
 }
 
-/// Generate the daily report for `user_id` in `household_id`, in English.
+/// Generate the daily report for `user_id` in `household_id`, in English, both sections.
 ///
 /// D-01: the per-household report is always English, and this signature keeps it that way —
 /// callers cannot accidentally localize it. Phase 6's public reports call
-/// [`generate_daily_report_localized`] instead.
+/// [`generate_daily_report_with`] instead.
 ///
 /// `now_utc` is injected by the caller (the handler passes `Utc::now()`) precisely so
 /// the date resolution stays testable with a pinned moment.
@@ -142,16 +177,23 @@ pub async fn generate_daily_report(
     user_id: &Uuid,
     now_utc: DateTime<Utc>,
 ) -> Result<String, ReportError> {
-    generate_daily_report_localized(pool, household_id, user_id, now_utc, ReportLanguage::En).await
+    generate_daily_report_with(
+        pool,
+        household_id,
+        user_id,
+        now_utc,
+        ReportOptions::default(),
+    )
+    .await
 }
 
-/// Generate the daily report for `user_id` in `household_id` in `language` (Phase 6 D-06).
-pub async fn generate_daily_report_localized(
+/// Generate the daily report for `user_id` in `household_id` under `options` (Phase 6).
+pub async fn generate_daily_report_with(
     pool: &SqlitePool,
     household_id: &Uuid,
     user_id: &Uuid,
     now_utc: DateTime<Utc>,
-    language: ReportLanguage,
+    options: ReportOptions,
 ) -> Result<String, ReportError> {
     // T-02-A / T-02-C: the membership guard runs FIRST, before any household name,
     // settings or task data is read, so a non-member can neither read the report nor
@@ -176,15 +218,20 @@ pub async fn generate_daily_report_localized(
         .ok_or(ReportError::HouseholdNotFound)?;
 
     let due_today = build_due_today_section(pool, household_id, user_id, today).await?;
-    let missed_yesterday =
-        build_missed_yesterday_section(pool, household_id, user_id, &settings, yesterday).await?;
+    // Skipped entirely when switched off — the section costs two queries per household,
+    // and a report that will not print it has no reason to pay for them.
+    let missed_yesterday = if options.include_missed {
+        Some(build_missed_yesterday_section(pool, household_id, user_id, &settings, yesterday).await?)
+    } else {
+        None
+    };
 
     Ok(format_report(
         &household.name,
         today,
         &due_today,
-        &missed_yesterday,
-        &language.strings(),
+        missed_yesterday.as_deref(),
+        &options.language.strings(),
     ))
 }
 
@@ -397,15 +444,17 @@ async fn build_missed_yesterday_section(
 
 /// D-20/D-22/D-23: the exact, user-approved text shape. Both sections ALWAYS render —
 /// there is no combined "everything empty" variant. No trailing newline.
+/// `missed_yesterday` is `None` when the section is switched off, which is distinct from
+/// `Some(&[])` — empty renders the header with its empty-state line, off renders nothing.
 fn format_report(
     household_name: &str,
     today: NaiveDate,
     due_today: &[ReportLine],
-    missed_yesterday: &[ReportLine],
+    missed_yesterday: Option<&[ReportLine]>,
     strings: &ReportStrings,
 ) -> String {
-    format!(
-        "{} — {} — {}, {}\n\n{}\n{}\n\n{}\n{}",
+    let head = format!(
+        "{} — {} — {}, {}\n\n{}\n{}",
         strings.title,
         household_name,
         // The weekday comes from `ReportStrings`, not `%a`: `chrono` has no
@@ -414,9 +463,16 @@ fn format_report(
         today.format("%Y-%m-%d"),
         strings.due_today_header,
         format_section(due_today, strings.due_today_empty, strings),
-        strings.missed_yesterday_header,
-        format_section(missed_yesterday, strings.missed_yesterday_empty, strings),
-    )
+    );
+
+    match missed_yesterday {
+        Some(lines) => format!(
+            "{head}\n\n{}\n{}",
+            strings.missed_yesterday_header,
+            format_section(lines, strings.missed_yesterday_empty, strings),
+        ),
+        None => head,
+    }
 }
 
 fn format_section(lines: &[ReportLine], empty_state: &str, strings: &ReportStrings) -> String {
@@ -544,7 +600,7 @@ mod tests {
                         All tasks completed yesterday";
 
         assert_eq!(
-            format_report("Test Household", today, &[], &[], &en()),
+            format_report("Test Household", today, &[], Some(&[]), &en()),
             expected
         );
     }
@@ -576,7 +632,7 @@ mod tests {
     #[test]
     fn test_format_report_header_is_english() {
         let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
-        let report = format_report("Kitchen", today, &[], &[], &en());
+        let report = format_report("Kitchen", today, &[], Some(&[]), &en());
         assert!(
             report.starts_with("Daily report — Kitchen — Sat, 2026-07-25"),
             "got: {report}"
@@ -615,7 +671,7 @@ mod tests {
                         Gestern verpasst:\n\
                         Gestern alle Aufgaben erledigt";
 
-        assert_eq!(format_report("Küche", today, &[], &[], &de()), expected);
+        assert_eq!(format_report("Küche", today, &[], Some(&[]), &de()), expected);
     }
 
     #[test]
@@ -642,8 +698,82 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_report_options_default_matches_the_household_endpoint() {
+        let options = ReportOptions::default();
+        assert_eq!(options.language, ReportLanguage::En);
+        assert!(options.include_missed);
+    }
+
+    /// Switching the section off must remove the header too, not leave it above an empty
+    /// body — the whole point is that the report says nothing about yesterday.
+    #[test]
+    fn test_format_report_omits_the_missed_section_entirely() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
+        let expected = "Daily report — Test Household — Sat, 2026-07-25\n\
+                        \n\
+                        Due today:\n\
+                        No tasks scheduled for today";
+
+        assert_eq!(
+            format_report("Test Household", today, &[], None, &en()),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_format_report_empty_section_differs_from_omitted_section() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
+
+        let empty = format_report("Kitchen", today, &[], Some(&[]), &en());
+        let omitted = format_report("Kitchen", today, &[], None, &en());
+
+        assert!(empty.contains(MISSED_YESTERDAY_HEADER));
+        assert!(!omitted.contains(MISSED_YESTERDAY_HEADER));
+        assert!(!omitted.ends_with('\n'), "got: {omitted}");
+    }
+
     #[tokio::test]
-    async fn test_generate_daily_report_localized_renders_german() {
+    async fn test_generate_daily_report_with_can_omit_the_missed_section() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Yesterday's chore")
+            .with_recurrence(RecurrenceType::Daily)
+            .build()
+            .await;
+        // A genuinely missed task, so its absence proves the switch and not an empty database.
+        insert_missed_task_penalty(&pool, &task.id, pinned_yesterday()).await;
+
+        let with_missed = generate_daily_report_with(
+            &pool,
+            &household_id,
+            &user_id,
+            pinned_now(),
+            ReportOptions::new(ReportLanguage::En, true),
+        )
+        .await
+        .unwrap();
+        assert!(with_missed.contains(MISSED_YESTERDAY_HEADER), "got: {with_missed}");
+        assert!(with_missed.contains("- Yesterday's chore"), "got: {with_missed}");
+
+        let without_missed = generate_daily_report_with(
+            &pool,
+            &household_id,
+            &user_id,
+            pinned_now(),
+            ReportOptions::new(ReportLanguage::En, false),
+        )
+        .await
+        .unwrap();
+        assert!(!without_missed.contains(MISSED_YESTERDAY_HEADER), "got: {without_missed}");
+        // "Due today" survives — only the second section is gone.
+        assert!(without_missed.contains(DUE_TODAY_HEADER), "got: {without_missed}");
+        assert!(without_missed.contains("- Yesterday's chore"), "got: {without_missed}");
+    }
+
+    #[tokio::test]
+    async fn test_generate_daily_report_with_renders_german() {
         let pool = create_test_pool().await;
         let (household_id, user_id) = setup(&pool).await;
         create_test_task(&pool, &household_id)
@@ -653,12 +783,12 @@ mod tests {
             .build()
             .await;
 
-        let report = generate_daily_report_localized(
+        let report = generate_daily_report_with(
             &pool,
             &household_id,
             &user_id,
             pinned_now(),
-            ReportLanguage::De,
+            ReportOptions::new(ReportLanguage::De, true),
         )
         .await
         .unwrap();

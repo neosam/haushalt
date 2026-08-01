@@ -793,5 +793,6 @@
   "public_reports.reset_link": "Link zurücksetzen",
   "public_reports.reset_link_confirm": "Der bisherige Link wird sofort ungültig.",
   "public_reports.link_reset": "Neuer Link erzeugt",
-  "public_reports.delete_confirm": "Bericht wirklich löschen?"
+  "public_reports.delete_confirm": "Bericht wirklich löschen?",
+  "public_reports.include_missed": "Gestern verpasste Aufgaben mit aufnehmen"
 }

@@ -144,6 +144,8 @@ pub fn PublicReportsSection() -> impl IntoView {
                 // A new report starts in the user's own interface language, which is
                 // almost always the one they want the report in.
                 language: Some(i18n_stored.get_value().current_language()),
+                // Both sections, matching the backend default; the checkbox turns it off.
+                include_missed: Some(true),
                 household_ids: Some(Vec::new()),
             };
             match ApiClient::create_public_report(request).await {
@@ -262,7 +264,15 @@ pub fn PublicReportsSection() -> impl IntoView {
                     >
                         <For
                             each=move || reports.get()
-                            key=|report| (report.id, report.token, report.enabled, report.language.clone(), report.household_ids.clone())
+                            key=|report| (
+                                report.id,
+                                report.token,
+                                report.enabled,
+                                report.include_missed,
+                                report.name.clone(),
+                                report.language.clone(),
+                                report.household_ids.clone(),
+                            )
                             children=move |report| {
                                 let report_id = report.id;
                                 let url = public_url(&report);
@@ -329,6 +339,24 @@ pub fn PublicReportsSection() -> impl IntoView {
                                                 }
                                             />
                                             <span>{move || t("public_reports.enabled")}</span>
+                                        </label>
+
+                                        <label class="public-report-toggle">
+                                            <input
+                                                type="checkbox"
+                                                prop:checked=report.include_missed
+                                                on:change=move |ev| {
+                                                    apply(
+                                                        report_id,
+                                                        UpdatePublicReportRequest {
+                                                            include_missed: Some(event_target_checked(&ev)),
+                                                            ..Default::default()
+                                                        },
+                                                        t("public_reports.saved"),
+                                                    );
+                                                }
+                                            />
+                                            <span>{move || t("public_reports.include_missed")}</span>
                                         </label>
 
                                         <div class="public-report-households">

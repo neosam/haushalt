@@ -15,6 +15,7 @@ pub struct PublicReportRow {
     pub token: String,
     pub language: String,
     pub enabled: bool,
+    pub include_missed: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -33,6 +34,7 @@ impl PublicReportRow {
             token: Uuid::parse_str(&self.token).ok()?,
             language: self.language.clone(),
             enabled: self.enabled,
+            include_missed: self.include_missed,
             household_ids,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -52,6 +54,7 @@ mod tests {
             token: token.to_string(),
             language: "de".to_string(),
             enabled: true,
+            include_missed: true,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

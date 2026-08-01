@@ -449,6 +449,11 @@ pub struct PublicReport {
     pub language: String,
     /// D-05: a disabled report keeps its configuration but answers 404 on its URL.
     pub enabled: bool,
+    /// Whether the "Missed yesterday" section is part of this report.
+    ///
+    /// When false the report stops after "Due today" — the header is not printed above an
+    /// empty body, so a report configured to ignore yesterday says nothing about it.
+    pub include_missed: bool,
     /// D-01: the explicit household selection, never "all my households".
     pub household_ids: Vec<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -470,6 +475,8 @@ pub struct CreatePublicReportRequest {
     pub name: String,
     /// Defaults to `"en"` when absent.
     pub language: Option<String>,
+    /// Defaults to `true` when absent — a new report shows both sections.
+    pub include_missed: Option<bool>,
     /// Defaults to an empty selection when absent.
     pub household_ids: Option<Vec<Uuid>>,
 }
@@ -482,6 +489,7 @@ pub struct UpdatePublicReportRequest {
     pub name: Option<String>,
     pub language: Option<String>,
     pub enabled: Option<bool>,
+    pub include_missed: Option<bool>,
     pub household_ids: Option<Vec<Uuid>>,
 }
 
@@ -2100,6 +2108,7 @@ mod tests {
             token,
             language: "de".to_string(),
             enabled: true,
+            include_missed: true,
             household_ids: vec![Uuid::new_v4()],
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -2117,6 +2126,7 @@ mod tests {
         assert!(request.name.is_none());
         assert!(request.language.is_none());
         assert!(request.enabled.is_none());
+        assert!(request.include_missed.is_none());
         assert!(request.household_ids.is_none());
     }
 

@@ -354,6 +354,7 @@ mod tests {
             CreatePublicReportRequest {
                 name: "Everything".to_string(),
                 language: None,
+                include_missed: None,
                 household_ids: Some(vec![household_id]),
             },
         )
@@ -389,7 +390,11 @@ mod tests {
 
         let body = test::read_body(response).await;
         let text = String::from_utf8(body.to_vec()).unwrap();
-        assert!(text.starts_with("Daily report — Kitchen"), "got: {text}");
+        // The report's own name titles the output, then the household blocks follow.
+        assert!(
+            text.starts_with("Everything\n==========\n\nDaily report — Kitchen"),
+            "got: {text}"
+        );
         assert!(text.contains("- Wash the dishes"), "got: {text}");
     }
 

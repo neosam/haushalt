@@ -16,7 +16,7 @@ use shared::{CreatePublicReportRequest, PublicReport, UpdatePublicReportRequest}
 use crate::models::PublicReportRow;
 use crate::services::{
     households,
-    report::{self, ReportLanguage, ReportError},
+    report::{self, ReportError, ReportLanguage, ReportOptions},
 };
 
 /// D-06: the languages a report may render in.
@@ -218,6 +218,8 @@ pub async fn create_report(
     )
     .await?;
 
+    let include_missed = request.include_missed.unwrap_or(true);
+
     let report_id = Uuid::new_v4();
     // D-05: the token is what authorizes the public read, so it is generated here and
     // never derived from the report id — knowing one must not reveal the other.
@@ -226,8 +228,8 @@ pub async fn create_report(
 
     sqlx::query(
         r#"
-        INSERT INTO public_reports (id, user_id, name, token, language, enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+        INSERT INTO public_reports (id, user_id, name, token, language, enabled, include_missed, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
         "#,
     )
     .bind(report_id.to_string())
@@ -235,6 +237,7 @@ pub async fn create_report(
     .bind(&name)
     .bind(token.to_string())
     .bind(&language)
+    .bind(include_missed)
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -249,6 +252,7 @@ pub async fn create_report(
         token,
         language,
         enabled: true,
+        include_missed,
         household_ids,
         created_at: now,
         updated_at: now,
@@ -275,6 +279,7 @@ pub async fn update_report(
         None => current.language,
     };
     let enabled = request.enabled.unwrap_or(current.enabled);
+    let include_missed = request.include_missed.unwrap_or(current.include_missed);
 
     // Validate the new selection BEFORE touching the row, so a rejected household id
     // leaves the report exactly as it was.
@@ -285,11 +290,12 @@ pub async fn update_report(
 
     let now = Utc::now();
     sqlx::query(
-        "UPDATE public_reports SET name = ?, language = ?, enabled = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+        "UPDATE public_reports SET name = ?, language = ?, enabled = ?, include_missed = ?, updated_at = ? WHERE id = ? AND user_id = ?",
     )
     .bind(&name)
     .bind(&language)
     .bind(enabled)
+    .bind(include_missed)
     .bind(now)
     .bind(report_id.to_string())
     .bind(user_id.to_string())
@@ -307,6 +313,7 @@ pub async fn update_report(
         token: current.token,
         language,
         enabled,
+        include_missed,
         household_ids: household_ids.unwrap_or(current.household_ids),
         created_at: current.created_at,
         updated_at: now,
@@ -411,6 +418,7 @@ pub async fn render_report(
     now_utc: DateTime<Utc>,
 ) -> Result<String, PublicReportError> {
     let language = ReportLanguage::from_code(&report.language);
+    let options = ReportOptions::new(language, report.include_missed);
 
     let mut households = households::list_user_households(pool, &report.user_id)
         .await?
@@ -424,12 +432,12 @@ pub async fn render_report(
 
     let mut blocks = Vec::with_capacity(households.len());
     for household in households {
-        match report::generate_daily_report_localized(
+        match report::generate_daily_report_with(
             pool,
             &household.id,
             &report.user_id,
             now_utc,
-            language,
+            options,
         )
         .await
         {
@@ -442,11 +450,29 @@ pub async fn render_report(
         }
     }
 
-    if blocks.is_empty() {
-        return Ok(empty_selection_text(language).to_string());
+    let body = if blocks.is_empty() {
+        empty_selection_text(language).to_string()
+    } else {
+        blocks.join(BLOCK_SEPARATOR)
+    };
+
+    Ok(with_title(&report.name, &body))
+}
+
+/// Put the report's own name above the household blocks.
+///
+/// Without it the text says which households it covers but not which of the user's reports
+/// it is — and several reports over overlapping households look alike at a glance. Underlined
+/// with `=` so the title reads as a title in a plain-text file and stays machine-detectable.
+fn with_title(name: &str, body: &str) -> String {
+    let title = name.trim();
+    if title.is_empty() {
+        return body.to_string();
     }
 
-    Ok(blocks.join(BLOCK_SEPARATOR))
+    // Count characters, not bytes: an underline sized in bytes runs too long under "Küche".
+    let underline = "=".repeat(title.chars().count());
+    format!("{title}\n{underline}\n\n{body}")
 }
 
 #[cfg(test)]
@@ -478,6 +504,7 @@ mod tests {
         CreatePublicReportRequest {
             name: name.to_string(),
             language: None,
+            include_missed: None,
             household_ids: Some(households),
         }
     }
@@ -534,6 +561,7 @@ mod tests {
         let request = CreatePublicReportRequest {
             name: "Report".to_string(),
             language: Some("fr".to_string()),
+            include_missed: None,
             household_ids: None,
         };
 
@@ -892,6 +920,233 @@ mod tests {
     // Rendering (PUBREP-03, PUBREP-04, PUBREP-06)
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // The title above the blocks
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_with_title_underlines_by_character_count() {
+        // "Küche" is 5 characters but 6 bytes — a byte-sized underline would overhang.
+        assert_eq!(with_title("Küche", "body"), "Küche\n=====\n\nbody");
+    }
+
+    #[test]
+    fn test_with_title_trims_and_skips_an_empty_name() {
+        assert_eq!(with_title("  Alles  ", "body"), "Alles\n=====\n\nbody");
+        assert_eq!(with_title("   ", "body"), "body");
+    }
+
+    #[tokio::test]
+    async fn test_render_starts_with_the_report_name() {
+        let pool = create_test_pool().await;
+        let (user_id, household_id) = user_with_household(&pool, "Kitchen").await;
+        let report = create_report(&pool, &user_id, create("Weekday overview", vec![household_id]))
+            .await
+            .unwrap();
+
+        let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
+
+        assert!(
+            text.starts_with("Weekday overview\n================\n\nDaily report — Kitchen"),
+            "got: {text}"
+        );
+    }
+
+    /// Renaming the report changes the title, so the text always identifies the report a
+    /// reader is actually looking at.
+    #[tokio::test]
+    async fn test_render_title_follows_a_rename() {
+        let pool = create_test_pool().await;
+        let (user_id, household_id) = user_with_household(&pool, "Kitchen").await;
+        let report = create_report(&pool, &user_id, create("Before", vec![household_id]))
+            .await
+            .unwrap();
+
+        update_report(
+            &pool,
+            &report.id,
+            &user_id,
+            UpdatePublicReportRequest {
+                name: Some("After".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
+        assert!(text.starts_with("After\n=====\n\n"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_render_titles_the_empty_selection_too() {
+        let pool = create_test_pool().await;
+        let (user_id, _) = user_with_household(&pool, "Kitchen").await;
+        let report = create_report(&pool, &user_id, create("Nothing here", vec![]))
+            .await
+            .unwrap();
+
+        let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
+        assert_eq!(
+            text,
+            "Nothing here\n============\n\nNo households configured for this report"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // The "Missed yesterday" switch
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_create_report_includes_the_missed_section_by_default() {
+        let pool = create_test_pool().await;
+        let (user_id, household_id) = user_with_household(&pool, "Kitchen").await;
+
+        let report = create_report(&pool, &user_id, create("Report", vec![household_id]))
+            .await
+            .unwrap();
+
+        assert!(report.include_missed);
+        assert!(get_report(&pool, &report.id, &user_id).await.unwrap().include_missed);
+    }
+
+    #[tokio::test]
+    async fn test_create_report_honours_an_explicit_missed_switch() {
+        let pool = create_test_pool().await;
+        let (user_id, household_id) = user_with_household(&pool, "Kitchen").await;
+
+        let report = create_report(
+            &pool,
+            &user_id,
+            CreatePublicReportRequest {
+                name: "Today only".to_string(),
+                language: None,
+                include_missed: Some(false),
+                household_ids: Some(vec![household_id]),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(!report.include_missed);
+        let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
+        assert!(text.contains("Due today:"), "got: {text}");
+        assert!(!text.contains("Missed yesterday:"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_missed_switch_survives_a_round_trip_through_storage() {
+        let pool = create_test_pool().await;
+        let (user_id, household_id) = user_with_household(&pool, "Kitchen").await;
+        let report = create_report(&pool, &user_id, create("Report", vec![household_id]))
+            .await
+            .unwrap();
+
+        for expected in [false, true, false] {
+            let updated = update_report(
+                &pool,
+                &report.id,
+                &user_id,
+                UpdatePublicReportRequest {
+                    include_missed: Some(expected),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(updated.include_missed, expected);
+            assert_eq!(
+                get_report(&pool, &report.id, &user_id).await.unwrap().include_missed,
+                expected
+            );
+
+            let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
+            assert_eq!(text.contains("Missed yesterday:"), expected, "got: {text}");
+        }
+    }
+
+    /// The switch must not be disturbed by an update that says nothing about it.
+    #[tokio::test]
+    async fn test_unrelated_update_leaves_the_missed_switch_alone() {
+        let pool = create_test_pool().await;
+        let (user_id, household_id) = user_with_household(&pool, "Kitchen").await;
+        let report = create_report(
+            &pool,
+            &user_id,
+            CreatePublicReportRequest {
+                name: "Report".to_string(),
+                language: None,
+                include_missed: Some(false),
+                household_ids: Some(vec![household_id]),
+            },
+        )
+        .await
+        .unwrap();
+
+        let updated = update_report(
+            &pool,
+            &report.id,
+            &user_id,
+            UpdatePublicReportRequest {
+                name: Some("Renamed".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(!updated.include_missed);
+    }
+
+    /// The switch applies to every household block, not just the first.
+    #[tokio::test]
+    async fn test_missed_switch_applies_to_all_blocks() {
+        let pool = create_test_pool().await;
+        let (user_id, kitchen) = user_with_household(&pool, "Kitchen").await;
+        let garage = join(&pool, &user_id, "Garage").await;
+        let report = create_report(
+            &pool,
+            &user_id,
+            CreatePublicReportRequest {
+                name: "Both".to_string(),
+                language: None,
+                include_missed: Some(false),
+                household_ids: Some(vec![kitchen, garage]),
+            },
+        )
+        .await
+        .unwrap();
+
+        let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
+
+        assert_eq!(text.matches("Due today:").count(), 2, "got: {text}");
+        assert_eq!(text.matches("Missed yesterday:").count(), 0, "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_missed_switch_respects_the_report_language() {
+        let pool = create_test_pool().await;
+        let (user_id, household_id) = user_with_household(&pool, "Küche").await;
+        let report = create_report(
+            &pool,
+            &user_id,
+            CreatePublicReportRequest {
+                name: "Nur heute".to_string(),
+                language: Some("de".to_string()),
+                include_missed: Some(false),
+                household_ids: Some(vec![household_id]),
+            },
+        )
+        .await
+        .unwrap();
+
+        let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
+
+        assert!(text.contains("Heute fällig:"), "got: {text}");
+        assert!(!text.contains("Gestern verpasst:"), "got: {text}");
+        assert!(!text.ends_with('\n'), "got: {text}");
+    }
+
     #[tokio::test]
     async fn test_render_emits_one_block_per_household_alphabetically() {
         let pool = create_test_pool().await;
@@ -967,6 +1222,7 @@ mod tests {
             CreatePublicReportRequest {
                 name: "Alles".to_string(),
                 language: Some("de".to_string()),
+                include_missed: None,
                 household_ids: Some(vec![household_id]),
             },
         )
@@ -975,7 +1231,10 @@ mod tests {
 
         let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
 
-        assert!(text.starts_with("Tagesbericht — Küche — Mo, 2027-01-04"), "got: {text}");
+        assert!(
+            text.starts_with("Alles\n=====\n\nTagesbericht — Küche — Mo, 2027-01-04"),
+            "got: {text}"
+        );
         assert!(text.contains("Heute fällig:"), "got: {text}");
         assert!(text.contains("- Staubsaugen"), "got: {text}");
     }
@@ -1010,7 +1269,7 @@ mod tests {
         households::remove_member(&pool, &household_id, &user_id).await.unwrap();
 
         let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
-        assert_eq!(text, "No households configured for this report");
+        assert_eq!(text, "All\n===\n\nNo households configured for this report");
     }
 
     #[tokio::test]
@@ -1023,6 +1282,7 @@ mod tests {
             CreatePublicReportRequest {
                 name: "Leer".to_string(),
                 language: Some("de".to_string()),
+                include_missed: None,
                 household_ids: Some(vec![]),
             },
         )
@@ -1030,7 +1290,10 @@ mod tests {
         .unwrap();
 
         let text = render_by_token(&pool, &report.token, pinned_now()).await.unwrap();
-        assert_eq!(text, "Für diesen Bericht sind keine Haushalte konfiguriert");
+        assert_eq!(
+            text,
+            "Leer\n====\n\nFür diesen Bericht sind keine Haushalte konfiguriert"
+        );
     }
 
     /// D-04: each block resolves "today" in its OWN household's timezone, so two households

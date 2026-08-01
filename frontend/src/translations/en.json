@@ -793,5 +793,6 @@
   "public_reports.reset_link": "Reset link",
   "public_reports.reset_link_confirm": "The previous link stops working immediately.",
   "public_reports.link_reset": "New link generated",
-  "public_reports.delete_confirm": "Really delete this report?"
+  "public_reports.delete_confirm": "Really delete this report?",
+  "public_reports.include_missed": "Include tasks missed yesterday"
 }

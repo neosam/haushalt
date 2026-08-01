@@ -473,6 +473,7 @@ async fn create_test_schema(pool: &SqlitePool) {
             token TEXT NOT NULL UNIQUE,
             language TEXT NOT NULL DEFAULT 'en',
             enabled INTEGER NOT NULL DEFAULT 1,
+            include_missed INTEGER NOT NULL DEFAULT 1,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
