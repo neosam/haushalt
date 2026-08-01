@@ -240,6 +240,16 @@ Plans:
 - [x] 06-05: `handlers/public_reports.rs` — authenticated CRUD under `/api/users/me/reports`, unauthenticated `/api/public/reports/{token}`
 - [x] 06-06: Frontend — `ApiClient` methods, report section on `UserSettingsPage`, de/en strings, mobile-first CSS
 
+**Follow-up 2026-08-01** — two changes from the acceptance pass:
+
+- The output opens with the report's own name, underlined with `=`. Without it the text named
+  the households but not which of the user's reports it was.
+- `include_missed` per report decides whether "Missed yesterday" is rendered. Off means the
+  header is absent rather than sitting above an empty body, and the section is not computed
+  at all. Migration `20240151000000` defaults it to 1, so existing reports are unchanged.
+- `generate_daily_report_localized` became `generate_daily_report_with(…, ReportOptions)`;
+  `ReportOptions::default()` is where the per-household endpoint's behaviour now lives.
+
 **Verification 2026-07-31** — workspace suite green (345 backend / 168 frontend / 69 shared), clippy clean in
 `backend` and `shared`, and an end-to-end run against a fresh SQLite database with the server up: the migration
 applies, an unauthenticated `GET` returns `200 text/plain` with one block per household in the configured
