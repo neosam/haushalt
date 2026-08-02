@@ -161,6 +161,11 @@ struct ReportLine {
     title: String,
     due_time: Option<String>,
     done: bool,
+    /// `Some((completed, target))` for a task that must be done more than once in its
+    /// period, e.g. `(5, 8)` renders as `(5/8)`. `None` for a plain single-completion
+    /// task, which falls back to the `(done)` marker. The completed count is clamped to
+    /// the target, so an over-fulfilled task reads as `8/8`, never `10/8`.
+    progress: Option<(i64, i64)>,
 }
 
 /// Generate the daily report for `user_id` in `household_id`, in English, both sections.
@@ -273,11 +278,18 @@ async fn build_due_today_section(
             continue;
         }
 
-        let done = is_completed_for_today(pool, &task, today).await?;
+        let completed = completions_this_period(pool, &task, today).await?;
+        let target = i64::from(task.target_count);
+        // D-07: "done" means the target is met; target_count 0 is free-form, never done.
+        let done = target > 0 && completed >= target;
+        // A task that must be done more than once shows its progress instead of a plain
+        // "done" marker; the count is clamped so over-fulfilment reads as `8/8`, not `10/8`.
+        let progress = (task.target_count > 1).then(|| (completed.min(target), target));
         lines.push(ReportLine {
             title: task.title,
             due_time: task.due_time,
             done,
+            progress,
         });
     }
 
@@ -285,12 +297,13 @@ async fn build_due_today_section(
     Ok(lines)
 }
 
-/// D-07: a task already completed today stays listed, marked `(done)`.
+/// How many times `task` has been completed within the period that covers `today`.
 ///
-/// A task counts as done when its TARGET is met, not after a single completion — a task
-/// with `target_count = 3` and one completion is still outstanding. This mirrors
-/// `TaskWithStatus::is_target_met` in the shared crate, which is the project-wide
-/// definition of "done", including its treatment of `target_count = 0` as free-form
+/// Returning the raw count (rather than a bool) lets the caller both decide "done" —
+/// the target is met, not merely touched once: a task with `target_count = 3` and one
+/// completion is still outstanding — and render the `(X/N)` progress of a
+/// multi-completion task. The "done" decision mirrors `TaskWithStatus::is_target_met`
+/// in the shared crate, including its treatment of `target_count = 0` as free-form
 /// (never "met").
 ///
 /// `get_next_due_date` returns `Some(today)` whenever `is_task_due_on_date(task, today)`
@@ -301,11 +314,11 @@ async fn build_due_today_section(
 /// The period bounds themselves remain indispensable for a different, still valid reason:
 /// Weekly and Monthly tasks count over a whole week or month, so a raw `due_date = today`
 /// check would lose their completions.
-async fn is_completed_for_today(
+async fn completions_this_period(
     pool: &SqlitePool,
     task: &Task,
     today: NaiveDate,
-) -> Result<bool, ReportError> {
+) -> Result<i64, ReportError> {
     let period_date = scheduler::get_next_due_date(task, today).unwrap_or(today);
     let (period_start, period_end) = scheduler::get_period_bounds(task, period_date);
 
@@ -318,7 +331,7 @@ async fn is_completed_for_today(
     .fetch_one(pool)
     .await?;
 
-    Ok(task.target_count > 0 && count >= i64::from(task.target_count))
+    Ok(count)
 }
 
 /// The "Missed yesterday" section — "everything that went wrong yesterday", from TWO
@@ -392,11 +405,13 @@ async fn build_missed_yesterday_section(
         }
 
         // `done` is always false here: a "done" marker on something you missed would be
-        // nonsense, so the shared formatter emits nothing extra.
+        // nonsense, so the shared formatter emits nothing extra. `progress` is likewise
+        // omitted — the missed section reports what went wrong, not how far you got.
         lines.push(ReportLine {
             title: task.title,
             due_time: task.due_time,
             done: false,
+            progress: None,
         });
     }
 
@@ -431,6 +446,7 @@ async fn build_missed_yesterday_section(
             title,
             due_time,
             done: false,
+            progress: None,
         });
     }
 
@@ -487,13 +503,18 @@ fn format_section(lines: &[ReportLine], empty_state: &str, strings: &ReportStrin
 }
 
 /// The ONE line formatter, shared by both sections (D-21 + DRY).
-/// `- {title}`, then ` (by {due_time})` when set (D-21), then ` (done)` (D-07).
+/// `- {title}`, then ` (by {due_time})` when set (D-21), then either ` (X/N)` for a
+/// multi-completion task or ` (done)` for a plain one (D-07).
 fn format_report_line(line: &ReportLine, strings: &ReportStrings) -> String {
     let mut rendered = format!("- {}", line.title);
     if let Some(due_time) = &line.due_time {
         rendered.push_str(&format!(" ({} {})", strings.by_prefix, due_time));
     }
-    if line.done {
+    // A multi-completion task shows `(X/N)` in place of the `(done)` marker: the count
+    // already tells the reader whether it is finished, and reads the same in any language.
+    if let Some((completed, target)) = line.progress {
+        rendered.push_str(&format!(" ({completed}/{target})"));
+    } else if line.done {
         rendered.push_str(&format!(" ({})", strings.done_marker));
     }
     rendered
@@ -533,6 +554,21 @@ mod tests {
             title: title.to_string(),
             due_time: due_time.map(|t| t.to_string()),
             done,
+            progress: None,
+        }
+    }
+
+    fn line_with_progress(
+        title: &str,
+        due_time: Option<&str>,
+        completed: i64,
+        target: i64,
+    ) -> ReportLine {
+        ReportLine {
+            title: title.to_string(),
+            due_time: due_time.map(|t| t.to_string()),
+            done: completed >= target,
+            progress: Some((completed, target)),
         }
     }
 
@@ -627,6 +663,33 @@ mod tests {
             format_report_line(&line("Clean the litter box", Some("20:00"), true), &en()),
             "- Clean the litter box (by 20:00) (done)"
         );
+    }
+
+    #[test]
+    fn test_format_report_line_shows_progress() {
+        assert_eq!(
+            format_report_line(&line_with_progress("Drink water", None, 5, 8), &en()),
+            "- Drink water (5/8)"
+        );
+    }
+
+    #[test]
+    fn test_format_report_line_progress_after_due_time() {
+        assert_eq!(
+            format_report_line(&line_with_progress("Drink water", Some("20:00"), 5, 8), &en()),
+            "- Drink water (by 20:00) (5/8)"
+        );
+    }
+
+    /// A met target renders as `N/N`, never with an extra `(done)`/`(erledigt)`, and the
+    /// counter is byte-identical in both languages — `5/8` needs no translation.
+    #[test]
+    fn test_format_report_line_progress_replaces_done_marker_in_both_languages() {
+        let met = line_with_progress("Drink water", None, 8, 8);
+        assert_eq!(format_report_line(&met, &en()), "- Drink water (8/8)");
+        assert_eq!(format_report_line(&met, &de()), "- Drink water (8/8)");
+        assert!(!format_report_line(&met, &en()).contains("done"));
+        assert!(!format_report_line(&met, &de()).contains("erledigt"));
     }
 
     #[test]
@@ -1059,11 +1122,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(report.contains("- Drink water"), "got: {report}");
-        assert!(
-            !report.contains("- Drink water (done)"),
-            "1 of 3 completions must not count as done, got: {report}"
-        );
+        // Progress is shown, and 1/3 is plainly not done.
+        assert!(report.contains("- Drink water (1/3)"), "got: {report}");
+        assert!(!report.contains("(done)"), "got: {report}");
     }
 
     #[tokio::test]
@@ -1083,7 +1144,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(report.contains("- Drink water (done)"), "got: {report}");
+        // A multi-completion task shows its progress: 3/3 is how "done" reads now.
+        assert!(report.contains("- Drink water (3/3)"), "got: {report}");
+        assert!(!report.contains("(done)"), "got: {report}");
     }
 
     #[tokio::test]
@@ -1103,7 +1166,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(report.contains("- Drink water (done)"), "got: {report}");
+        // Over-fulfilment clamps to the target: 4 of 2 reads as 2/2, never 4/2.
+        assert!(report.contains("- Drink water (2/2)"), "got: {report}");
+        assert!(!report.contains("(done)"), "got: {report}");
     }
 
     /// Matches `TaskWithStatus::is_target_met`: target_count 0 is free-form and never "met".
@@ -1124,6 +1189,79 @@ mod tests {
 
         assert!(report.contains("- Tidy up"), "got: {report}");
         assert!(!report.contains("- Tidy up (done)"), "got: {report}");
+    }
+
+    #[tokio::test]
+    async fn test_due_today_shows_progress_for_multi_completion_task() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Drink water")
+            .with_target_count(8)
+            .build()
+            .await;
+        for _ in 0..5 {
+            insert_completion(&pool, &task.id, &user_id, pinned_today()).await;
+        }
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(report.contains("- Drink water (5/8)"), "got: {report}");
+        assert!(!report.contains("(done)"), "got: {report}");
+    }
+
+    /// The default `target_count` is 1, so a normal task must NOT gain a `(1/1)` counter —
+    /// it keeps the plain `(done)` marker. This guards against progress leaking onto every
+    /// task in the report.
+    #[tokio::test]
+    async fn test_due_today_single_completion_task_keeps_done_marker() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Empty the dishwasher")
+            .build()
+            .await;
+        insert_completion(&pool, &task.id, &user_id, pinned_today()).await;
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(
+            report.contains("- Empty the dishwasher (done)"),
+            "got: {report}"
+        );
+        assert!(!report.contains("/1"), "got: {report}");
+    }
+
+    /// The counter must reach the public cross-household reports (Phase 6) unchanged: it flows
+    /// through the same builder, and `5/8` is language-independent even in a German report.
+    #[tokio::test]
+    async fn test_due_today_progress_reaches_localized_report() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Wasser trinken")
+            .with_target_count(8)
+            .build()
+            .await;
+        for _ in 0..5 {
+            insert_completion(&pool, &task.id, &user_id, pinned_today()).await;
+        }
+
+        let report = generate_daily_report_with(
+            &pool,
+            &household_id,
+            &user_id,
+            pinned_now(),
+            ReportOptions::new(ReportLanguage::De, true),
+        )
+        .await
+        .unwrap();
+
+        assert!(report.contains("- Wasser trinken (5/8)"), "got: {report}");
     }
 
     #[tokio::test]
@@ -1463,6 +1601,27 @@ mod tests {
             missed_contains(&report, "- Vacuuming (by 20:00)"),
             "got: {report}"
         );
+    }
+
+    /// The progress counter is a "Due today" affordance only — a missed multi-completion
+    /// task must not sprout a `(0/3)` in the "Missed yesterday" section.
+    #[tokio::test]
+    async fn test_missed_yesterday_has_no_progress_counter() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        let task = create_test_task(&pool, &household_id)
+            .with_title("Vacuuming")
+            .with_target_count(3)
+            .build()
+            .await;
+        insert_missed_task_penalty(&pool, &task.id, pinned_yesterday()).await;
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(missed_contains(&report, "- Vacuuming"), "got: {report}");
+        assert!(!missed_contains(&report, "/3"), "got: {report}");
     }
 
     #[tokio::test]

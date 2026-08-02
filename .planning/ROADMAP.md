@@ -250,6 +250,18 @@ Plans:
 - `generate_daily_report_localized` became `generate_daily_report_with(…, ReportOptions)`;
   `ReportOptions::default()` is where the per-household endpoint's behaviour now lives.
 
+**Follow-up 2026-08-02** — progress counter for multi-completion tasks:
+
+- A task whose `target_count > 1` now renders `(X/N)` in "Due today", e.g. `- Drink water (5/8)`,
+  so the report shows how far along an "N times" habit is. The count is clamped to the target
+  (`8/8`, never `10/8`) and reads the same in every language, so no new translations are needed.
+- The counter *replaces* the `(done)`/`(erledigt)` marker for these tasks — `8/8` already says done.
+  Plain single-completion tasks (`target_count = 1`) and free-form tasks (`0`) are untouched.
+- No schema or query change: `is_completed_for_today` became `completions_this_period`, returning
+  the raw count the report already computed. It flows through the same builder, so the public
+  cross-household reports get the counter for free. Only "Due today" carries it — the "Missed
+  yesterday" section is about what went wrong, not progress.
+
 **Verification 2026-07-31** — workspace suite green (345 backend / 168 frontend / 69 shared), clippy clean in
 `backend` and `shared`, and an end-to-end run against a fresh SQLite database with the server up: the migration
 applies, an unauthenticated `GET` returns `200 text/plain` with one block per household in the configured
