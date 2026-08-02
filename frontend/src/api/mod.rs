@@ -6,6 +6,7 @@ use leptos::*;
 use serde::{de::DeserializeOwned, Serialize};
 use shared::{
     ActivityLogWithUsers, AdjustPointsRequest, AdjustPointsResponse, Announcement, ApiError, ApiSuccess,
+    ApiToken, ApiTokensResponse, CreateApiTokenRequest, CreatedApiToken, UpdateApiTokenRequest,
     AuthResponse, ChatMessageWithUser, CreateAnnouncementRequest, CreateChatMessageRequest,
     CreateHouseholdRequest, CreateInvitationRequest, CreateJournalEntryRequest, CreateNoteRequest, UpdateHouseholdRequest,
     CreatePointConditionRequest, CreatePublicReportRequest, CreatePunishmentRequest, CreateRewardRequest, CreateTaskRequest,
@@ -1627,6 +1628,43 @@ impl ApiClient {
         Self::request::<()>(
             "DELETE",
             &format!("/users/me/reports/{}", report_id),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    // API access tokens
+    pub async fn list_api_tokens() -> Result<Vec<ApiToken>, String> {
+        let response: ApiTokensResponse =
+            Self::request("GET", "/users/me/api-tokens", None::<()>, true).await?;
+        Ok(response.tokens)
+    }
+
+    /// Returns the freshly minted token — the plaintext `secret` is present ONLY here.
+    pub async fn create_api_token(
+        request: CreateApiTokenRequest,
+    ) -> Result<CreatedApiToken, String> {
+        Self::request("POST", "/users/me/api-tokens", Some(request), true).await
+    }
+
+    pub async fn update_api_token(
+        token_id: &str,
+        request: UpdateApiTokenRequest,
+    ) -> Result<ApiToken, String> {
+        Self::request(
+            "PUT",
+            &format!("/users/me/api-tokens/{}", token_id),
+            Some(request),
+            true,
+        )
+        .await
+    }
+
+    pub async fn delete_api_token(token_id: &str) -> Result<(), String> {
+        Self::request::<()>(
+            "DELETE",
+            &format!("/users/me/api-tokens/{}", token_id),
             None::<()>,
             true,
         )

@@ -14,6 +14,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/me/settings", web::put().to(update_user_settings))
             // Same reason: the public report routes all live under /me.
             .configure(crate::handlers::public_reports::configure_user_routes)
+            // Same reason: the API token management routes all live under /me.
+            .configure(crate::handlers::api_tokens::configure_user_routes)
             .route("/{id}", web::get().to(get_user))
             .route("/{id}", web::put().to(update_user))
     );

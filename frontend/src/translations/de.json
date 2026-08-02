@@ -794,5 +794,21 @@
   "public_reports.reset_link_confirm": "Der bisherige Link wird sofort ungültig.",
   "public_reports.link_reset": "Neuer Link erzeugt",
   "public_reports.delete_confirm": "Bericht wirklich löschen?",
-  "public_reports.include_missed": "Gestern verpasste Aufgaben mit aufnehmen"
+  "public_reports.include_missed": "Gestern verpasste Aufgaben mit aufnehmen",
+  "api_tokens.title": "API-Zugänge",
+  "api_tokens.hint": "Ein API-Token lässt ein anderes System über die API auf einen deiner Haushalte zugreifen. Der Token ist an genau diesen Haushalt gebunden und handelt mit deinen Rechten. Behandle ihn wie ein Passwort.",
+  "api_tokens.name_placeholder": "Name (z. B. 'Nomi', 'Automatisierung')",
+  "api_tokens.name_required": "Bitte einen Namen angeben.",
+  "api_tokens.no_households": "Du bist in keinem Haushalt.",
+  "api_tokens.can_write": "Schreibrechte",
+  "api_tokens.create": "Token erstellen",
+  "api_tokens.created": "Token erstellt",
+  "api_tokens.secret_warning": "Dieser Token wird nur jetzt einmal angezeigt. Kopiere ihn und bewahre ihn sicher auf — er lässt sich nicht erneut anzeigen.",
+  "api_tokens.empty": "Noch keine API-Zugänge.",
+  "api_tokens.enabled": "Aktiv",
+  "api_tokens.saved": "Gespeichert",
+  "api_tokens.deleted": "Token gelöscht",
+  "api_tokens.delete_confirm": "Token wirklich löschen? Zugriffe damit werden sofort ungültig.",
+  "api_tokens.last_used": "Zuletzt genutzt",
+  "api_tokens.never_used": "noch nie genutzt"
 }

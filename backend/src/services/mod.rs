@@ -22,3 +22,4 @@ pub mod period_results;
 pub mod statistics;
 pub mod report;
 pub mod public_reports;
+pub mod api_tokens;

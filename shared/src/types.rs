@@ -499,6 +499,74 @@ pub struct PublicReportsResponse {
 }
 
 // ============================================================================
+// API Access Tokens
+// ============================================================================
+
+/// A programmatic access token that lets an external system call the API on behalf of the
+/// household member who created it.
+///
+/// The secret itself is NEVER carried by this type — it is shown exactly once, at creation,
+/// via [`CreatedApiToken`], and only its SHA-256 hash is stored. All this type exposes is a
+/// short, non-secret [`ApiToken::token_prefix`] (e.g. `"hht_1a2b3c4d"`) so the owner can tell
+/// their tokens apart in a list.
+///
+/// A token is bound to exactly one household and one permission level: `can_write = false`
+/// may only issue read (GET) requests, `true` may also write. In either case the token acts
+/// with the ROLE of its creator and can never exceed that member's own rights.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApiToken {
+    pub id: Uuid,
+    /// The single household this token may access.
+    pub household_id: Uuid,
+    /// The member who created the token; requests authenticated with it act as this user.
+    pub user_id: Uuid,
+    /// A human label so the owner remembers which system uses this token.
+    pub name: String,
+    /// The non-secret leading part of the token, for display only (e.g. `"hht_1a2b3c4d"`).
+    pub token_prefix: String,
+    /// `false` = read-only (GET/HEAD), `true` = may also write.
+    pub can_write: bool,
+    /// A disabled token is rejected at authentication without being deleted.
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    /// When the token last authenticated a request, if ever. Helps spot stale or leaked tokens.
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+/// The response to creating a token — the ONLY time the plaintext secret is ever returned.
+///
+/// The caller must copy `secret` immediately; the backend keeps only its hash and cannot
+/// show it again. Regenerating replaces it with a new one.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreatedApiToken {
+    pub token: ApiToken,
+    /// The full plaintext token (`hht_...`), shown once. Send it as `Authorization: Bearer <secret>`.
+    pub secret: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiTokenRequest {
+    /// The household the token may access — the creator must be a member of it.
+    pub household_id: Uuid,
+    pub name: String,
+    /// Defaults to `false` (read-only) when absent.
+    pub can_write: Option<bool>,
+}
+
+/// Every field is optional — absent means "leave unchanged".
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateApiTokenRequest {
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+    pub can_write: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiTokensResponse {
+    pub tokens: Vec<ApiToken>,
+}
+
+// ============================================================================
 // Task Types
 // ============================================================================
 

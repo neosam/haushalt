@@ -28,7 +28,7 @@ const UNSTYLED_CLASSES: &[&str] = &["modal-body", "modal-sm"];
 /// Only classes in these namespaces are checked. They drive modal layout, form
 /// appearance and the shared-report section, where a missing rule breaks the
 /// page rather than merely looking off.
-const CHECKED_PREFIXES: &[&str] = &["modal-", "form-", "public-report"];
+const CHECKED_PREFIXES: &[&str] = &["modal-", "form-", "public-report", "api-token"];
 
 fn frontend_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

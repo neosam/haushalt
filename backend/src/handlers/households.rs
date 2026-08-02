@@ -9,6 +9,12 @@ use crate::handlers::{tasks, task_categories, rewards, punishments, point_condit
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/households")
+            // API-token auth: a request bearing an `hht_...` token is validated, scoped to
+            // its household and read/write permission, and handed to the handlers below AS
+            // its creator. JWT requests pass through untouched. See `middleware::api_token`.
+            .wrap(actix_web::middleware::from_fn(
+                crate::middleware::api_token::api_token_auth,
+            ))
             .route("", web::get().to(list_households))
             .route("", web::post().to(create_household))
             .route("/{id}", web::get().to(get_household))

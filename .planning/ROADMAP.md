@@ -274,6 +274,45 @@ unknown and malformed tokens (404) and the rate limit (429) all behave as design
 hardcode `owner@test.com`, so a second household in one test database hit the UNIQUE constraint; `report.rs` had
 worked around that with a local duplicate of the fixture, which this replaces.
 
+#### Phase 7: API Access Tokens
+
+**Goal**: A household member issues a token so an external system can call the API on their behalf, bound to one
+household and a read-only-or-read+write permission.
+
+> **Context**: this revives the "inbound token" idea the v1.2 discussion (2026-07-28, above) explored and discarded
+> as out of scope for *outbound* messaging. The user requested it directly on 2026-08-02, broadened from read-only
+> to read+write. Unlike an outbound key (encrypted at rest, recoverable), an inbound token is a **hashed** credential
+> (SHA-256), shown once — the same asymmetry that note predicted.
+
+**Built (2026-08-02)**:
+
+- `api_tokens` table + migration `20240152000000`: one household, one creator, `can_write`, `enabled`,
+  `token_hash` (SHA-256, UNIQUE), a non-secret `token_prefix`, `last_used_at`. The secret (`hht_` + two v4 UUIDs =
+  244 bits) is shown once at creation and never stored in plaintext.
+- **Auth via a `from_fn` middleware on the `/households` scope** (`middleware::api_token`). A request bearing
+  `Authorization: Bearer hht_...` is validated, checked against the household in the URL and the read/write gate
+  (anything but GET/HEAD/OPTIONS needs `can_write`), then handed to the existing handlers AS its creator by minting
+  a 5-minute JWT and rewriting the header. Every existing `extract_user_id`/`is_member`/role check therefore applies
+  unchanged — **no handler was touched**. JWT requests pass through untouched.
+- **Key property**: a token can never exceed its creator's own role; `can_write` is only the coarse gate on top.
+  That is why *any* member may create one — no privilege escalation (decided with the user, 2026-08-02).
+- Owner-scoped CRUD at `/api/users/me/api-tokens` (mirrors the reports surface). Being under `/users/me`, a token
+  cannot reach it, so a token can never mint further tokens.
+- Frontend `ApiTokensSection` in the user settings: create (name + household + write toggle), the one-time secret
+  box (copy + warning), per-token enable/write/delete. 17 `api_tokens.*` translation keys, `.api-token*` CSS
+  (mobile-first), `api-token` added to the css-contract allowlist.
+
+**Design decisions**: one household per token (the user framed it as "which household", singular); read/write is a
+single flag, with the creator's role supplying the finer authorization; reachability is the whole household-scoped
+API of the bound household, not a subset.
+
+**Verification (2026-08-02)**: workspace green (backend 389 / frontend 175 native / shared 69), clippy clean, WASM
+build succeeds. Middleware end-to-end tests cover read-as-creator, read-only blocked on writes, write token writes,
+foreign-household 403, non-household-path 403, unknown/disabled 401, and JWT passthrough.
+
+**Still open**: the human UI check — the settings section has not been looked at in a browser. No per-token rate
+limiting in v1: revocation (disable/delete) is the mitigation for a leaked token, and can be tightened later.
+
 #### Phase 5: Nomi.ai Daily Report Push (DEFERRED)
 
 > **Deferred 2026-07-31** at the user's request in favour of Phase 6. The plans, context and research

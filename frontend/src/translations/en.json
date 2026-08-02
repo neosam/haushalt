@@ -794,5 +794,21 @@
   "public_reports.reset_link_confirm": "The previous link stops working immediately.",
   "public_reports.link_reset": "New link generated",
   "public_reports.delete_confirm": "Really delete this report?",
-  "public_reports.include_missed": "Include tasks missed yesterday"
+  "public_reports.include_missed": "Include tasks missed yesterday",
+  "api_tokens.title": "API access",
+  "api_tokens.hint": "An API token lets another system reach one of your households through the API. The token is bound to that household and acts with your rights. Treat it like a password.",
+  "api_tokens.name_placeholder": "Name (e.g. 'Nomi', 'Automation')",
+  "api_tokens.name_required": "Please enter a name.",
+  "api_tokens.no_households": "You are not a member of any household.",
+  "api_tokens.can_write": "Write access",
+  "api_tokens.create": "Create token",
+  "api_tokens.created": "Token created",
+  "api_tokens.secret_warning": "This token is shown only once, now. Copy it and keep it safe — it cannot be shown again.",
+  "api_tokens.empty": "No API access yet.",
+  "api_tokens.enabled": "Enabled",
+  "api_tokens.saved": "Saved",
+  "api_tokens.deleted": "Token deleted",
+  "api_tokens.delete_confirm": "Really delete this token? Anything using it stops working immediately.",
+  "api_tokens.last_used": "Last used",
+  "api_tokens.never_used": "never used"
 }

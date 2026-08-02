@@ -2744,3 +2744,119 @@ body.dark-mode .task-item.selected {
         align-items: center;
     }
 }
+
+/* API access tokens — mirrors the shared-report section's layout. */
+.api-tokens {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.api-token-create {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.api-token {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    background-color: var(--background-color);
+}
+
+.api-token-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.api-token-household {
+    max-width: var(--input-max-width);
+}
+
+.api-token-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.api-token-meta {
+    margin: 0;
+}
+
+.api-token-household-label {
+    font-weight: 600;
+}
+
+/* The non-secret display prefix, e.g. hht_1a2b3c4d. */
+.api-token-prefix {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    background-color: var(--card-color);
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+}
+
+.api-token-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* The one-time secret box: prominent, and the value wraps rather than scrolling. */
+.api-token-secret {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.api-token-secret-warning {
+    margin: 0;
+    font-weight: 600;
+}
+
+.api-token-secret-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.api-token-secret-value {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    background-color: var(--card-color);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+    .api-token-create {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .api-token-create .form-input {
+        max-width: var(--input-max-width);
+    }
+
+    .api-token-row {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .api-token-secret-row {
+        flex-direction: row;
+        align-items: center;
+    }
+}

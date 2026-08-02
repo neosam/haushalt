@@ -495,6 +495,28 @@ async fn create_test_schema(pool: &SqlitePool) {
     .execute(pool)
     .await
     .unwrap();
+
+    // API access tokens — must stay in sync with
+    // migrations/20240152000000_api_tokens.sql, which this schema mirrors.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS api_tokens (
+            id TEXT PRIMARY KEY NOT NULL,
+            household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            token_prefix TEXT NOT NULL,
+            can_write INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_used_at DATETIME
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 // ============================================================================

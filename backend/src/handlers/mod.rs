@@ -20,6 +20,7 @@ pub mod legal;
 pub mod statistics;
 pub mod report;
 pub mod public_reports;
+pub mod api_tokens;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(

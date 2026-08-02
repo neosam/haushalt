@@ -2,6 +2,7 @@ use leptos::*;
 use shared::UpdateUserSettingsRequest;
 
 use crate::api::ApiClient;
+use crate::components::api_tokens_section::ApiTokensSection;
 use crate::components::loading::Loading;
 use crate::components::public_reports_section::PublicReportsSection;
 use crate::i18n::{supported_languages, use_i18n};
@@ -130,6 +131,8 @@ pub fn UserSettingsPage() -> impl IntoView {
             </div>
 
             <PublicReportsSection />
+
+            <ApiTokensSection />
         </Show>
     }
 }
