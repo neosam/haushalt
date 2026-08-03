@@ -262,6 +262,17 @@ Plans:
   cross-household reports get the counter for free. Only "Due today" carries it — the "Missed
   yesterday" section is about what went wrong, not progress.
 
+**Follow-up 2026-08-03** — optional "No fixed date" section for undated tasks:
+
+- OneTime / free-form tasks (`recurrence_type` onetime/none) are "always due", so they showed up
+  under "Due today" every day. A new per-report switch (`separate_undated`) pulls them into their
+  own section, "No fixed date" / "Ohne festen Termin", between "Due today" and "Missed yesterday".
+- Off by default — `ReportOptions::default()` and migration `20240153000000` (DEFAULT 0) keep the
+  per-household endpoint and existing reports unchanged (undated tasks stay mixed in). The section
+  renders only when the switch is on (`None` omits it, exactly like `include_missed`).
+- `build_due_today_section` now returns `(due_today, undated)`; `format_report` gained the optional
+  middle section. Configured via a checkbox in the report settings, alongside "Missed yesterday".
+
 **Verification 2026-07-31** — workspace suite green (345 backend / 168 frontend / 69 shared), clippy clean in
 `backend` and `shared`, and an end-to-end run against a fresh SQLite database with the server up: the migration
 applies, an unauthenticated `GET` returns `200 text/plain` with one block per household in the configured
