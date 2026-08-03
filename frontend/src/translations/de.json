@@ -795,6 +795,7 @@
   "public_reports.link_reset": "Neuer Link erzeugt",
   "public_reports.delete_confirm": "Bericht wirklich löschen?",
   "public_reports.include_missed": "Gestern verpasste Aufgaben mit aufnehmen",
+  "public_reports.separate_undated": "Terminlose Aufgaben in eigenem Abschnitt",
   "api_tokens.title": "API-Zugänge",
   "api_tokens.hint": "Ein API-Token lässt ein anderes System über die API auf einen deiner Haushalte zugreifen. Der Token ist an genau diesen Haushalt gebunden und handelt mit deinen Rechten. Behandle ihn wie ein Passwort.",
   "api_tokens.name_placeholder": "Name (z. B. 'Nomi', 'Automatisierung')",

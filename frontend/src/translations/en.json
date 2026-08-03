@@ -795,6 +795,7 @@
   "public_reports.link_reset": "New link generated",
   "public_reports.delete_confirm": "Really delete this report?",
   "public_reports.include_missed": "Include tasks missed yesterday",
+  "public_reports.separate_undated": "Undated tasks in their own section",
   "api_tokens.title": "API access",
   "api_tokens.hint": "An API token lets another system reach one of your households through the API. The token is bound to that household and acts with your rights. Treat it like a password.",
   "api_tokens.name_placeholder": "Name (e.g. 'Nomi', 'Automation')",

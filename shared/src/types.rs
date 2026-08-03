@@ -454,6 +454,9 @@ pub struct PublicReport {
     /// When false the report stops after "Due today" — the header is not printed above an
     /// empty body, so a report configured to ignore yesterday says nothing about it.
     pub include_missed: bool,
+    /// Whether OneTime / free-form ("no fixed date") tasks get their own section instead of
+    /// being mixed into "Due today". Defaults to false, so existing reports are unchanged.
+    pub separate_undated: bool,
     /// D-01: the explicit household selection, never "all my households".
     pub household_ids: Vec<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -477,6 +480,8 @@ pub struct CreatePublicReportRequest {
     pub language: Option<String>,
     /// Defaults to `true` when absent — a new report shows both sections.
     pub include_missed: Option<bool>,
+    /// Defaults to `false` when absent — undated tasks stay in "Due today".
+    pub separate_undated: Option<bool>,
     /// Defaults to an empty selection when absent.
     pub household_ids: Option<Vec<Uuid>>,
 }
@@ -490,6 +495,7 @@ pub struct UpdatePublicReportRequest {
     pub language: Option<String>,
     pub enabled: Option<bool>,
     pub include_missed: Option<bool>,
+    pub separate_undated: Option<bool>,
     pub household_ids: Option<Vec<Uuid>>,
 }
 
@@ -2177,6 +2183,7 @@ mod tests {
             language: "de".to_string(),
             enabled: true,
             include_missed: true,
+            separate_undated: false,
             household_ids: vec![Uuid::new_v4()],
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -2195,6 +2202,7 @@ mod tests {
         assert!(request.language.is_none());
         assert!(request.enabled.is_none());
         assert!(request.include_missed.is_none());
+        assert!(request.separate_undated.is_none());
         assert!(request.household_ids.is_none());
     }
 

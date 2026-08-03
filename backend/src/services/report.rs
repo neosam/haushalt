@@ -21,6 +21,10 @@ const DUE_TODAY_EMPTY: &str = "No tasks scheduled for today";
 const MISSED_YESTERDAY_HEADER: &str = "Missed yesterday:";
 /// D-23: verbatim, user-chosen empty state.
 const MISSED_YESTERDAY_EMPTY: &str = "All tasks completed yesterday";
+/// Optional section (per-report switch) for OneTime / free-form tasks that have no real
+/// due date. English defaults; the German variants live in `ReportStrings`.
+const UNDATED_HEADER: &str = "No fixed date:";
+const UNDATED_EMPTY: &str = "No undated tasks";
 
 /// Phase 6 D-06: the output language of a rendered report.
 ///
@@ -60,6 +64,8 @@ impl ReportLanguage {
                 title: "Daily report",
                 due_today_header: DUE_TODAY_HEADER,
                 due_today_empty: DUE_TODAY_EMPTY,
+                undated_header: UNDATED_HEADER,
+                undated_empty: UNDATED_EMPTY,
                 missed_yesterday_header: MISSED_YESTERDAY_HEADER,
                 missed_yesterday_empty: MISSED_YESTERDAY_EMPTY,
                 by_prefix: "by",
@@ -72,6 +78,8 @@ impl ReportLanguage {
                 title: "Tagesbericht",
                 due_today_header: "Heute fällig:",
                 due_today_empty: "Keine Aufgaben für heute geplant",
+                undated_header: "Ohne festen Termin:",
+                undated_empty: "Keine terminlosen Aufgaben",
                 missed_yesterday_header: "Gestern verpasst:",
                 missed_yesterday_empty: "Gestern alle Aufgaben erledigt",
                 by_prefix: "bis",
@@ -84,9 +92,9 @@ impl ReportLanguage {
 
 /// What a caller may vary about a rendered report.
 ///
-/// A struct rather than more parameters: the two knobs are both booleans-with-a-name from
-/// the call site's point of view, and `Default` keeps the per-household endpoint's behaviour
-/// pinned in one place instead of spelled out at every call.
+/// A struct rather than more parameters: the knobs are booleans-with-a-name from the call
+/// site's point of view, and `Default` keeps the per-household endpoint's behaviour pinned
+/// in one place instead of spelled out at every call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReportOptions {
     /// Phase 6 D-06.
@@ -96,14 +104,20 @@ pub struct ReportOptions {
     /// When false the report stops after "Due today" — the header does not appear with an
     /// empty body, because a section nobody asked for should leave no trace.
     pub include_missed: bool,
+    /// Whether OneTime / free-form ("no fixed date") tasks are pulled out of "Due today"
+    /// into their own section. Off by default, so the per-household endpoint's output is
+    /// unchanged — such tasks keep appearing under "Due today" exactly as before.
+    pub separate_undated: bool,
 }
 
 impl Default for ReportOptions {
     fn default() -> Self {
-        // D-01/D-20: English, both sections — what the per-household endpoint has always done.
+        // D-01/D-20: English, both sections, undated tasks mixed into "Due today" — what the
+        // per-household endpoint has always done.
         Self {
             language: ReportLanguage::En,
             include_missed: true,
+            separate_undated: false,
         }
     }
 }
@@ -113,7 +127,14 @@ impl ReportOptions {
         Self {
             language,
             include_missed,
+            separate_undated: false,
         }
+    }
+
+    /// Builder knob for the per-report "undated tasks in their own section" switch.
+    pub fn with_separate_undated(mut self, separate_undated: bool) -> Self {
+        self.separate_undated = separate_undated;
+        self
     }
 }
 
@@ -125,6 +146,8 @@ struct ReportStrings {
     title: &'static str,
     due_today_header: &'static str,
     due_today_empty: &'static str,
+    undated_header: &'static str,
+    undated_empty: &'static str,
     missed_yesterday_header: &'static str,
     missed_yesterday_empty: &'static str,
     by_prefix: &'static str,
@@ -222,7 +245,13 @@ pub async fn generate_daily_report_with(
         .await?
         .ok_or(ReportError::HouseholdNotFound)?;
 
-    let due_today = build_due_today_section(pool, household_id, user_id, today).await?;
+    let (due_today, undated) =
+        build_due_today_section(pool, household_id, user_id, today, options.separate_undated)
+            .await?;
+    // The undated section is rendered only when asked for; off leaves no trace, exactly like
+    // the missed section. When off, `undated` is empty anyway (nothing was routed there).
+    let undated_section = options.separate_undated.then_some(undated);
+
     // Skipped entirely when switched off — the section costs two queries per household,
     // and a report that will not print it has no reason to pay for them.
     let missed_yesterday = if options.include_missed {
@@ -235,22 +264,28 @@ pub async fn generate_daily_report_with(
         &household.name,
         today,
         &due_today,
+        undated_section.as_deref(),
         missed_yesterday.as_deref(),
         &options.language.strings(),
     ))
 }
 
-/// The "Due today" section (D-03, D-06, D-07, D-13, D-14).
+/// The "Due today" section (D-03, D-06, D-07, D-13, D-14), returned as `(due_today, undated)`.
 ///
-/// Deliberate asymmetry with "Missed yesterday": this section does NOT exclude one-time
-/// tasks and does NOT apply the vacation check — D-14 scopes both exclusions to the
-/// missed-yesterday section only.
+/// Deliberate asymmetry with "Missed yesterday": this section does NOT apply the vacation
+/// check — D-14 scopes that exclusion to the missed-yesterday section only.
+///
+/// One-time / free-form tasks (`RecurrenceType::OneTime`) have no real due date —
+/// `is_task_due_on_date` treats them as always due. When `separate_undated` is set they are
+/// routed into the second vec (the "No fixed date" section) instead of "Due today"; when it
+/// is not, the second vec stays empty and everything lands in the first, exactly as before.
 async fn build_due_today_section(
     pool: &SqlitePool,
     household_id: &Uuid,
     user_id: &Uuid,
     today: NaiveDate,
-) -> Result<Vec<ReportLine>, ReportError> {
+    separate_undated: bool,
+) -> Result<(Vec<ReportLine>, Vec<ReportLine>), ReportError> {
     // `list_tasks` already applies D-14's archived filter and the suggestion filter
     // (`archived = 0 AND (suggestion IS NULL OR suggestion = 'approved')`).
     // D-05: the report deliberately does NOT reuse the existing due-tasks endpoint's
@@ -258,7 +293,8 @@ async fn build_due_today_section(
     // pre-existing inaccuracy stays untouched; the report computes its own due-today set.
     let tasks = tasks_service::list_tasks(pool, household_id).await?;
 
-    let mut lines = Vec::new();
+    let mut due_today = Vec::new();
+    let mut undated = Vec::new();
     for task in tasks {
         // D-14: paused tasks are excluded everywhere. `list_tasks` does NOT filter this.
         if task.paused {
@@ -285,16 +321,24 @@ async fn build_due_today_section(
         // A task that must be done more than once shows its progress instead of a plain
         // "done" marker; the count is clamped so over-fulfilment reads as `8/8`, not `10/8`.
         let progress = (task.target_count > 1).then(|| (completed.min(target), target));
-        lines.push(ReportLine {
+        let is_undated = task.recurrence_type == RecurrenceType::OneTime;
+        let line = ReportLine {
             title: task.title,
             due_time: task.due_time,
             done,
             progress,
-        });
+        };
+
+        if separate_undated && is_undated {
+            undated.push(line);
+        } else {
+            due_today.push(line);
+        }
     }
 
-    sort_report_lines(&mut lines);
-    Ok(lines)
+    sort_report_lines(&mut due_today);
+    sort_report_lines(&mut undated);
+    Ok((due_today, undated))
 }
 
 /// How many times `task` has been completed within the period that covers `today`.
@@ -458,14 +502,17 @@ async fn build_missed_yesterday_section(
     Ok(lines)
 }
 
-/// D-20/D-22/D-23: the exact, user-approved text shape. Both sections ALWAYS render —
-/// there is no combined "everything empty" variant. No trailing newline.
-/// `missed_yesterday` is `None` when the section is switched off, which is distinct from
-/// `Some(&[])` — empty renders the header with its empty-state line, off renders nothing.
+/// D-20/D-22/D-23: the exact, user-approved text shape. "Due today" always renders; the
+/// other two sections are optional. No trailing newline.
+///
+/// Both `undated` and `missed_yesterday` follow the same convention: `None` switches the
+/// section off and renders nothing, while `Some(&[])` renders the header with its empty-state
+/// line. The undated section sits between "Due today" and "Missed yesterday".
 fn format_report(
     household_name: &str,
     today: NaiveDate,
     due_today: &[ReportLine],
+    undated: Option<&[ReportLine]>,
     missed_yesterday: Option<&[ReportLine]>,
     strings: &ReportStrings,
 ) -> String {
@@ -481,13 +528,22 @@ fn format_report(
         format_section(due_today, strings.due_today_empty, strings),
     );
 
-    match missed_yesterday {
+    let with_undated = match undated {
         Some(lines) => format!(
             "{head}\n\n{}\n{}",
+            strings.undated_header,
+            format_section(lines, strings.undated_empty, strings),
+        ),
+        None => head,
+    };
+
+    match missed_yesterday {
+        Some(lines) => format!(
+            "{with_undated}\n\n{}\n{}",
             strings.missed_yesterday_header,
             format_section(lines, strings.missed_yesterday_empty, strings),
         ),
-        None => head,
+        None => with_undated,
     }
 }
 
@@ -636,7 +692,7 @@ mod tests {
                         All tasks completed yesterday";
 
         assert_eq!(
-            format_report("Test Household", today, &[], Some(&[]), &en()),
+            format_report("Test Household", today, &[], None, Some(&[]), &en()),
             expected
         );
     }
@@ -695,7 +751,7 @@ mod tests {
     #[test]
     fn test_format_report_header_is_english() {
         let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
-        let report = format_report("Kitchen", today, &[], Some(&[]), &en());
+        let report = format_report("Kitchen", today, &[], None, Some(&[]), &en());
         assert!(
             report.starts_with("Daily report — Kitchen — Sat, 2026-07-25"),
             "got: {report}"
@@ -734,7 +790,7 @@ mod tests {
                         Gestern verpasst:\n\
                         Gestern alle Aufgaben erledigt";
 
-        assert_eq!(format_report("Küche", today, &[], Some(&[]), &de()), expected);
+        assert_eq!(format_report("Küche", today, &[], None, Some(&[]), &de()), expected);
     }
 
     #[test]
@@ -766,6 +822,55 @@ mod tests {
         let options = ReportOptions::default();
         assert_eq!(options.language, ReportLanguage::En);
         assert!(options.include_missed);
+        // Off by default: undated tasks stay mixed into "Due today", as they always have.
+        assert!(!options.separate_undated);
+        assert!(!ReportOptions::new(ReportLanguage::De, false).separate_undated);
+        assert!(
+            ReportOptions::new(ReportLanguage::De, false)
+                .with_separate_undated(true)
+                .separate_undated
+        );
+    }
+
+    #[test]
+    fn test_format_report_renders_the_undated_section() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
+        let report = format_report(
+            "Kitchen",
+            today,
+            &[line("Wash up", None, false)],
+            Some(&[line("Fix the shelf", None, false)]),
+            None,
+            &en(),
+        );
+        assert!(
+            report.contains("Due today:\n- Wash up"),
+            "dated task stays under Due today, got: {report}"
+        );
+        assert!(
+            report.contains("No fixed date:\n- Fix the shelf"),
+            "undated task under its own header, got: {report}"
+        );
+    }
+
+    #[test]
+    fn test_format_report_undated_none_omits_it_but_empty_shows_the_header() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
+        let shown = format_report("Kitchen", today, &[], Some(&[]), None, &en());
+        let omitted = format_report("Kitchen", today, &[], None, None, &en());
+
+        assert!(shown.contains("No fixed date:\nNo undated tasks"), "got: {shown}");
+        assert!(!omitted.contains("No fixed date:"), "got: {omitted}");
+    }
+
+    #[test]
+    fn test_format_report_undated_german_header() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
+        let report = format_report("Küche", today, &[], Some(&[]), None, &de());
+        assert!(
+            report.contains("Ohne festen Termin:\nKeine terminlosen Aufgaben"),
+            "got: {report}"
+        );
     }
 
     /// Switching the section off must remove the header too, not leave it above an empty
@@ -779,7 +884,7 @@ mod tests {
                         No tasks scheduled for today";
 
         assert_eq!(
-            format_report("Test Household", today, &[], None, &en()),
+            format_report("Test Household", today, &[], None, None, &en()),
             expected
         );
     }
@@ -788,8 +893,8 @@ mod tests {
     fn test_format_report_empty_section_differs_from_omitted_section() {
         let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
 
-        let empty = format_report("Kitchen", today, &[], Some(&[]), &en());
-        let omitted = format_report("Kitchen", today, &[], None, &en());
+        let empty = format_report("Kitchen", today, &[], None, Some(&[]), &en());
+        let omitted = format_report("Kitchen", today, &[], None, None, &en());
 
         assert!(empty.contains(MISSED_YESTERDAY_HEADER));
         assert!(!omitted.contains(MISSED_YESTERDAY_HEADER));
@@ -1234,6 +1339,89 @@ mod tests {
             "got: {report}"
         );
         assert!(!report.contains("/1"), "got: {report}");
+    }
+
+    #[tokio::test]
+    async fn test_separate_undated_moves_onetime_into_its_own_section() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        create_test_task(&pool, &household_id)
+            .with_title("Daily chore")
+            .with_recurrence(RecurrenceType::Daily)
+            .build()
+            .await;
+        create_test_task(&pool, &household_id)
+            .with_title("Someday errand")
+            .with_recurrence(RecurrenceType::OneTime)
+            .build()
+            .await;
+
+        let report = generate_daily_report_with(
+            &pool,
+            &household_id,
+            &user_id,
+            pinned_now(),
+            ReportOptions::new(ReportLanguage::En, true).with_separate_undated(true),
+        )
+        .await
+        .unwrap();
+
+        let due_idx = report.find("Due today:").unwrap();
+        let undated_idx = report.find("No fixed date:").unwrap();
+        let daily_idx = report.find("- Daily chore").unwrap();
+        let errand_idx = report.find("- Someday errand").unwrap();
+
+        // The recurring task stays under "Due today"; the one-time task moves below the
+        // "No fixed date" header.
+        assert!(due_idx < daily_idx && daily_idx < undated_idx, "got: {report}");
+        assert!(undated_idx < errand_idx, "got: {report}");
+    }
+
+    /// With the switch off (the default) a one-time task keeps appearing under "Due today"
+    /// and no "No fixed date" header exists — the pre-existing behaviour, unchanged.
+    #[tokio::test]
+    async fn test_undated_stays_in_due_today_when_switch_is_off() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        create_test_task(&pool, &household_id)
+            .with_title("Someday errand")
+            .with_recurrence(RecurrenceType::OneTime)
+            .build()
+            .await;
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(!report.contains("No fixed date:"), "got: {report}");
+        let due_idx = report.find("Due today:").unwrap();
+        let errand_idx = report.find("- Someday errand").unwrap();
+        let missed_idx = report.find("Missed yesterday:").unwrap();
+        assert!(due_idx < errand_idx && errand_idx < missed_idx, "got: {report}");
+    }
+
+    #[tokio::test]
+    async fn test_separate_undated_uses_the_report_language() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        create_test_task(&pool, &household_id)
+            .with_title("Irgendwann erledigen")
+            .with_recurrence(RecurrenceType::OneTime)
+            .build()
+            .await;
+
+        let report = generate_daily_report_with(
+            &pool,
+            &household_id,
+            &user_id,
+            pinned_now(),
+            ReportOptions::new(ReportLanguage::De, true).with_separate_undated(true),
+        )
+        .await
+        .unwrap();
+
+        assert!(report.contains("Ohne festen Termin:"), "got: {report}");
+        assert!(report.contains("- Irgendwann erledigen"), "got: {report}");
     }
 
     /// The counter must reach the public cross-household reports (Phase 6) unchanged: it flows

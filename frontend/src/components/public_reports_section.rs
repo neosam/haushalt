@@ -146,6 +146,8 @@ pub fn PublicReportsSection() -> impl IntoView {
                 language: Some(i18n_stored.get_value().current_language()),
                 // Both sections, matching the backend default; the checkbox turns it off.
                 include_missed: Some(true),
+                // Matching the backend default: undated tasks stay in "Due today".
+                separate_undated: Some(false),
                 household_ids: Some(Vec::new()),
             };
             match ApiClient::create_public_report(request).await {
@@ -269,6 +271,7 @@ pub fn PublicReportsSection() -> impl IntoView {
                                 report.token,
                                 report.enabled,
                                 report.include_missed,
+                                report.separate_undated,
                                 report.name.clone(),
                                 report.language.clone(),
                                 report.household_ids.clone(),
@@ -357,6 +360,24 @@ pub fn PublicReportsSection() -> impl IntoView {
                                                 }
                                             />
                                             <span>{move || t("public_reports.include_missed")}</span>
+                                        </label>
+
+                                        <label class="public-report-toggle">
+                                            <input
+                                                type="checkbox"
+                                                prop:checked=report.separate_undated
+                                                on:change=move |ev| {
+                                                    apply(
+                                                        report_id,
+                                                        UpdatePublicReportRequest {
+                                                            separate_undated: Some(event_target_checked(&ev)),
+                                                            ..Default::default()
+                                                        },
+                                                        t("public_reports.saved"),
+                                                    );
+                                                }
+                                            />
+                                            <span>{move || t("public_reports.separate_undated")}</span>
                                         </label>
 
                                         <div class="public-report-households">

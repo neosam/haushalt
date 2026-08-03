@@ -355,6 +355,7 @@ mod tests {
                 name: "Everything".to_string(),
                 language: None,
                 include_missed: None,
+                separate_undated: None,
                 household_ids: Some(vec![household_id]),
             },
         )

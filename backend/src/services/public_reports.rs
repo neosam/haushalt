@@ -219,6 +219,7 @@ pub async fn create_report(
     .await?;
 
     let include_missed = request.include_missed.unwrap_or(true);
+    let separate_undated = request.separate_undated.unwrap_or(false);
 
     let report_id = Uuid::new_v4();
     // D-05: the token is what authorizes the public read, so it is generated here and
@@ -228,8 +229,8 @@ pub async fn create_report(
 
     sqlx::query(
         r#"
-        INSERT INTO public_reports (id, user_id, name, token, language, enabled, include_missed, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+        INSERT INTO public_reports (id, user_id, name, token, language, enabled, include_missed, separate_undated, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
         "#,
     )
     .bind(report_id.to_string())
@@ -238,6 +239,7 @@ pub async fn create_report(
     .bind(token.to_string())
     .bind(&language)
     .bind(include_missed)
+    .bind(separate_undated)
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -253,6 +255,7 @@ pub async fn create_report(
         language,
         enabled: true,
         include_missed,
+        separate_undated,
         household_ids,
         created_at: now,
         updated_at: now,
@@ -280,6 +283,7 @@ pub async fn update_report(
     };
     let enabled = request.enabled.unwrap_or(current.enabled);
     let include_missed = request.include_missed.unwrap_or(current.include_missed);
+    let separate_undated = request.separate_undated.unwrap_or(current.separate_undated);
 
     // Validate the new selection BEFORE touching the row, so a rejected household id
     // leaves the report exactly as it was.
@@ -290,12 +294,13 @@ pub async fn update_report(
 
     let now = Utc::now();
     sqlx::query(
-        "UPDATE public_reports SET name = ?, language = ?, enabled = ?, include_missed = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+        "UPDATE public_reports SET name = ?, language = ?, enabled = ?, include_missed = ?, separate_undated = ?, updated_at = ? WHERE id = ? AND user_id = ?",
     )
     .bind(&name)
     .bind(&language)
     .bind(enabled)
     .bind(include_missed)
+    .bind(separate_undated)
     .bind(now)
     .bind(report_id.to_string())
     .bind(user_id.to_string())
@@ -314,6 +319,7 @@ pub async fn update_report(
         language,
         enabled,
         include_missed,
+        separate_undated,
         household_ids: household_ids.unwrap_or(current.household_ids),
         created_at: current.created_at,
         updated_at: now,
@@ -418,7 +424,8 @@ pub async fn render_report(
     now_utc: DateTime<Utc>,
 ) -> Result<String, PublicReportError> {
     let language = ReportLanguage::from_code(&report.language);
-    let options = ReportOptions::new(language, report.include_missed);
+    let options = ReportOptions::new(language, report.include_missed)
+        .with_separate_undated(report.separate_undated);
 
     let mut households = households::list_user_households(pool, &report.user_id)
         .await?
@@ -505,6 +512,7 @@ mod tests {
             name: name.to_string(),
             language: None,
             include_missed: None,
+            separate_undated: None,
             household_ids: Some(households),
         }
     }
@@ -562,6 +570,7 @@ mod tests {
             name: "Report".to_string(),
             language: Some("fr".to_string()),
             include_missed: None,
+            separate_undated: None,
             household_ids: None,
         };
 
@@ -1022,6 +1031,7 @@ mod tests {
                 name: "Today only".to_string(),
                 language: None,
                 include_missed: Some(false),
+                separate_undated: None,
                 household_ids: Some(vec![household_id]),
             },
         )
@@ -1049,6 +1059,7 @@ mod tests {
                 &user_id,
                 UpdatePublicReportRequest {
                     include_missed: Some(expected),
+                    separate_undated: None,
                     ..Default::default()
                 },
             )
@@ -1077,6 +1088,7 @@ mod tests {
                 name: "Report".to_string(),
                 language: None,
                 include_missed: Some(false),
+                separate_undated: None,
                 household_ids: Some(vec![household_id]),
             },
         )
@@ -1111,6 +1123,7 @@ mod tests {
                 name: "Both".to_string(),
                 language: None,
                 include_missed: Some(false),
+                separate_undated: None,
                 household_ids: Some(vec![kitchen, garage]),
             },
         )
@@ -1134,6 +1147,7 @@ mod tests {
                 name: "Nur heute".to_string(),
                 language: Some("de".to_string()),
                 include_missed: Some(false),
+                separate_undated: None,
                 household_ids: Some(vec![household_id]),
             },
         )
@@ -1223,6 +1237,7 @@ mod tests {
                 name: "Alles".to_string(),
                 language: Some("de".to_string()),
                 include_missed: None,
+                separate_undated: None,
                 household_ids: Some(vec![household_id]),
             },
         )
@@ -1283,6 +1298,7 @@ mod tests {
                 name: "Leer".to_string(),
                 language: Some("de".to_string()),
                 include_missed: None,
+                separate_undated: None,
                 household_ids: Some(vec![]),
             },
         )
