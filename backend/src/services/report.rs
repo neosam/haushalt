@@ -70,6 +70,7 @@ impl ReportLanguage {
                 missed_yesterday_empty: MISSED_YESTERDAY_EMPTY,
                 by_prefix: "by",
                 done_marker: "done",
+                open_marker: "open",
                 // Exactly what `chrono`'s `%a` produced before this struct existed, so the
                 // English output is byte-for-byte unchanged.
                 weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
@@ -81,9 +82,10 @@ impl ReportLanguage {
                 undated_header: "Ohne festen Termin:",
                 undated_empty: "Keine terminlosen Aufgaben",
                 missed_yesterday_header: "Gestern verpasst:",
-                missed_yesterday_empty: "Gestern alle Aufgaben erledigt",
+                missed_yesterday_empty: "Gestern wurden alle Aufgaben erledigt",
                 by_prefix: "bis",
                 done_marker: "erledigt",
+                open_marker: "offen",
                 weekdays: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
             },
         }
@@ -152,6 +154,7 @@ struct ReportStrings {
     missed_yesterday_empty: &'static str,
     by_prefix: &'static str,
     done_marker: &'static str,
+    open_marker: &'static str,
     weekdays: [&'static str; 7],
 }
 
@@ -177,12 +180,26 @@ pub enum ReportError {
     NotAMember,
 }
 
+/// Whether a section spells out that an unfinished task is still outstanding.
+///
+/// "Missed yesterday" contains nothing BUT outstanding tasks, so an `(open)` on every one
+/// of its lines would only repeat the header. The sections describing today's state —
+/// "Due today" and "No fixed date" — mix finished and unfinished tasks, so there the
+/// marker is what tells the two apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenMarker {
+    Show,
+    Hide,
+}
+
 /// One rendered task line. Shared by BOTH sections so D-21's `(by HH:MM)` suffix
 /// comes from a single formatter (DRY).
 #[derive(Debug, Clone, PartialEq)]
 struct ReportLine {
     title: String,
     due_time: Option<String>,
+    /// Whether the task's target is met. `false` renders as `(open)` in the sections that
+    /// carry [`OpenMarker::Show`], and as nothing at all in the missed section.
     done: bool,
     /// `Some((completed, target))` for a task that must be done more than once in its
     /// period, e.g. `(5, 8)` renders as `(5/8)`. `None` for a plain single-completion
@@ -525,14 +542,14 @@ fn format_report(
         strings.weekday(today),
         today.format("%Y-%m-%d"),
         strings.due_today_header,
-        format_section(due_today, strings.due_today_empty, strings),
+        format_section(due_today, strings.due_today_empty, strings, OpenMarker::Show),
     );
 
     let with_undated = match undated {
         Some(lines) => format!(
             "{head}\n\n{}\n{}",
             strings.undated_header,
-            format_section(lines, strings.undated_empty, strings),
+            format_section(lines, strings.undated_empty, strings, OpenMarker::Show),
         ),
         None => head,
     };
@@ -541,19 +558,29 @@ fn format_report(
         Some(lines) => format!(
             "{with_undated}\n\n{}\n{}",
             strings.missed_yesterday_header,
-            format_section(lines, strings.missed_yesterday_empty, strings),
+            format_section(
+                lines,
+                strings.missed_yesterday_empty,
+                strings,
+                OpenMarker::Hide,
+            ),
         ),
         None => with_undated,
     }
 }
 
-fn format_section(lines: &[ReportLine], empty_state: &str, strings: &ReportStrings) -> String {
+fn format_section(
+    lines: &[ReportLine],
+    empty_state: &str,
+    strings: &ReportStrings,
+    open_marker: OpenMarker,
+) -> String {
     if lines.is_empty() {
         return empty_state.to_string();
     }
     lines
         .iter()
-        .map(|line| format_report_line(line, strings))
+        .map(|line| format_report_line(line, strings, open_marker))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -561,17 +588,27 @@ fn format_section(lines: &[ReportLine], empty_state: &str, strings: &ReportStrin
 /// The ONE line formatter, shared by both sections (D-21 + DRY).
 /// `- {title}`, then ` (by {due_time})` when set (D-21), then either ` (X/N)` for a
 /// multi-completion task or ` (done)` for a plain one (D-07).
-fn format_report_line(line: &ReportLine, strings: &ReportStrings) -> String {
+/// An unfinished task ends in ` (open)` where `open_marker` asks for it — exactly one
+/// status suffix is ever appended.
+fn format_report_line(
+    line: &ReportLine,
+    strings: &ReportStrings,
+    open_marker: OpenMarker,
+) -> String {
     let mut rendered = format!("- {}", line.title);
     if let Some(due_time) = &line.due_time {
         rendered.push_str(&format!(" ({} {})", strings.by_prefix, due_time));
     }
-    // A multi-completion task shows `(X/N)` in place of the `(done)` marker: the count
-    // already tells the reader whether it is finished, and reads the same in any language.
+    // A multi-completion task shows `(X/N)` in place of the `(done)`/`(open)` markers: the
+    // count already says how far along it is, and reads the same in any language.
     if let Some((completed, target)) = line.progress {
         rendered.push_str(&format!(" ({completed}/{target})"));
     } else if line.done {
         rendered.push_str(&format!(" ({})", strings.done_marker));
+    } else if open_marker == OpenMarker::Show {
+        // A bare line used to mean "not done" only through the ABSENCE of a marker —
+        // spelled out here so the text says so, for a reader and a later LLM alike.
+        rendered.push_str(&format!(" ({})", strings.open_marker));
     }
     rendered
 }
@@ -700,31 +737,61 @@ mod tests {
     #[test]
     fn test_format_report_line_without_due_time() {
         assert_eq!(
-            format_report_line(&line("Vacuuming", None, false), &en()),
-            "- Vacuuming"
+            format_report_line(&line("Vacuuming", None, false), &en(), OpenMarker::Show),
+            "- Vacuuming (open)"
         );
     }
 
     #[test]
     fn test_format_report_line_with_due_time() {
         assert_eq!(
-            format_report_line(&line("Clean the litter box", Some("20:00"), false), &en()),
-            "- Clean the litter box (by 20:00)"
+            format_report_line(
+                &line("Clean the litter box", Some("20:00"), false),
+                &en(),
+                OpenMarker::Show,
+            ),
+            "- Clean the litter box (by 20:00) (open)"
         );
     }
 
     #[test]
     fn test_format_report_line_done_marker() {
         assert_eq!(
-            format_report_line(&line("Clean the litter box", Some("20:00"), true), &en()),
+            format_report_line(
+                &line("Clean the litter box", Some("20:00"), true),
+                &en(),
+                OpenMarker::Show,
+            ),
             "- Clean the litter box (by 20:00) (done)"
+        );
+    }
+
+    /// `OpenMarker::Hide` is what the missed section passes: an unfinished task there ends
+    /// after the due time, with no status suffix at all.
+    #[test]
+    fn test_format_report_line_open_marker_can_be_suppressed() {
+        assert_eq!(
+            format_report_line(
+                &line("Clean the litter box", Some("20:00"), false),
+                &en(),
+                OpenMarker::Hide,
+            ),
+            "- Clean the litter box (by 20:00)"
+        );
+        assert_eq!(
+            format_report_line(&line("Katzenklo", None, false), &de(), OpenMarker::Hide),
+            "- Katzenklo"
         );
     }
 
     #[test]
     fn test_format_report_line_shows_progress() {
         assert_eq!(
-            format_report_line(&line_with_progress("Drink water", None, 5, 8), &en()),
+            format_report_line(
+                &line_with_progress("Drink water", None, 5, 8),
+                &en(),
+                OpenMarker::Show,
+            ),
             "- Drink water (5/8)"
         );
     }
@@ -732,8 +799,27 @@ mod tests {
     #[test]
     fn test_format_report_line_progress_after_due_time() {
         assert_eq!(
-            format_report_line(&line_with_progress("Drink water", Some("20:00"), 5, 8), &en()),
+            format_report_line(
+                &line_with_progress("Drink water", Some("20:00"), 5, 8),
+                &en(),
+                OpenMarker::Show,
+            ),
             "- Drink water (by 20:00) (5/8)"
+        );
+    }
+
+    /// An unmet counter already says the task is outstanding — it must NOT also collect
+    /// an `(open)`/`(offen)`, in either language.
+    #[test]
+    fn test_format_report_line_progress_replaces_the_open_marker() {
+        let unmet = line_with_progress("Drink water", None, 5, 8);
+        assert_eq!(
+            format_report_line(&unmet, &en(), OpenMarker::Show),
+            "- Drink water (5/8)"
+        );
+        assert_eq!(
+            format_report_line(&unmet, &de(), OpenMarker::Show),
+            "- Drink water (5/8)"
         );
     }
 
@@ -742,10 +828,12 @@ mod tests {
     #[test]
     fn test_format_report_line_progress_replaces_done_marker_in_both_languages() {
         let met = line_with_progress("Drink water", None, 8, 8);
-        assert_eq!(format_report_line(&met, &en()), "- Drink water (8/8)");
-        assert_eq!(format_report_line(&met, &de()), "- Drink water (8/8)");
-        assert!(!format_report_line(&met, &en()).contains("done"));
-        assert!(!format_report_line(&met, &de()).contains("erledigt"));
+        let english = format_report_line(&met, &en(), OpenMarker::Show);
+        let german = format_report_line(&met, &de(), OpenMarker::Show);
+        assert_eq!(english, "- Drink water (8/8)");
+        assert_eq!(german, "- Drink water (8/8)");
+        assert!(!english.contains("done"));
+        assert!(!german.contains("erledigt"));
     }
 
     #[test]
@@ -788,7 +876,7 @@ mod tests {
                         Keine Aufgaben für heute geplant\n\
                         \n\
                         Gestern verpasst:\n\
-                        Gestern alle Aufgaben erledigt";
+                        Gestern wurden alle Aufgaben erledigt";
 
         assert_eq!(format_report("Küche", today, &[], None, Some(&[]), &de()), expected);
     }
@@ -796,8 +884,24 @@ mod tests {
     #[test]
     fn test_format_report_line_german() {
         assert_eq!(
-            format_report_line(&line("Katzenklo", Some("20:00"), true), &de()),
+            format_report_line(
+                &line("Katzenklo", Some("20:00"), true),
+                &de(),
+                OpenMarker::Show,
+            ),
             "- Katzenklo (bis 20:00) (erledigt)"
+        );
+    }
+
+    #[test]
+    fn test_format_report_line_open_marker_german() {
+        assert_eq!(
+            format_report_line(
+                &line("Katzenklo", Some("20:00"), false),
+                &de(),
+                OpenMarker::Show,
+            ),
+            "- Katzenklo (bis 20:00) (offen)"
         );
     }
 
@@ -851,6 +955,35 @@ mod tests {
             report.contains("No fixed date:\n- Fix the shelf"),
             "undated task under its own header, got: {report}"
         );
+    }
+
+    /// The two sections describing today's state both mark what is still outstanding; the
+    /// missed section does not, because every line in it is outstanding by definition.
+    #[test]
+    fn test_open_marker_covers_today_but_not_the_missed_section() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 25).unwrap();
+        let report = format_report(
+            "Kitchen",
+            today,
+            &[line("Wash up", None, false), line("Sweep", None, true)],
+            Some(&[line("Fix the shelf", None, false)]),
+            Some(&[line("Water the plants", Some("20:00"), false)]),
+            &en(),
+        );
+
+        assert!(report.contains("Due today:\n- Wash up (open)"), "got: {report}");
+        assert!(report.contains("- Sweep (done)"), "got: {report}");
+        assert!(
+            report.contains("No fixed date:\n- Fix the shelf (open)"),
+            "got: {report}"
+        );
+        // The missed section is last and carries no trailing newline, so `ends_with`
+        // pins the line exactly — no status suffix may follow the due time.
+        assert!(
+            report.ends_with("Missed yesterday:\n- Water the plants (by 20:00)"),
+            "missed line carries no status suffix, got: {report}"
+        );
+        assert_eq!(report.matches("(open)").count(), 2, "got: {report}");
     }
 
     #[test]
@@ -963,9 +1096,12 @@ mod tests {
 
         assert!(report.starts_with("Tagesbericht — "), "got: {report}");
         assert!(report.contains("Heute fällig:"), "got: {report}");
-        assert!(report.contains("- Staubsaugen (bis 18:00)"), "got: {report}");
         assert!(
-            report.contains("Gestern alle Aufgaben erledigt"),
+            report.contains("- Staubsaugen (bis 18:00) (offen)"),
+            "got: {report}"
+        );
+        assert!(
+            report.contains("Gestern wurden alle Aufgaben erledigt"),
             "got: {report}"
         );
     }
@@ -1207,6 +1343,27 @@ mod tests {
 
         assert!(
             report.contains("- Empty the dishwasher (done)"),
+            "got: {report}"
+        );
+    }
+
+    /// The counterpart to the test above, through the real query path: an untouched task
+    /// says so on its own line instead of relying on a missing `(done)`.
+    #[tokio::test]
+    async fn test_due_today_marks_an_untouched_task_open() {
+        let pool = create_test_pool().await;
+        let (household_id, user_id) = setup(&pool).await;
+        create_test_task(&pool, &household_id)
+            .with_title("Empty the dishwasher")
+            .build()
+            .await;
+
+        let report = generate_daily_report(&pool, &household_id, &user_id, pinned_now())
+            .await
+            .unwrap();
+
+        assert!(
+            report.contains("- Empty the dishwasher (open)"),
             "got: {report}"
         );
     }
@@ -1535,10 +1692,10 @@ mod tests {
         assert_eq!(
             due_section,
             vec![
-                "- apple task (by 08:00)",
-                "- Zebra task (by 08:00)",
-                "- Beta task (by 20:00)",
-                "- Middle task",
+                "- apple task (by 08:00) (open)",
+                "- Zebra task (by 08:00) (open)",
+                "- Beta task (by 20:00) (open)",
+                "- Middle task (open)",
             ],
             "got: {report}"
         );

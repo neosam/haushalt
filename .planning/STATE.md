@@ -6,9 +6,9 @@ current_phase: "06"
 current_phase_name: public-cross-household-report-links
 status: executing
 stopped_at: Phase 06 umgesetzt — Backend und Frontend gebaut, Testsuite grün
-last_updated: "2026-07-31T00:00:00.000Z"
-last_activity: 2026-07-31
-last_activity_desc: Phase 06 (Public Cross-Household Report Links) umgesetzt; Phase 05 (nomi.ai) zurückgestellt
+last_updated: "2026-08-07T00:00:00.000Z"
+last_activity: 2026-08-07
+last_activity_desc: "Bericht: (offen)-Marker für nicht erledigte Aufgaben, neuer deutscher Leerzustand für \"Gestern verpasst\""
 progress:
   total_phases: 7
   completed_phases: 0

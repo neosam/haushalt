@@ -273,6 +273,21 @@ Plans:
 - `build_due_today_section` now returns `(due_today, undated)`; `format_report` gained the optional
   middle section. Configured via a checkbox in the report settings, alongside "Missed yesterday".
 
+**Follow-up 2026-08-07** — explicit `(open)` marker and a reworded German empty state:
+
+- An unfinished task now ends in ` (open)` / ` (offen)`. Before, "not done" was expressed only by the
+  ABSENCE of the `(done)` marker, which a reader — and the later LLM consumer of D-01 — cannot tell
+  apart from a line that simply carries no status.
+- The marker appears in "Due today" and "No fixed date" only, i.e. the sections that mix finished and
+  unfinished tasks. "Missed yesterday" keeps its bare lines: everything under that header is
+  outstanding by definition, so the marker would just repeat the header on every line. A new private
+  `OpenMarker::{Show, Hide}` carries this per section into the shared line formatter.
+- `(X/N)` still wins over both markers — an unmet counter like `5/8` already says "outstanding", and it
+  needs no translation. Free-form tasks (`target_count = 0`) are never "done" and therefore read `(open)`.
+- The German empty state of "Gestern verpasst" is now "Gestern wurden alle Aufgaben erledigt"
+  (was: "Gestern alle Aufgaben erledigt"). The English `All tasks completed yesterday` is unchanged.
+- No schema, API or frontend change — the report page renders the backend text verbatim in a `<pre>`.
+
 **Verification 2026-07-31** — workspace suite green (345 backend / 168 frontend / 69 shared), clippy clean in
 `backend` and `shared`, and an end-to-end run against a fresh SQLite database with the server up: the migration
 applies, an unauthenticated `GET` returns `200 text/plain` with one block per household in the configured
