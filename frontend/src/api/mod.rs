@@ -1796,6 +1796,42 @@ impl ApiClient {
         .await
     }
 
+    /// Recalculate weekly statistics for every week covering the given range
+    pub async fn recalculate_weekly_statistics(
+        household_id: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<shared::RecalculateStatisticsResponse, String> {
+        Self::request::<shared::RecalculateStatisticsResponse>(
+            "POST",
+            &format!(
+                "/households/{}/statistics/weekly/recalculate?from={}&to={}",
+                household_id, from, to
+            ),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
+    /// Recalculate monthly statistics for every month covering the given range
+    pub async fn recalculate_monthly_statistics(
+        household_id: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<shared::RecalculateStatisticsResponse, String> {
+        Self::request::<shared::RecalculateStatisticsResponse>(
+            "POST",
+            &format!(
+                "/households/{}/statistics/monthly/recalculate?from={}&to={}",
+                household_id, from, to
+            ),
+            None::<()>,
+            true,
+        )
+        .await
+    }
+
     // =========================================================================
     // Legal pages (public, no auth required)
     // =========================================================================

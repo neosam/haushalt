@@ -2162,6 +2162,37 @@ pub struct MonthlyStatisticsResponse {
     pub members: Vec<MemberStatistic>,
 }
 
+/// Response after recalculating statistics for a whole date range
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecalculateStatisticsResponse {
+    /// How many periods (weeks or months) were recalculated
+    pub periods_calculated: usize,
+    /// Start of the first recalculated period, if any
+    pub first_period: Option<NaiveDate>,
+    /// Start of the last recalculated period, if any
+    pub last_period: Option<NaiveDate>,
+}
+
+/// Start of the statistics week containing `date`.
+///
+/// `week_start_day` follows `HouseholdSettings::week_start_day`: 0 = Monday ... 6 = Sunday.
+/// Shared so the frontend snaps a freely picked date to the same week the backend stores.
+pub fn week_start_for(date: NaiveDate, week_start_day: i32) -> NaiveDate {
+    use chrono::Datelike;
+
+    let current_weekday = date.weekday().num_days_from_monday() as i32;
+    let days_since_start = (current_weekday - week_start_day).rem_euclid(7);
+
+    date - chrono::Duration::days(days_since_start as i64)
+}
+
+/// Start of the month containing `date` — the identifier used for monthly statistics
+pub fn month_start_for(date: NaiveDate) -> NaiveDate {
+    use chrono::Datelike;
+
+    NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap()
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -2169,6 +2200,44 @@ pub struct MonthlyStatisticsResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Frontend and backend must agree on which week a freely picked date belongs to —
+    /// otherwise the UI asks for one week and the backend stores another.
+    #[test]
+    fn test_week_start_for_snaps_to_configured_start_day() {
+        let friday = NaiveDate::from_ymd_opt(2024, 1, 12).unwrap();
+
+        // Monday start
+        assert_eq!(
+            week_start_for(friday, 0),
+            NaiveDate::from_ymd_opt(2024, 1, 8).unwrap()
+        );
+        // Sunday start
+        assert_eq!(
+            week_start_for(friday, 6),
+            NaiveDate::from_ymd_opt(2024, 1, 7).unwrap()
+        );
+        // Saturday start
+        assert_eq!(
+            week_start_for(friday, 5),
+            NaiveDate::from_ymd_opt(2024, 1, 6).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_week_start_for_is_idempotent_on_a_start_day() {
+        let monday = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+        assert_eq!(week_start_for(monday, 0), monday);
+    }
+
+    #[test]
+    fn test_month_start_for_returns_first_of_month() {
+        let date = NaiveDate::from_ymd_opt(2024, 2, 29).unwrap();
+        assert_eq!(
+            month_start_for(date),
+            NaiveDate::from_ymd_opt(2024, 2, 1).unwrap()
+        );
+    }
 
     /// The path is the contract between the frontend's shareable link and the backend's
     /// route. If this ever changes, both sides have to change with it.

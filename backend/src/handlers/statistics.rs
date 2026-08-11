@@ -15,9 +15,17 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/weekly", web::get().to(get_weekly_statistics))
             .route("/weekly/calculate", web::post().to(calculate_weekly_statistics))
             .route("/weekly/available", web::get().to(list_available_weeks))
+            .route(
+                "/weekly/recalculate",
+                web::post().to(recalculate_weekly_statistics),
+            )
             .route("/monthly", web::get().to(get_monthly_statistics))
             .route("/monthly/calculate", web::post().to(calculate_monthly_statistics))
-            .route("/monthly/available", web::get().to(list_available_months)),
+            .route("/monthly/available", web::get().to(list_available_months))
+            .route(
+                "/monthly/recalculate",
+                web::post().to(recalculate_monthly_statistics),
+            ),
     );
 }
 
@@ -29,6 +37,154 @@ pub struct WeeklyStatsQuery {
 #[derive(Debug, serde::Deserialize)]
 pub struct MonthlyStatsQuery {
     pub month: Option<String>,
+}
+
+/// Query for recalculating a whole range of periods
+#[derive(Debug, serde::Deserialize)]
+pub struct RecalculateQuery {
+    pub from: String,
+    pub to: String,
+}
+
+/// Resolve the caller and make sure they belong to the household.
+/// Returns the error response to send back when they don't.
+async fn require_member(
+    state: &AppState,
+    req: &actix_web::HttpRequest,
+    household_id: &Uuid,
+) -> Result<(), HttpResponse> {
+    let user_id = crate::middleware::auth::extract_user_id(req, &state.config.jwt_secret)
+        .map_err(|_| {
+            HttpResponse::Unauthorized().json(ApiError {
+                error: "unauthorized".to_string(),
+                message: "Invalid or missing token".to_string(),
+            })
+        })?;
+
+    if !household_service::is_member(&state.db, household_id, &user_id)
+        .await
+        .unwrap_or(false)
+    {
+        return Err(HttpResponse::Forbidden().json(ApiError {
+            error: "forbidden".to_string(),
+            message: "Not a member of this household".to_string(),
+        }));
+    }
+
+    Ok(())
+}
+
+/// Parse the from/to pair of a recalculation request
+fn parse_range(query: &RecalculateQuery) -> Result<(NaiveDate, NaiveDate), HttpResponse> {
+    let parse = |value: &str| {
+        NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+            HttpResponse::BadRequest().json(ApiError {
+                error: "invalid_date".to_string(),
+                message: "Invalid date format. Use YYYY-MM-DD".to_string(),
+            })
+        })
+    };
+
+    Ok((parse(&query.from)?, parse(&query.to)?))
+}
+
+/// Map a statistics service error onto an HTTP response
+fn range_error_response(error: statistics_service::StatisticsError) -> HttpResponse {
+    use statistics_service::StatisticsError;
+
+    match error {
+        StatisticsError::InvalidRange => HttpResponse::BadRequest().json(ApiError {
+            error: "invalid_range".to_string(),
+            message: "End date must not be before start date".to_string(),
+        }),
+        StatisticsError::RangeTooLarge(periods) => HttpResponse::BadRequest().json(ApiError {
+            error: "range_too_large".to_string(),
+            message: format!(
+                "Range covers {} periods, at most {} are allowed",
+                periods,
+                statistics_service::MAX_RECALCULATION_PERIODS
+            ),
+        }),
+        other => {
+            log::error!("Error recalculating statistics: {:?}", other);
+            HttpResponse::InternalServerError().json(ApiError {
+                error: "internal_error".to_string(),
+                message: "Failed to recalculate statistics".to_string(),
+            })
+        }
+    }
+}
+
+/// Build the response body for a completed recalculation
+fn recalculation_response(periods: Vec<NaiveDate>) -> HttpResponse {
+    HttpResponse::Ok().json(shared::ApiSuccess::new(
+        shared::RecalculateStatisticsResponse {
+            periods_calculated: periods.len(),
+            first_period: periods.first().copied(),
+            last_period: periods.last().copied(),
+        },
+    ))
+}
+
+async fn recalculate_weekly_statistics(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<Uuid>,
+    query: web::Query<RecalculateQuery>,
+) -> Result<HttpResponse> {
+    let household_id = path.into_inner();
+
+    if let Err(response) = require_member(&state, &req, &household_id).await {
+        return Ok(response);
+    }
+
+    let (from, to) = match parse_range(&query) {
+        Ok(range) => range,
+        Err(response) => return Ok(response),
+    };
+
+    let settings = settings_service::get_or_create_settings(&state.db, &household_id)
+        .await
+        .map_err(|e| {
+            log::error!("Error getting settings: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Failed to get settings")
+        })?;
+
+    match statistics_service::recalculate_weekly_range(
+        &state.db,
+        &household_id,
+        from,
+        to,
+        settings.week_start_day,
+    )
+    .await
+    {
+        Ok(periods) => Ok(recalculation_response(periods)),
+        Err(e) => Ok(range_error_response(e)),
+    }
+}
+
+async fn recalculate_monthly_statistics(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<Uuid>,
+    query: web::Query<RecalculateQuery>,
+) -> Result<HttpResponse> {
+    let household_id = path.into_inner();
+
+    if let Err(response) = require_member(&state, &req, &household_id).await {
+        return Ok(response);
+    }
+
+    let (from, to) = match parse_range(&query) {
+        Ok(range) => range,
+        Err(response) => return Ok(response),
+    };
+
+    match statistics_service::recalculate_monthly_range(&state.db, &household_id, from, to).await {
+        Ok(periods) => Ok(recalculation_response(periods)),
+        Err(e) => Ok(range_error_response(e)),
+    }
 }
 
 async fn get_weekly_statistics(

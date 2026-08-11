@@ -518,6 +518,81 @@ async fn create_test_schema(pool: &SqlitePool) {
     .execute(pool)
     .await
     .unwrap();
+
+    // Statistics tables — must stay in sync with
+    // migrations/20240142000000_statistics_tables.sql, which this schema mirrors.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS weekly_statistics (
+            id TEXT PRIMARY KEY NOT NULL,
+            household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            week_start DATE NOT NULL,
+            week_end DATE NOT NULL,
+            total_expected INTEGER NOT NULL,
+            total_completed INTEGER NOT NULL,
+            completion_rate REAL NOT NULL,
+            calculated_at DATETIME NOT NULL,
+            UNIQUE(household_id, user_id, week_start)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS weekly_statistics_tasks (
+            id TEXT PRIMARY KEY NOT NULL,
+            weekly_statistics_id TEXT NOT NULL REFERENCES weekly_statistics(id) ON DELETE CASCADE,
+            task_id TEXT NOT NULL,
+            task_title TEXT NOT NULL,
+            expected INTEGER NOT NULL,
+            completed INTEGER NOT NULL,
+            completion_rate REAL NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS monthly_statistics (
+            id TEXT PRIMARY KEY NOT NULL,
+            household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            month DATE NOT NULL,
+            total_expected INTEGER NOT NULL,
+            total_completed INTEGER NOT NULL,
+            completion_rate REAL NOT NULL,
+            calculated_at DATETIME NOT NULL,
+            UNIQUE(household_id, user_id, month)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS monthly_statistics_tasks (
+            id TEXT PRIMARY KEY NOT NULL,
+            monthly_statistics_id TEXT NOT NULL REFERENCES monthly_statistics(id) ON DELETE CASCADE,
+            task_id TEXT NOT NULL,
+            task_title TEXT NOT NULL,
+            expected INTEGER NOT NULL,
+            completed INTEGER NOT NULL,
+            completion_rate REAL NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 // ============================================================================
@@ -1173,6 +1248,37 @@ pub async fn link_task_punishment(
     .bind(task_id.to_string())
     .bind(punishment_id.to_string())
     .bind(amount)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// Insert a finalized period result, as the scheduler would at the end of a period
+pub async fn insert_period_result(
+    pool: &SqlitePool,
+    task_id: &Uuid,
+    period_start: NaiveDate,
+    period_end: NaiveDate,
+    status: PeriodStatus,
+) {
+    let completions = if status == PeriodStatus::Completed { 1 } else { 0 };
+
+    sqlx::query(
+        r#"
+        INSERT INTO task_period_results (
+            id, task_id, period_start, period_end, status,
+            completions_count, target_count, finalized_at, finalized_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'system')
+        "#,
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(task_id.to_string())
+    .bind(period_start)
+    .bind(period_end)
+    .bind(status.as_str())
+    .bind(completions)
+    .bind(Utc::now())
     .execute(pool)
     .await
     .unwrap();

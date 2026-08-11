@@ -40,7 +40,7 @@ ausgeführt, also gibt es auch nichts zurückzudrehen.
 
 Phase 02.1 ist code-seitig fertig (5 von 6 Plänen), nur die menschliche Abnahme 02.1-06 und die
 SUMMARYs für 02.1-02..05 fehlen. Am 2026-07-28 nachgewiesen — siehe Doku-Nachtrag in ROADMAP.md.
-Last activity: 2026-07-28 - Completed quick task 260728-dah: Kategorien-Modal wurde unten in den Seitenfluss gerendert (undefinierte CSS-Klassen)
+Last activity: 2026-08-11 - Completed quick task 260811-fpr: Statistik-Perioden frei wählbar, Zeitraum-Nachberechnung ergänzt
 
 Progress: [██░░░░░░░░] 17% (3 of ~10 plans across v1.1)
 
@@ -130,6 +130,7 @@ Keine — siehe `.planning/todos/completed/`.
 | 260728-c7k | Kategorie-Farbe in der Task-Liste anzeigen; Kategorie- und Tages-Gruppen klappbar | 2026-07-28 | 4ed8223d | [260728-c7k-kategorie-farbe-und-collapsible-gruppen](./quick/260728-c7k-kategorie-farbe-und-collapsible-gruppen/) |
 | 260728-cej | Task verschwindet nach dem Bearbeiten aus der Übersicht: Kategorie in der Update-Antwort, Reload nach Save, Aufklappzustand der Gruppen | 2026-07-28 | 1ca3f836 | [260728-cej-bug-task-verschwindet-nach-bearbeiten-au](./quick/260728-cej-bug-task-verschwindet-nach-bearbeiten-au/) |
 | 260728-dah | Kategorien-Modal wurde unten in den Seitenfluss gerendert: undefinierte CSS-Klassen korrigiert, Regressionstest ergänzt | 2026-07-28 | 17c21678 | [260728-dah-kategorien-modal-in-tasks-wird-nicht-als](./quick/260728-dah-kategorien-modal-in-tasks-wird-nicht-als/) |
+| 260811-fpr | Statistiken für beliebige Wochen/Monate erstellen und ganze Zeiträume nachberechnen | 2026-08-11 | (siehe jj log) | [260811-fpr-statistik-beliebige-perioden-nachberechnung](./quick/260811-fpr-statistik-beliebige-perioden-nachberechnung/) |
 
 ## Session Continuity
 

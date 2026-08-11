@@ -14,16 +14,20 @@ pub enum StatisticsError {
     #[allow(dead_code)]
     #[error("Statistics not found")]
     NotFound,
+    #[error("End date must not be before start date")]
+    InvalidRange,
+    #[error("Range covers {0} periods, at most {MAX_RECALCULATION_PERIODS} are allowed")]
+    RangeTooLarge(usize),
 }
+
+/// Upper bound for a single range recalculation. Keeps an accidental "since 1970" request
+/// from turning into a multi-minute database walk.
+pub const MAX_RECALCULATION_PERIODS: usize = 260;
 
 /// Get the week start date based on week_start_day setting and a reference date
 /// week_start_day: 0 = Monday, 1 = Tuesday, ..., 6 = Sunday
 pub fn get_week_start(date: NaiveDate, week_start_day: i32) -> NaiveDate {
-    let current_weekday = date.weekday().num_days_from_monday() as i32; // 0 = Monday, 6 = Sunday
-    let target_weekday = week_start_day;
-
-    let days_since_start = (current_weekday - target_weekday + 7) % 7;
-    date - chrono::Duration::days(days_since_start as i64)
+    shared::week_start_for(date, week_start_day)
 }
 
 /// Get the week end date (6 days after start)
@@ -33,17 +37,89 @@ pub fn get_week_end(week_start: NaiveDate) -> NaiveDate {
 
 /// Get the month start date (first day of month)
 pub fn get_month_start(date: NaiveDate) -> NaiveDate {
-    NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap()
+    shared::month_start_for(date)
 }
 
 /// Get the month end date (last day of month)
 pub fn get_month_end(date: NaiveDate) -> NaiveDate {
-    let next_month = if date.month() == 12 {
+    next_month_start(date) - chrono::Duration::days(1)
+}
+
+/// First day of the month following the one containing `date`
+fn next_month_start(date: NaiveDate) -> NaiveDate {
+    if date.month() == 12 {
         NaiveDate::from_ymd_opt(date.year() + 1, 1, 1).unwrap()
     } else {
         NaiveDate::from_ymd_opt(date.year(), date.month() + 1, 1).unwrap()
-    };
-    next_month - chrono::Duration::days(1)
+    }
+}
+
+/// All week starts covering the range from..=to, aligned to the household's week start day.
+///
+/// The week containing `from` and the week containing `to` are both included, even when the
+/// range boundaries fall in the middle of a week.
+pub fn weekly_period_starts(
+    from: NaiveDate,
+    to: NaiveDate,
+    week_start_day: i32,
+) -> Result<Vec<NaiveDate>, StatisticsError> {
+    if to < from {
+        return Err(StatisticsError::InvalidRange);
+    }
+
+    let mut periods = Vec::new();
+    let mut current = get_week_start(from, week_start_day);
+
+    while current <= to {
+        if periods.len() == MAX_RECALCULATION_PERIODS {
+            return Err(StatisticsError::RangeTooLarge(
+                count_weeks(current, to, periods.len()),
+            ));
+        }
+        periods.push(current);
+        current += chrono::Duration::days(7);
+    }
+
+    Ok(periods)
+}
+
+/// Total number of weeks the range would have produced — only used for the error message
+fn count_weeks(next_start: NaiveDate, to: NaiveDate, already_counted: usize) -> usize {
+    let remaining = (to - next_start).num_days() / 7 + 1;
+    already_counted + remaining.max(0) as usize
+}
+
+/// All month starts covering the range from..=to.
+///
+/// The month containing `from` and the month containing `to` are both included.
+pub fn monthly_period_starts(
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<NaiveDate>, StatisticsError> {
+    if to < from {
+        return Err(StatisticsError::InvalidRange);
+    }
+
+    let last = get_month_start(to);
+    let mut periods = Vec::new();
+    let mut current = get_month_start(from);
+
+    while current <= last {
+        if periods.len() == MAX_RECALCULATION_PERIODS {
+            return Err(StatisticsError::RangeTooLarge(count_months(current, last)
+                + periods.len()));
+        }
+        periods.push(current);
+        current = next_month_start(current);
+    }
+
+    Ok(periods)
+}
+
+/// Number of months from `start` to `last` inclusive — only used for the error message
+fn count_months(start: NaiveDate, last: NaiveDate) -> usize {
+    let months = (last.year() - start.year()) * 12 + (last.month() as i32 - start.month() as i32);
+    (months + 1).max(0) as usize
 }
 
 /// Calculate and store weekly statistics for a household
@@ -403,6 +479,39 @@ pub async fn calculate_monthly_statistics(
     Ok(())
 }
 
+/// Recalculate weekly statistics for every week covering the given range
+pub async fn recalculate_weekly_range(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    from: NaiveDate,
+    to: NaiveDate,
+    week_start_day: i32,
+) -> Result<Vec<NaiveDate>, StatisticsError> {
+    let periods = weekly_period_starts(from, to, week_start_day)?;
+
+    for week_start in &periods {
+        calculate_weekly_statistics(pool, household_id, *week_start).await?;
+    }
+
+    Ok(periods)
+}
+
+/// Recalculate monthly statistics for every month covering the given range
+pub async fn recalculate_monthly_range(
+    pool: &SqlitePool,
+    household_id: &Uuid,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<NaiveDate>, StatisticsError> {
+    let periods = monthly_period_starts(from, to)?;
+
+    for month_start in &periods {
+        calculate_monthly_statistics(pool, household_id, *month_start).await?;
+    }
+
+    Ok(periods)
+}
+
 /// Get weekly statistics for a household
 pub async fn get_weekly_statistics(
     pool: &SqlitePool,
@@ -596,5 +705,315 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2024, 12, 15).unwrap();
         let month_end = get_month_end(date);
         assert_eq!(month_end, NaiveDate::from_ymd_opt(2024, 12, 31).unwrap());
+    }
+
+    // ------------------------------------------------------------------
+    // Period lists for range recalculation
+    // ------------------------------------------------------------------
+
+    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).unwrap()
+    }
+
+    #[test]
+    fn test_weekly_period_starts_aligns_to_week_start_day() {
+        // Wednesday 2024-01-10 through Tuesday 2024-01-23, weeks start on Monday
+        let periods = weekly_period_starts(date(2024, 1, 10), date(2024, 1, 23), 0).unwrap();
+
+        // The partial weeks at both ends are included
+        assert_eq!(
+            periods,
+            vec![date(2024, 1, 8), date(2024, 1, 15), date(2024, 1, 22)]
+        );
+    }
+
+    #[test]
+    fn test_weekly_period_starts_honors_sunday_start() {
+        // Same range, but weeks start on Sunday
+        let periods = weekly_period_starts(date(2024, 1, 10), date(2024, 1, 23), 6).unwrap();
+
+        assert_eq!(
+            periods,
+            vec![date(2024, 1, 7), date(2024, 1, 14), date(2024, 1, 21)]
+        );
+    }
+
+    #[test]
+    fn test_weekly_period_starts_single_day_range() {
+        let periods = weekly_period_starts(date(2024, 1, 10), date(2024, 1, 10), 0).unwrap();
+        assert_eq!(periods, vec![date(2024, 1, 8)]);
+    }
+
+    #[test]
+    fn test_weekly_period_starts_rejects_inverted_range() {
+        let result = weekly_period_starts(date(2024, 1, 23), date(2024, 1, 10), 0);
+        assert!(matches!(result, Err(StatisticsError::InvalidRange)));
+    }
+
+    #[test]
+    fn test_weekly_period_starts_rejects_oversized_range() {
+        let from = date(2000, 1, 1);
+        let to = from + chrono::Duration::days(7 * MAX_RECALCULATION_PERIODS as i64);
+
+        let result = weekly_period_starts(from, to, 0);
+        match result {
+            Err(StatisticsError::RangeTooLarge(periods)) => {
+                assert!(
+                    periods > MAX_RECALCULATION_PERIODS,
+                    "reported period count {} should exceed the limit",
+                    periods
+                );
+            }
+            other => panic!("expected RangeTooLarge, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_weekly_period_starts_allows_exactly_the_limit() {
+        let from = date(2000, 1, 3); // a Monday
+        let to = from + chrono::Duration::days(7 * (MAX_RECALCULATION_PERIODS as i64 - 1));
+
+        let periods = weekly_period_starts(from, to, 0).unwrap();
+        assert_eq!(periods.len(), MAX_RECALCULATION_PERIODS);
+    }
+
+    #[test]
+    fn test_monthly_period_starts_covers_partial_months() {
+        let periods = monthly_period_starts(date(2024, 1, 20), date(2024, 4, 5)).unwrap();
+
+        assert_eq!(
+            periods,
+            vec![
+                date(2024, 1, 1),
+                date(2024, 2, 1),
+                date(2024, 3, 1),
+                date(2024, 4, 1)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_monthly_period_starts_crosses_year_boundary() {
+        let periods = monthly_period_starts(date(2024, 11, 15), date(2025, 2, 3)).unwrap();
+
+        assert_eq!(
+            periods,
+            vec![
+                date(2024, 11, 1),
+                date(2024, 12, 1),
+                date(2025, 1, 1),
+                date(2025, 2, 1)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_monthly_period_starts_same_month_yields_one_period() {
+        let periods = monthly_period_starts(date(2024, 3, 2), date(2024, 3, 29)).unwrap();
+        assert_eq!(periods, vec![date(2024, 3, 1)]);
+    }
+
+    #[test]
+    fn test_monthly_period_starts_rejects_inverted_range() {
+        let result = monthly_period_starts(date(2024, 4, 1), date(2024, 3, 1));
+        assert!(matches!(result, Err(StatisticsError::InvalidRange)));
+    }
+
+    #[test]
+    fn test_monthly_period_starts_allows_exactly_the_limit() {
+        let from = date(2000, 1, 1);
+        let months_after_start = MAX_RECALCULATION_PERIODS as i32 - 1;
+        let to = date(
+            2000 + months_after_start / 12,
+            1 + months_after_start as u32 % 12,
+            1,
+        );
+
+        let periods = monthly_period_starts(from, to).unwrap();
+        assert_eq!(periods.len(), MAX_RECALCULATION_PERIODS);
+    }
+
+    #[test]
+    fn test_monthly_period_starts_rejects_oversized_range() {
+        let from = date(2000, 1, 1);
+        // One month beyond the limit
+        let months_after_start = MAX_RECALCULATION_PERIODS as i32;
+        let to = date(
+            2000 + months_after_start / 12,
+            1 + months_after_start as u32 % 12,
+            1,
+        );
+
+        match monthly_period_starts(from, to) {
+            Err(StatisticsError::RangeTooLarge(periods)) => {
+                assert_eq!(periods, MAX_RECALCULATION_PERIODS + 1);
+            }
+            other => panic!("expected RangeTooLarge, got {:?}", other),
+        }
+    }
+}
+
+#[cfg(test)]
+mod range_recalculation_tests {
+    use super::*;
+    use crate::test_utils::{
+        create_test_household, create_test_membership, create_test_pool, create_test_task,
+        create_test_user, insert_period_result,
+    };
+    use shared::{PeriodStatus, Role};
+
+    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).unwrap()
+    }
+
+    /// A household with one member — statistics are only written for members,
+    /// so the membership row is what makes the fixture usable here.
+    async fn household_with_member(pool: &SqlitePool) -> (Uuid, Uuid) {
+        let household_id = create_test_household(pool).await;
+        let user_id = create_test_user(pool, "stats@example.com", Role::Owner).await;
+        create_test_membership(pool, &household_id, &user_id, Role::Owner).await;
+        (household_id, user_id)
+    }
+
+    /// Weeks that were never calculated before must show up after a range recalculation,
+    /// which is the whole point of the feature: past periods are reachable without having
+    /// had a statistics row already.
+    #[tokio::test]
+    async fn test_recalculate_weekly_range_creates_rows_for_past_weeks() {
+        let pool = create_test_pool().await;
+        let (household_id, owner_id) = household_with_member(&pool).await;
+
+        let task = create_test_task(&pool, &household_id)
+            .with_assigned_user(owner_id)
+            .build()
+            .await;
+
+        // Two days completed in the week of 2024-01-08, one failed in the week of 2024-01-15
+        insert_period_result(
+            &pool,
+            &task.id,
+            date(2024, 1, 8),
+            date(2024, 1, 8),
+            PeriodStatus::Completed,
+        )
+        .await;
+        insert_period_result(
+            &pool,
+            &task.id,
+            date(2024, 1, 9),
+            date(2024, 1, 9),
+            PeriodStatus::Completed,
+        )
+        .await;
+        insert_period_result(
+            &pool,
+            &task.id,
+            date(2024, 1, 16),
+            date(2024, 1, 16),
+            PeriodStatus::Failed,
+        )
+        .await;
+
+        let periods = recalculate_weekly_range(
+            &pool,
+            &household_id,
+            date(2024, 1, 10),
+            date(2024, 1, 20),
+            0,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(periods, vec![date(2024, 1, 8), date(2024, 1, 15)]);
+
+        let first = get_weekly_statistics(&pool, &household_id, date(2024, 1, 8))
+            .await
+            .unwrap();
+        assert_eq!(first.members.len(), 1);
+        assert_eq!(first.members[0].total_expected, 2);
+        assert_eq!(first.members[0].total_completed, 2);
+
+        let second = get_weekly_statistics(&pool, &household_id, date(2024, 1, 15))
+            .await
+            .unwrap();
+        assert_eq!(second.members.len(), 1);
+        assert_eq!(second.members[0].total_expected, 1);
+        assert_eq!(second.members[0].total_completed, 0);
+
+        // Both weeks are now offered as available periods
+        let available = list_available_weeks(&pool, &household_id).await.unwrap();
+        assert_eq!(available, vec![date(2024, 1, 15), date(2024, 1, 8)]);
+    }
+
+    #[tokio::test]
+    async fn test_recalculate_monthly_range_covers_every_month() {
+        let pool = create_test_pool().await;
+        let (household_id, owner_id) = household_with_member(&pool).await;
+
+        let task = create_test_task(&pool, &household_id)
+            .with_assigned_user(owner_id)
+            .build()
+            .await;
+
+        insert_period_result(
+            &pool,
+            &task.id,
+            date(2024, 1, 5),
+            date(2024, 1, 5),
+            PeriodStatus::Completed,
+        )
+        .await;
+        insert_period_result(
+            &pool,
+            &task.id,
+            date(2024, 3, 5),
+            date(2024, 3, 5),
+            PeriodStatus::Failed,
+        )
+        .await;
+
+        let periods =
+            recalculate_monthly_range(&pool, &household_id, date(2024, 1, 15), date(2024, 3, 2))
+                .await
+                .unwrap();
+
+        assert_eq!(
+            periods,
+            vec![date(2024, 1, 1), date(2024, 2, 1), date(2024, 3, 1)]
+        );
+
+        let january = get_monthly_statistics(&pool, &household_id, date(2024, 1, 1))
+            .await
+            .unwrap();
+        assert_eq!(january.members[0].total_completed, 1);
+
+        let march = get_monthly_statistics(&pool, &household_id, date(2024, 3, 1))
+            .await
+            .unwrap();
+        assert_eq!(march.members[0].total_expected, 1);
+        assert_eq!(march.members[0].total_completed, 0);
+
+        // February had no period results, so no member row is written for it
+        let february = get_monthly_statistics(&pool, &household_id, date(2024, 2, 1))
+            .await
+            .unwrap();
+        assert_eq!(february.members[0].total_expected, 0);
+    }
+
+    #[tokio::test]
+    async fn test_recalculate_weekly_range_rejects_inverted_range() {
+        let pool = create_test_pool().await;
+        let (household_id, _) = household_with_member(&pool).await;
+
+        let result = recalculate_weekly_range(
+            &pool,
+            &household_id,
+            date(2024, 2, 1),
+            date(2024, 1, 1),
+            0,
+        )
+        .await;
+
+        assert!(matches!(result, Err(StatisticsError::InvalidRange)));
     }
 }
